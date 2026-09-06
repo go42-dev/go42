@@ -97,7 +97,7 @@ func (r *BaseRepository) WithTransaction(ctx context.Context, fn func(txCtx cont
 
 	if err := fn(txCtx); err != nil {
 		if rbErr := r.Rollback(txCtx); rbErr != nil {
-			return fmt.Errorf("error executing transaction (rollback failed: %v): %w", rbErr, err)
+			return fmt.Errorf("error executing transaction (rollback failed: %w): %w", rbErr, err)
 		}
 		return err
 	}
@@ -105,7 +105,7 @@ func (r *BaseRepository) WithTransaction(ctx context.Context, fn func(txCtx cont
 	if err := r.Commit(txCtx); err != nil {
 		rbErr := r.Rollback(txCtx)
 		if rbErr != nil {
-			return fmt.Errorf("error committing transaction (rollback failed: %v): %w", rbErr, err)
+			return fmt.Errorf("error committing transaction (rollback failed: %w): %w", rbErr, err)
 		}
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}

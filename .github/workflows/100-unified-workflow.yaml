@@ -87,6 +87,17 @@ jobs:
       continue_on_error: false
       timeout_minutes: 10
 
+  helm-lint:
+    uses: ./.github/workflows/110-helm-lint.yaml
+    permissions:
+      contents: read
+    needs:
+      - gate-start
+    with:
+      runs_on: ubuntu-latest
+      continue_on_error: false
+      timeout_minutes: 10
+
   proto-lint:
     uses: ./.github/workflows/110-proto-lint.yaml
     permissions:
@@ -185,6 +196,7 @@ jobs:
       - git-lint
       - golangci-lint
       - docker-lint
+      - helm-lint
       - proto-lint
       - openapi-lint
       - markdown-lint
@@ -197,6 +209,16 @@ jobs:
       runs_on: ubuntu-latest
       continue_on_error: false
       timeout_minutes: 10
+
+  fuzz-tests:
+    uses: ./.github/workflows/125-fuzz-tests.yaml
+    permissions:
+      contents: read
+    needs:
+      - unit-tests
+    with:
+      runs_on: ubuntu-latest
+      fuzz_time: 30s
 
   coverage-report:
     name: coverage-report
@@ -379,6 +401,7 @@ jobs:
       - git-lint
       - golangci-lint
       - docker-lint
+      - helm-lint
       - proto-lint
       - openapi-lint
       - markdown-lint
@@ -425,6 +448,7 @@ jobs:
       - security
       - integration-tests
       - resilience-tests
+      - fuzz-tests
       - cleanup
       - load-tests-report
     steps:
@@ -435,6 +459,7 @@ jobs:
           SECURITY_RESULT: ${{ needs.security.result }}
           INTEGRATION_RESULT: ${{ needs.integration-tests.result }}
           RESILIENCE_RESULT: ${{ needs.resilience-tests.result }}
+          FUZZ_RESULT: ${{ needs.fuzz-tests.result }}
           CLEANUP_RESULT: ${{ needs.cleanup.result }}
           LOAD_TESTS_REPORT_RESULT: ${{ needs.load-tests-report.result }}
         run: |-
@@ -442,6 +467,7 @@ jobs:
           echo "security: $SECURITY_RESULT"
           echo "integration-tests: $INTEGRATION_RESULT"
           echo "resilience-tests: $RESILIENCE_RESULT"
+          echo "fuzz-tests: $FUZZ_RESULT"
           echo "cleanup (advisory): $CLEANUP_RESULT"
           echo "load-tests-report (advisory): $LOAD_TESTS_REPORT_RESULT"
 
@@ -452,7 +478,8 @@ jobs:
 
           if [ "$SECURITY_RESULT" != "success" ] || \
             [ "$INTEGRATION_RESULT" != "success" ] || \
-            [ "$RESILIENCE_RESULT" != "success" ]; then
+            [ "$RESILIENCE_RESULT" != "success" ] || \
+            [ "$FUZZ_RESULT" != "success" ]; then
             echo "::error::One or more blocking CI branches did not succeed."
             exit 1
           fi

@@ -85,6 +85,31 @@ checksum = "sha256:126c8fa83500389078f6b2072a04170f063787ec9905e5d1ab69a5a62ee5b
 url = "https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v3.11.3/ec-darwin-amd64.tar.gz"
 url_api = "https://api.github.com/repos/editorconfig-checker/editorconfig-checker/releases/assets/543324099"
 
+[[tools."github:oasdiff/oasdiff"]]
+version = "1.31.0"
+backend = "github:oasdiff/oasdiff"
+specifiers = ["1.31.0"]
+
+[tools."github:oasdiff/oasdiff"."platforms.linux-arm64"]
+checksum = "sha256:5df49123030eb0816ccd440ed8f1caa8bab8dcb50aa725485d02226a0c82f49f"
+url = "https://github.com/oasdiff/oasdiff/releases/download/v1.31.0/oasdiff_1.31.0_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/oasdiff/oasdiff/releases/assets/545507277"
+
+[tools."github:oasdiff/oasdiff"."platforms.linux-x64"]
+checksum = "sha256:0177d4bc0bf04f4061e9277795b77335ee100a43b508e94fce5c46de083bbede"
+url = "https://github.com/oasdiff/oasdiff/releases/download/v1.31.0/oasdiff_1.31.0_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/oasdiff/oasdiff/releases/assets/545507276"
+
+[tools."github:oasdiff/oasdiff"."platforms.macos-arm64"]
+checksum = "sha256:920639cc49da700e37ec070b6981686d6fa2f02d036aa18aeb62e1445ffd9286"
+url = "https://github.com/oasdiff/oasdiff/releases/download/v1.31.0/oasdiff_1.31.0_darwin_all.tar.gz"
+url_api = "https://api.github.com/repos/oasdiff/oasdiff/releases/assets/545507282"
+
+[tools."github:oasdiff/oasdiff"."platforms.macos-x64"]
+checksum = "sha256:920639cc49da700e37ec070b6981686d6fa2f02d036aa18aeb62e1445ffd9286"
+url = "https://github.com/oasdiff/oasdiff/releases/download/v1.31.0/oasdiff_1.31.0_darwin_all.tar.gz"
+url_api = "https://api.github.com/repos/oasdiff/oasdiff/releases/assets/545507282"
+
 [[tools.gitleaks]]
 version = "8.30.1"
 backend = "aqua:gitleaks/gitleaks"
@@ -252,6 +277,27 @@ checksum = "sha256:ffe9bb18b23d5ed1eae50237aecdbb523d016e96da0bd4e7aa432040acfc3
 url = "https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-macos-x86_64"
 url_api = "https://api.github.com/repos/hadolint/hadolint/releases/assets/496546509"
 provenance = "github-attestations"
+
+[[tools.helm]]
+version = "4.2.4"
+backend = "aqua:helm/helm"
+specifiers = ["4.2.4"]
+
+[tools.helm."platforms.linux-arm64"]
+checksum = "sha256:564de2191b881e9f71b5606b25345821ea1682f06ab90499d3ab22b530176da1"
+url = "https://get.helm.sh/helm-v4.2.4-linux-arm64.tar.gz"
+
+[tools.helm."platforms.linux-x64"]
+checksum = "sha256:c306b46f719b0a4da32d0f78ee21bf90ce8d602f15b22ab753f0674d1670a7f3"
+url = "https://get.helm.sh/helm-v4.2.4-linux-amd64.tar.gz"
+
+[tools.helm."platforms.macos-arm64"]
+checksum = "sha256:d747eb4e28bd2727173d15b759fa0a17822291ec09db7ced3d55af290a3661a2"
+url = "https://get.helm.sh/helm-v4.2.4-darwin-arm64.tar.gz"
+
+[tools.helm."platforms.macos-x64"]
+checksum = "sha256:6c163d687ca03c3b5c01928e53bbbcf9518278f47ce7a2f249a5a08e8bdaa2bc"
+url = "https://get.helm.sh/helm-v4.2.4-darwin-amd64.tar.gz"
 
 [[tools.jq]]
 version = "1.8.2"

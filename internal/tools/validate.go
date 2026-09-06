@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"reflect"
@@ -41,25 +42,23 @@ func init() {
 // ValidateStruct validates arbitrary struct
 func ValidateStruct(s interface{}) []ValidationError {
 	err := validate.Struct(s)
-	if err != nil {
-		//goland:noinspection GoTypeAssertionOnErrors
-		switch e := err.(type) {
-		case validator.ValidationErrors:
-			vErrs := make([]ValidationError, 0, len(e))
-			for _, vErr := range e {
-				vErrs = append(vErrs, ValidationError{original: vErr})
-			}
-			return vErrs
-		default:
-			slog.Error("validate.ValidateStruct error", slog.Any("error", e))
-			return []ValidationError{{
-				pointer: "UNKNOWN",
-				detail:  e.Error(),
-				code:    "INTERNAL_VALIDATION_ERROR",
-			}}
-		}
+	if err == nil {
+		return nil
 	}
-	return nil
+	var validationErrors validator.ValidationErrors
+	if errors.As(err, &validationErrors) {
+		vErrs := make([]ValidationError, 0, len(validationErrors))
+		for _, vErr := range validationErrors {
+			vErrs = append(vErrs, ValidationError{original: vErr})
+		}
+		return vErrs
+	}
+	slog.Error("validate.ValidateStruct error", slog.Any("error", err))
+	return []ValidationError{{
+		pointer: "UNKNOWN",
+		detail:  err.Error(),
+		code:    "INTERNAL_VALIDATION_ERROR",
+	}}
 }
 
 // ValidateStructCompact calls ValidateStruct but returns single error instance

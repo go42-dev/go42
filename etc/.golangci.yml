@@ -36,9 +36,15 @@ linters:
 
   # https://golangci-lint.run/usage/linters/#enabled-by-default
   enable:
+    - bodyclose
+    - contextcheck
     - errcheck
+    - errorlint
     - govet
     - ineffassign
+    - nilerr
+    - rowserrcheck
+    - sqlclosecheck
     - staticcheck
     - unused
     - sloglint

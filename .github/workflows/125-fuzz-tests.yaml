@@ -1,0 +1,80 @@
+---
+
+name: fuzz-tests
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        required: false
+        type: string
+        default: ubuntu-latest
+      fuzz_time:
+        required: false
+        type: string
+        default: 30s
+  workflow_dispatch:
+    inputs:
+      fuzz_time:
+        description: Fuzzing duration per target (Go duration, such as 5m)
+        required: true
+        type: string
+        default: 5m
+  schedule:
+    - cron: '23 3 * * *'
+
+permissions: {}
+
+jobs:
+  fuzz-tests:
+    name: ${{ matrix.target }}
+    runs-on: ${{ inputs.runs_on || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      # Keep these targets in sync with make test-fuzz.
+      matrix:
+        include:
+          - package: ./internal/auth
+            target: FuzzCanonicalJWT
+          - package: ./internal/tools
+            target: FuzzRateLimitTTL
+          - package: ./internal/cache/memcached
+            target: FuzzRateLimitExpiration
+    env:
+      FUZZ_PACKAGE: ${{ matrix.package }}
+      FUZZ_TARGET: ${{ matrix.target }}
+      FUZZ_TIME: ${{ inputs.fuzz_time || '5m' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Locate fuzz corpus cache
+        id: corpus
+        run: echo "path=$(go env GOCACHE)/fuzz" >> "$GITHUB_OUTPUT"
+      - name: Restore and save fuzz corpus
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.corpus.outputs.path }}
+          # A new key lets successful runs save newly discovered inputs.
+          key: fuzz-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('go.mod') }}-${{ github.run_id
+            }}-${{ github.run_attempt }}
+          restore-keys: |
+            fuzz-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('go.mod') }}-
+      - name: Fuzz target
+        run: go test -run '^$' -fuzz "^${FUZZ_TARGET}$" -fuzztime "$FUZZ_TIME" -parallel 2 "$FUZZ_PACKAGE"
+      - name: Upload failing corpus for reproduction
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-failure-${{ matrix.target }}
+          path: ${{ matrix.package }}/testdata/fuzz/**
+          if-no-files-found: ignore
+          retention-days: 7

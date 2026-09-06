@@ -20,7 +20,11 @@ export MISE_CACHE_DIR := $(MISE_DATA_DIR)/cache
 export MISE_STATE_DIR := $(MISE_DATA_DIR)/state
 export PATH := $(MISE_DATA_DIR)/shims:$(PATH)
 
-.PHONY: help setup setup-common setup-linters setup-generators setup-mcp mise
+.PHONY: help setup setup-common setup-linters setup-generators setup-mcp \
+	test-unit test-fuzz test-integration test-resilience test-load \
+	run run-docker debug build image lint generate serve-docs \
+	check-env generate-migration-id generate-dep-graph grpcui show-asm
+
 help: Makefile
 	@sed -n 's/^##//p' $< | awk 'BEGIN {FS = "|"}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
@@ -47,9 +51,10 @@ setup-linters:
 		golines \
 		hadolint \
 		markdownlint-cli2 \
-		pipx:sqlfluff \
 		vale \
 		zizmor \
+		pipx:sqlfluff \
+		github:oasdiff/oasdiff \
 		go:github.com/daixiang0/gci \
 		go:github.com/caarlos0/jsonfmt \
 		go:github.com/google/yamlfmt/cmd/yamlfmt \
@@ -60,7 +65,7 @@ setup-linters:
 ## setup-generators | install code generators
 setup-generators:
 	@mise install --locked \
-		buf \
+		helm buf \
 		oapi-codegen \
 		go:go.uber.org/mock/mockgen \
 		go:github.com/ogen-go/ogen/cmd/ogen \
@@ -81,6 +86,13 @@ setup-mcp:
 # -count=1 is needed to prevent caching of test results.
 test-unit:
 	@go test -count=1 -v -race $(shell go list ./... | grep -v './tests')
+
+## test-fuzz | fuzz core invariants (30 seconds per target)
+# Keep these targets in sync with .github/workflows/125-fuzz-tests.yaml.
+test-fuzz:
+	@go test -run '^$$' -fuzz '^FuzzCanonicalJWT$$' -fuzztime 30s -parallel 2 ./internal/auth
+	@go test -run '^$$' -fuzz '^FuzzRateLimitTTL$$' -fuzztime 30s -parallel 2 ./internal/tools
+	@go test -run '^$$' -fuzz '^FuzzRateLimitExpiration$$' -fuzztime 30s -parallel 2 ./internal/cache/memcached
 
 ## test-integration | run integration tests (http and grpc)
 # -count=1 is needed to prevent caching of test results.
@@ -167,10 +179,13 @@ image:
 lint:
 	@golangci-lint run --config etc/.golangci.yml || true
 	@hadolint Dockerfile || true
+	@helm lint --strict infra/helm/app --set-string image.tag=ci-validation || true
+	@helm lint --strict infra/helm/app --set-string image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000 || true
 	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/sqlite/*.sql --dialect sqlite || true
 	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/mysql/*.sql --dialect mysql || true
 	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/pgsql/*.sql --dialect postgres || true
 	@REDOCLY_SUPPRESS_UPDATE_NOTICE=true REDOCLY_TELEMETRY=false redocly lint --config etc/redocly.yaml --format stylish api/openapi/**/*.yaml || true
+	@oasdiff breaking --fail-on ERR origin/master:api/openapi/v1/.combined.yaml api/openapi/v1/.combined.yaml || true
 	@buf lint api || true
 	@gosec -quiet -exclude-generated ./... || true
 	@gitleaks git --config etc/gitleaks.toml --no-banner --redact -v || true
