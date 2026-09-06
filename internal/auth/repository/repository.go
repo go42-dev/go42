@@ -2,11 +2,11 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"github.com/go42-dev/go42/internal/auth/domain"
@@ -51,7 +51,11 @@ func (r *Repository) CreateUser(ctx context.Context, user *models.User) error {
 }
 
 func (r *Repository) UpdateUser(ctx context.Context, user *models.User) error {
-	result := r.GetTx(ctx).Model(user).Updates(user)
+	updated := *user
+	updated.CredentialVersion++
+	result := r.GetTx(ctx).Model(user).
+		Where("credential_version = ?", user.CredentialVersion).
+		Updates(&updated)
 	if result.Error != nil {
 		if r.IsDuplicateKeyError(result.Error) {
 			return domain.ErrUserAlreadyExists
@@ -59,8 +63,10 @@ func (r *Repository) UpdateUser(ctx context.Context, user *models.User) error {
 		return fmt.Errorf("error updating user: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return errors.New("error updating user: no rows affected")
+		// A concurrent credential change makes the caller's password proof stale.
+		return domain.ErrInvalidCredentials
 	}
+	user.CredentialVersion = updated.CredentialVersion
 	return nil
 }
 
@@ -181,7 +187,8 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*models.
 }
 
 func (r *Repository) getUser(ctx context.Context, filter map[string]any) (*models.User, error) {
-	tx := r.GetReadDB(ctx)
+	// Authentication must observe current credentials, status and permissions.
+	tx := r.GetTx(ctx)
 	for key, value := range filter {
 		tx = tx.Where(fmt.Sprintf("%s = ?", key), value)
 	}
@@ -196,7 +203,7 @@ func (r *Repository) getUser(ctx context.Context, filter map[string]any) (*model
 	}
 
 	var roles []models.Role
-	err = r.GetReadDB(ctx).
+	err = r.GetTx(ctx).
 		Distinct().
 		Select("auth_roles.*").
 		Joins("JOIN auth_user_roles ON auth_user_roles.role_id = auth_roles.id").
@@ -218,7 +225,7 @@ func (r *Repository) getUser(ctx context.Context, filter map[string]any) (*model
 			Permission models.Permission `gorm:"embedded"`
 		}
 
-		err = r.GetReadDB(ctx).
+		err = r.GetTx(ctx).
 			Table("auth_permissions").
 			Select("auth_role_permissions.role_id, auth_permissions.*").
 			Joins("JOIN auth_role_permissions ON auth_role_permissions.permission_id = auth_permissions.id").
@@ -241,6 +248,72 @@ func (r *Repository) getUser(ctx context.Context, filter map[string]any) (*model
 
 	user.Roles = roles
 	return &user, nil
+}
+
+func (r *Repository) CreateSession(ctx context.Context, session *models.Session) error {
+	session.ExpiresAt = session.ExpiresAt.UTC()
+	return r.GetTx(ctx).Create(session).Error
+}
+
+// activeSessionQuery always uses the primary, including the credential-version
+// comparison. Missing, expired, revoked and obsolete sessions all fail closed.
+func (r *Repository) activeSessionQuery(ctx context.Context, sessionID, userUUID string) *gorm.DB {
+	return r.GetTx(ctx).Model(&models.Session{}).
+		Where("auth_sessions.id = ?", sessionID).
+		Where("auth_sessions.revoked_at IS NULL AND auth_sessions.expires_at > ?", time.Now().UTC()).
+		Where(`auth_sessions.user_id IN (
+			SELECT id FROM auth_users WHERE uuid = ? AND status = ? AND deleted_at IS NULL
+			AND credential_version = auth_sessions.credential_version
+		)`, userUUID, domain.UserStatusActive)
+}
+
+func (r *Repository) GetActiveSession(ctx context.Context, sessionID, userUUID string) (*models.Session, error) {
+	var session models.Session
+	err := r.activeSessionQuery(ctx, sessionID, userUUID).First(&session).Error
+	if r.IsNotFoundError(err) {
+		return nil, domain.ErrInvalidToken
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
+// RotateSession is a single compare-and-swap. A caller that loses the race
+// must revoke the family separately, so returning an authentication error cannot
+// roll back the revocation.
+func (r *Repository) RotateSession(
+	ctx context.Context, sessionID, userUUID, previousTokenID, nextTokenID string, expiresAt time.Time,
+) (bool, error) {
+	result := r.activeSessionQuery(ctx, sessionID, userUUID).
+		Where("refresh_token_id = ?", previousTokenID).
+		Updates(map[string]any{"refresh_token_id": nextTokenID, "expires_at": expiresAt.UTC()})
+	return result.RowsAffected == 1, result.Error
+}
+
+func (r *Repository) RevokeSession(ctx context.Context, sessionID, userUUID string) error {
+	return r.GetTx(ctx).Model(&models.Session{}).
+		Where("id = ? AND revoked_at IS NULL", sessionID).
+		Where("user_id IN (SELECT id FROM auth_users WHERE uuid = ?)", userUUID).
+		Update("revoked_at", time.Now().UTC()).Error
+}
+
+// DeleteExpiredSessions removes a bounded batch so cleanup releases database
+// locks between batches. Recheck expiry when deleting in case a refresh that
+// started before expiry committed after the selection.
+func (r *Repository) DeleteExpiredSessions(ctx context.Context) (int64, error) {
+	cutoff := time.Now().UTC()
+	var ids []string
+	if err := r.GetTx(ctx).Model(&models.Session{}).
+		Where("expires_at <= ?", cutoff).Order("expires_at ASC").Limit(1000).
+		Pluck("id", &ids).Error; err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := r.GetTx(ctx).Where("id IN ? AND expires_at <= ?", ids, cutoff).Delete(&models.Session{})
+	return result.RowsAffected, result.Error
 }
 
 func (r *Repository) AssignRoleToUser(ctx context.Context, userID int, roleName string) error {

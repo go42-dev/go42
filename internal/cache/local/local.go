@@ -2,12 +2,13 @@ package local
 
 import (
 	"context"
-	"fmt"
 	"runtime"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
 	ratepkg "golang.org/x/time/rate"
+
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 type Wrapper struct {
@@ -134,25 +135,25 @@ func (w *Wrapper) SetIfAbsent(
 }
 
 func (w *Wrapper) AllowRateLimit(
-	_ context.Context,
+	ctx context.Context,
 	key string,
-	rate int,
+	interval time.Duration,
 	burst int,
 	ttl time.Duration,
 ) (bool, error) {
-	if rate <= 0 {
-		return false, fmt.Errorf("rate must be positive")
+	if err := ctx.Err(); err != nil {
+		return false, err
 	}
-	if burst <= 0 {
-		return false, fmt.Errorf("burst must be positive")
+	ttl, err := tools.RateLimitTTL(interval, burst, ttl)
+	if err != nil {
+		return false, err
 	}
-
 	item, _ := w.rateLimitCache.GetOrSetFunc(
 		key,
 		func() *ratepkg.Limiter {
-			return ratepkg.NewLimiter(ratepkg.Limit(rate), burst)
+			return ratepkg.NewLimiter(ratepkg.Every(interval), burst)
 		},
-		ttlcache.WithTTL[string, *ratepkg.Limiter](normalizedTTL(ttl)),
+		ttlcache.WithTTL[string, *ratepkg.Limiter](ttl),
 	)
 	return item.Value().Allow(), nil
 }

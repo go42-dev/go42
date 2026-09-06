@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"strconv"
 	"time"
 
 	"github.com/avast/retry-go/v4"
 	"github.com/bradfitz/gomemcache/memcache"
+
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 type Wrapper struct {
@@ -145,25 +148,16 @@ func (w *Wrapper) SetIfAbsent(
 func (w *Wrapper) AllowRateLimit(
 	ctx context.Context,
 	key string,
-	rate int,
+	interval time.Duration,
 	burst int,
 	ttl time.Duration,
 ) (bool, error) {
-	// Memcached has no server-side scripting, so GCRA state is updated with CAS.
-	if rate <= 0 {
-		return false, fmt.Errorf("rate must be positive")
+	ttl, err := tools.RateLimitTTL(interval, burst, ttl)
+	if err != nil {
+		return false, err
 	}
-	if burst <= 0 {
-		return false, fmt.Errorf("burst must be positive")
-	}
-	if ttl <= 0 {
-		return false, fmt.Errorf("ttl must be positive")
-	}
-
-	intervalMicros := (time.Second / time.Duration(rate)).Microseconds()
-	if intervalMicros < 1 {
-		intervalMicros = 1
-	}
+	// Memcached updates the same GCRA state with compare-and-swap.
+	intervalMicros := max(int64(1), interval.Microseconds())
 	burstTolerance := int64(burst-1) * intervalMicros
 
 	const maxCASAttempts = 16
@@ -173,9 +167,14 @@ func (w *Wrapper) AllowRateLimit(
 		}
 
 		now := time.Now().UnixMicro()
+		expiration, err := rateLimitExpiration(now, ttl)
+		if err != nil {
+			return false, err
+		}
 		item, err := w.client.Get(key)
 		if errors.Is(err, memcache.ErrCacheMiss) {
 			item = newItem(key, strconv.FormatInt(now+intervalMicros, 10), ttl)
+			item.Expiration = expiration
 			err = w.client.Add(item)
 			if err == nil {
 				return true, nil
@@ -201,7 +200,7 @@ func (w *Wrapper) AllowRateLimit(
 		}
 
 		item.Value = []byte(strconv.FormatInt(tat+intervalMicros, 10))
-		item.Expiration = expirationSeconds(ttl)
+		item.Expiration = expiration
 		err = w.client.CompareAndSwap(item)
 		if err == nil {
 			return true, nil
@@ -213,6 +212,25 @@ func (w *Wrapper) AllowRateLimit(
 	}
 
 	return false, fmt.Errorf("rate limiter state remained contended after %d attempts", maxCASAttempts)
+}
+
+func rateLimitExpiration(nowMicros int64, ttl time.Duration) (int32, error) {
+	seconds := int64(ttl / time.Second)
+	if ttl%time.Second != 0 {
+		seconds++
+	}
+	// Memcached's relative clock has second precision. Retain the bucket for
+	// an extra second so clock rounding cannot restore its burst too early.
+	seconds++
+	if seconds <= 30*24*60*60 {
+		return int32(seconds), nil
+	}
+	// Values above 30 days are interpreted as absolute Unix timestamps.
+	expiresAt := nowMicros/1_000_000 + seconds
+	if expiresAt > math.MaxInt32 {
+		return 0, fmt.Errorf("rate limit window exceeds memcached expiration range")
+	}
+	return int32(expiresAt), nil
 }
 
 func (w *Wrapper) Invalidate(_ context.Context, key string) error {

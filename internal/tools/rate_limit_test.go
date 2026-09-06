@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -97,19 +98,19 @@ func TestRateLimiter_ConcurrentDistinctKeys(t *testing.T) {
 	wg.Wait()
 }
 
-func TestRateLimiter_ExpiresIdleKeys(t *testing.T) {
+func TestRateLimiter_RetainsKeysUntilRefill(t *testing.T) {
 	const idleTTL = 20 * time.Millisecond
 	cache := newLocalCache(t, 100)
 	ctx := context.Background()
 
-	allowed, err := cache.AllowRateLimit(ctx, "user", 1, 1, idleTTL)
+	allowed, err := cache.AllowRateLimit(ctx, "user", time.Second, 1, idleTTL)
 	if err != nil {
 		t.Fatalf("first AllowRateLimit() error = %v", err)
 	}
 	if !allowed {
 		t.Fatal("first request should be allowed")
 	}
-	allowed, err = cache.AllowRateLimit(ctx, "user", 1, 1, idleTTL)
+	allowed, err = cache.AllowRateLimit(ctx, "user", time.Second, 1, idleTTL)
 	if err != nil {
 		t.Fatalf("second AllowRateLimit() error = %v", err)
 	}
@@ -118,12 +119,12 @@ func TestRateLimiter_ExpiresIdleKeys(t *testing.T) {
 	}
 
 	time.Sleep(2 * idleTTL)
-	allowed, err = cache.AllowRateLimit(ctx, "user", 1, 1, idleTTL)
+	allowed, err = cache.AllowRateLimit(ctx, "user", time.Second, 1, idleTTL)
 	if err != nil {
 		t.Fatalf("AllowRateLimit() after expiry error = %v", err)
 	}
-	if !allowed {
-		t.Error("request should be allowed after the idle TTL")
+	if allowed {
+		t.Error("short idle TTL must not reset a bucket before it refills")
 	}
 }
 
@@ -153,7 +154,7 @@ func TestRateLimiter_PropagatesCacheError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	cache := toolsMocks.NewMockcacheAccessor(ctrl)
 	cache.EXPECT().
-		AllowRateLimit(gomock.Any(), expectedKey, 1, 1, time.Minute).
+		AllowRateLimit(gomock.Any(), expectedKey, time.Second, 1, time.Minute).
 		Return(false, wantErr)
 
 	rl := tools.NewRateLimiter(cache, "test", 1, 1, time.Minute)
@@ -163,6 +164,94 @@ func TestRateLimiter_PropagatesCacheError(t *testing.T) {
 	}
 	if !errors.Is(err, wantErr) {
 		t.Errorf("Limit() error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestRateLimiter_CustomWindow(t *testing.T) {
+	for _, window := range []time.Duration{time.Minute, time.Hour} {
+		t.Run(window.String(), func(t *testing.T) {
+			limiter := tools.NewRateLimiter(
+				newLocalCache(t, 100), "test", 5, 5, time.Millisecond, tools.WithRateLimitWindow(window),
+			)
+			for range 5 {
+				if !allow(t, limiter, "user") {
+					t.Fatal("request within window budget should be allowed")
+				}
+			}
+			if allow(t, limiter, "user") {
+				t.Fatal("request exceeding window budget should be limited")
+			}
+		})
+	}
+}
+
+func TestRateLimiter_NormalizesIntervalAndTTL(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		rate     int
+		burst    int
+		window   time.Duration
+		interval time.Duration
+		ttl      time.Duration
+	}{
+		{"fractional interval", 3, 3, time.Second, 333333334 * time.Nanosecond, time.Second + 2*time.Nanosecond},
+		{"full burst refill", 5, 10, time.Minute, 12 * time.Second, 2 * time.Minute},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cache := toolsMocks.NewMockcacheAccessor(gomock.NewController(t))
+			cache.EXPECT().
+				AllowRateLimit(gomock.Any(), gomock.Any(), test.interval, test.burst, test.ttl).
+				Return(true, nil)
+			limiter := tools.NewRateLimiter(
+				cache, "test", test.rate, test.burst, time.Second, tools.WithRateLimitWindow(test.window),
+			)
+			if !allow(t, limiter, "user") {
+				t.Fatal("first request should be allowed")
+			}
+		})
+	}
+}
+
+func TestRateLimiter_InvalidConfiguration(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		rate   int
+		burst  int
+		window time.Duration
+	}{
+		{"zero rate", 0, 1, time.Second},
+		{"negative rate", -1, 1, time.Second},
+		{"zero burst", 1, 0, time.Second},
+		{"negative burst", 1, -1, time.Second},
+		{"zero window", 1, 1, 0},
+		{"negative window", 1, 1, -time.Second},
+		{"refill overflow", 1, 2, time.Duration(math.MaxInt64)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cache := toolsMocks.NewMockcacheAccessor(gomock.NewController(t))
+			limiter := tools.NewRateLimiter(
+				cache, "test", test.rate, test.burst, time.Minute, tools.WithRateLimitWindow(test.window),
+			)
+			if allowed, err := limiter.Limit(t.Context(), "user"); allowed || err == nil {
+				t.Fatalf("invalid configuration: allowed=%v, error=%v", allowed, err)
+			}
+		})
+	}
+}
+
+func TestRateLimitTTLRejectsInvalidConfiguration(t *testing.T) {
+	for _, test := range []struct {
+		interval time.Duration
+		burst    int
+		ttl      time.Duration
+	}{
+		{0, 1, time.Second}, {time.Second, 0, time.Second}, {time.Second, 1, 0},
+		{-time.Second, 1, time.Second}, {time.Second, -1, time.Second}, {time.Second, 1, -time.Second},
+		{time.Duration(math.MaxInt64), 2, time.Second},
+	} {
+		if _, err := tools.RateLimitTTL(test.interval, test.burst, test.ttl); err == nil {
+			t.Errorf("invalid configuration accepted: %+v", test)
+		}
 	}
 }
 

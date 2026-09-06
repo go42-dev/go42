@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -35,8 +36,9 @@ type LogoutRequest struct {
 }
 
 type UpdateSelfRequest struct {
-	Email    string `json:"email,omitempty"`
-	Password string `json:"password,omitempty"`
+	CurrentPassword string `json:"current_password"`
+	Email           string `json:"email,omitempty"`
+	Password        string `json:"password,omitempty"`
 }
 
 type CreateUserRequest struct {
@@ -61,6 +63,20 @@ type Tokens struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int    `json:"expires_in"`
+}
+
+func expectSetupResponse(response *http.Response, status int) {
+	GinkgoHelper()
+	if response.StatusCode == status {
+		return
+	}
+	body, err := io.ReadAll(response.Body)
+	Expect(err).ToNot(HaveOccurred())
+	detail := fmt.Sprintf("%s %s setup failed: %s", response.Request.Method, response.Request.URL.Path, body)
+	if response.StatusCode == http.StatusTooManyRequests {
+		detail += "Start the application with AUTH_RATE_LIMITER_ENABLED=false using make run-integration."
+	}
+	Expect(response.StatusCode).To(Equal(status), detail)
 }
 
 var _ = Describe("Auth API Integration Tests", func() {
@@ -191,7 +207,8 @@ var _ = Describe("Auth API Integration Tests", func() {
 					bytes.NewReader(bodyBytes),
 				)
 				Expect(err).ToNot(HaveOccurred())
-				resp.Body.Close()
+				defer resp.Body.Close()
+				expectSetupResponse(resp, http.StatusCreated)
 			})
 
 			It("should successfully login with valid credentials", func() {
@@ -280,7 +297,8 @@ var _ = Describe("Auth API Integration Tests", func() {
 					bytes.NewReader(bodyBytes),
 				)
 				Expect(err).ToNot(HaveOccurred())
-				resp.Body.Close()
+				defer resp.Body.Close()
+				expectSetupResponse(resp, http.StatusCreated)
 
 				// Login
 				loginReq := LoginRequest{
@@ -297,10 +315,14 @@ var _ = Describe("Auth API Integration Tests", func() {
 				)
 				Expect(err).ToNot(HaveOccurred())
 				defer loginResp.Body.Close()
+				expectSetupResponse(loginResp, http.StatusOK)
 
 				var tokens Tokens
 				err = json.NewDecoder(loginResp.Body).Decode(&tokens)
 				Expect(err).ToNot(HaveOccurred())
+				Expect(tokens.AccessToken).ToNot(BeEmpty())
+				Expect(tokens.RefreshToken).ToNot(BeEmpty())
+				accessToken = tokens.AccessToken
 				refreshToken = tokens.RefreshToken
 			})
 
@@ -367,7 +389,8 @@ var _ = Describe("Auth API Integration Tests", func() {
 					bytes.NewReader(bodyBytes),
 				)
 				Expect(err).ToNot(HaveOccurred())
-				resp.Body.Close()
+				defer resp.Body.Close()
+				expectSetupResponse(resp, http.StatusCreated)
 
 				// Login
 				loginReq := LoginRequest{
@@ -384,10 +407,13 @@ var _ = Describe("Auth API Integration Tests", func() {
 				)
 				Expect(err).ToNot(HaveOccurred())
 				defer loginResp.Body.Close()
+				expectSetupResponse(loginResp, http.StatusOK)
 
 				var tokens Tokens
 				err = json.NewDecoder(loginResp.Body).Decode(&tokens)
 				Expect(err).ToNot(HaveOccurred())
+				Expect(tokens.AccessToken).ToNot(BeEmpty())
+				Expect(tokens.RefreshToken).ToNot(BeEmpty())
 				validAccessToken = tokens.AccessToken
 				validRefreshToken = tokens.RefreshToken
 			})
@@ -432,7 +458,8 @@ var _ = Describe("Auth API Integration Tests", func() {
 					bytes.NewReader(bodyBytes),
 				)
 				Expect(err).ToNot(HaveOccurred())
-				resp.Body.Close()
+				defer resp.Body.Close()
+				expectSetupResponse(resp, http.StatusCreated)
 
 				// Login as admin
 				loginReq := LoginRequest{
@@ -449,10 +476,12 @@ var _ = Describe("Auth API Integration Tests", func() {
 				)
 				Expect(err).ToNot(HaveOccurred())
 				defer loginResp.Body.Close()
+				expectSetupResponse(loginResp, http.StatusOK)
 
 				var tokens Tokens
 				err = json.NewDecoder(loginResp.Body).Decode(&tokens)
 				Expect(err).ToNot(HaveOccurred())
+				Expect(tokens.AccessToken).ToNot(BeEmpty())
 				adminAccessToken = tokens.AccessToken
 			})
 
@@ -499,7 +528,8 @@ var _ = Describe("Auth API Integration Tests", func() {
 				It("should update current user email", func() {
 					newEmail := fmt.Sprintf("updated-%s@example.com", integration.GenerateRandomString("email"))
 					reqBody := UpdateSelfRequest{
-						Email: newEmail,
+						CurrentPassword: testPassword,
+						Email:           newEmail,
 					}
 					bodyBytes, err := json.Marshal(reqBody)
 					Expect(err).ToNot(HaveOccurred())
@@ -522,7 +552,8 @@ var _ = Describe("Auth API Integration Tests", func() {
 
 				It("should update current user password", func() {
 					reqBody := UpdateSelfRequest{
-						Password: "NewPassword123!",
+						CurrentPassword: testPassword,
+						Password:        "NewPassword123!",
 					}
 					bodyBytes, err := json.Marshal(reqBody)
 					Expect(err).ToNot(HaveOccurred())

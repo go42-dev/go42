@@ -137,6 +137,8 @@ func (s *Error) SetErrors(val []ErrorErrorsItem) {
 	s.Errors = val
 }
 
+func (*Error) logoutRes() {}
+
 type ErrorErrorsItem struct{}
 
 type Jwt struct {
@@ -200,6 +202,14 @@ func (s *LoginRequest) SetPassword(val string) {
 	s.Password = val
 }
 
+type LoginServiceUnavailable Error
+
+func (*LoginServiceUnavailable) loginRes() {}
+
+type LoginTooManyRequests Error
+
+func (*LoginTooManyRequests) loginRes() {}
+
 // LogoutBadRequest is response for Logout operation.
 type LogoutBadRequest struct{}
 
@@ -212,12 +222,13 @@ func (*LogoutOK) logoutRes() {}
 
 // Ref: #/components/schemas/LogoutRequest
 type LogoutRequest struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
+	// Optional; logout uses the refresh token to identify the session.
+	AccessToken  OptString `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
 }
 
 // GetAccessToken returns the value of AccessToken.
-func (s *LogoutRequest) GetAccessToken() string {
+func (s *LogoutRequest) GetAccessToken() OptString {
 	return s.AccessToken
 }
 
@@ -227,7 +238,7 @@ func (s *LogoutRequest) GetRefreshToken() string {
 }
 
 // SetAccessToken sets the value of AccessToken.
-func (s *LogoutRequest) SetAccessToken(val string) {
+func (s *LogoutRequest) SetAccessToken(val OptString) {
 	s.AccessToken = val
 }
 
@@ -235,6 +246,11 @@ func (s *LogoutRequest) SetAccessToken(val string) {
 func (s *LogoutRequest) SetRefreshToken(val string) {
 	s.RefreshToken = val
 }
+
+// LogoutUnauthorized is response for Logout operation.
+type LogoutUnauthorized struct{}
+
+func (*LogoutUnauthorized) logoutRes() {}
 
 // NewOptInt returns new OptInt with value set to v.
 func NewOptInt(v int) OptInt {
@@ -333,11 +349,6 @@ type RefreshBadRequest struct{}
 
 func (*RefreshBadRequest) refreshRes() {}
 
-// RefreshForbidden is response for Refresh operation.
-type RefreshForbidden struct{}
-
-func (*RefreshForbidden) refreshRes() {}
-
 // Ref: #/components/schemas/RefreshRequest
 type RefreshRequest struct {
 	Token string `json:"token"`
@@ -352,6 +363,19 @@ func (s *RefreshRequest) GetToken() string {
 func (s *RefreshRequest) SetToken(val string) {
 	s.Token = val
 }
+
+type RefreshServiceUnavailable Error
+
+func (*RefreshServiceUnavailable) refreshRes() {}
+
+type RefreshTooManyRequests Error
+
+func (*RefreshTooManyRequests) refreshRes() {}
+
+// RefreshUnauthorized is response for Refresh operation.
+type RefreshUnauthorized struct{}
+
+func (*RefreshUnauthorized) refreshRes() {}
 
 // Ref: #/components/schemas/SignUpRequest
 type SignUpRequest struct {
@@ -388,6 +412,14 @@ func (*SignupBadRequest) signupRes() {}
 type SignupConflict struct{}
 
 func (*SignupConflict) signupRes() {}
+
+type SignupServiceUnavailable Error
+
+func (*SignupServiceUnavailable) signupRes() {}
+
+type SignupTooManyRequests Error
+
+func (*SignupTooManyRequests) signupRes() {}
 
 // Ref: #/components/schemas/Tokens
 type Tokens struct {
@@ -455,10 +487,17 @@ func (s *UnexpectedResponseStatusCode) SetResponse(val Error) {
 	s.Response = val
 }
 
+// Current_password is required when email or password is supplied.
 // Ref: #/components/schemas/UpdateSelfRequest
 type UpdateSelfRequest struct {
-	Email    OptString `json:"email"`
-	Password OptString `json:"password"`
+	CurrentPassword OptString `json:"current_password"`
+	Email           OptString `json:"email"`
+	Password        OptString `json:"password"`
+}
+
+// GetCurrentPassword returns the value of CurrentPassword.
+func (s *UpdateSelfRequest) GetCurrentPassword() OptString {
+	return s.CurrentPassword
 }
 
 // GetEmail returns the value of Email.
@@ -469,6 +508,11 @@ func (s *UpdateSelfRequest) GetEmail() OptString {
 // GetPassword returns the value of Password.
 func (s *UpdateSelfRequest) GetPassword() OptString {
 	return s.Password
+}
+
+// SetCurrentPassword sets the value of CurrentPassword.
+func (s *UpdateSelfRequest) SetCurrentPassword(val OptString) {
+	s.CurrentPassword = val
 }
 
 // SetEmail sets the value of Email.
@@ -644,6 +688,14 @@ func (*UsersMeUpdateBadRequest) usersMeUpdateRes() {}
 type UsersMeUpdateOK struct{}
 
 func (*UsersMeUpdateOK) usersMeUpdateRes() {}
+
+type UsersMeUpdateServiceUnavailable Error
+
+func (*UsersMeUpdateServiceUnavailable) usersMeUpdateRes() {}
+
+type UsersMeUpdateTooManyRequests Error
+
+func (*UsersMeUpdateTooManyRequests) usersMeUpdateRes() {}
 
 // UsersMeUpdateUnauthorized is response for UsersMeUpdate operation.
 type UsersMeUpdateUnauthorized struct{}

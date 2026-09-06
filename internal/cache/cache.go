@@ -24,8 +24,9 @@ type Cache interface {
 	Getter
 	Setter
 	SetIfAbsent(ctx context.Context, key string, value string, ttl time.Duration) (stored bool, err error)
+	// AllowRateLimit consumes one token, refilling one token per interval up to burst.
 	AllowRateLimit(
-		ctx context.Context, key string, rate int, burst int, ttl time.Duration,
+		ctx context.Context, key string, interval time.Duration, burst int, ttl time.Duration,
 	) (allowed bool, err error)
 	Invalidate(ctx context.Context, key string) error
 }
@@ -66,7 +67,7 @@ func (NoopCache) SetIfAbsent(
 func (NoopCache) AllowRateLimit(
 	_ context.Context,
 	_ string,
-	_ int,
+	_ time.Duration,
 	_ int,
 	_ time.Duration,
 ) (bool, error) {

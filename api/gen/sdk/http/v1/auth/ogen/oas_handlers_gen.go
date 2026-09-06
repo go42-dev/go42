@@ -189,7 +189,8 @@ func (s *Server) handleLoginRequest(args [0]string, argsEscaped bool, w http.Res
 
 // handleLogoutRequest handles logout operation.
 //
-// Invalidate user tokens.
+// The refresh token identifies the session. Repeated logout succeeds, including after access-token
+// expiry.
 //
 // POST /auth/logout
 func (s *Server) handleLogoutRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
@@ -286,7 +287,7 @@ func (s *Server) handleLogoutRequest(args [0]string, argsEscaped bool, w http.Re
 		mreq := middleware.Request{
 			Context:          ctx,
 			OperationName:    LogoutOperation,
-			OperationSummary: "Invalidate user tokens",
+			OperationSummary: "End the session",
 			OperationID:      "logout",
 			Body:             request,
 			RawBody:          rawBody,
@@ -343,7 +344,7 @@ func (s *Server) handleLogoutRequest(args [0]string, argsEscaped bool, w http.Re
 
 // handleRefreshRequest handles refresh operation.
 //
-// Refresh user token.
+// Refresh tokens are single-use. Reusing one ends that session, including successor tokens.
 //
 // POST /auth/refresh
 func (s *Server) handleRefreshRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
@@ -440,7 +441,7 @@ func (s *Server) handleRefreshRequest(args [0]string, argsEscaped bool, w http.R
 		mreq := middleware.Request{
 			Context:          ctx,
 			OperationName:    RefreshOperation,
-			OperationSummary: "Refresh user token",
+			OperationSummary: "Rotate the session refresh token",
 			OperationID:      "refresh",
 			Body:             request,
 			RawBody:          rawBody,
@@ -1735,7 +1736,7 @@ func (s *Server) handleUsersMeReadRequest(args [0]string, argsEscaped bool, w ht
 
 // handleUsersMeUpdateRequest handles users.me.update operation.
 //
-// Update current user.
+// Requires the current password. Changing email or password ends all existing JWT sessions.
 //
 // PUT /users/me
 func (s *Server) handleUsersMeUpdateRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
@@ -1897,7 +1898,7 @@ func (s *Server) handleUsersMeUpdateRequest(args [0]string, argsEscaped bool, w 
 		mreq := middleware.Request{
 			Context:          ctx,
 			OperationName:    UsersMeUpdateOperation,
-			OperationSummary: "Update current user",
+			OperationSummary: "Update current user credentials",
 			OperationID:      "users.me.update",
 			Body:             request,
 			RawBody:          rawBody,

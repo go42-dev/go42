@@ -37,13 +37,14 @@ type Invoker interface {
 	Login(ctx context.Context, request *LoginRequest) (LoginRes, error)
 	// Logout invokes logout operation.
 	//
-	// Invalidate user tokens.
+	// The refresh token identifies the session. Repeated logout succeeds, including after access-token
+	// expiry.
 	//
 	// POST /auth/logout
 	Logout(ctx context.Context, request *LogoutRequest) (LogoutRes, error)
 	// Refresh invokes refresh operation.
 	//
-	// Refresh user token.
+	// Refresh tokens are single-use. Reusing one ends that session, including successor tokens.
 	//
 	// POST /auth/refresh
 	Refresh(ctx context.Context, request *RefreshRequest) (RefreshRes, error)
@@ -85,7 +86,7 @@ type Invoker interface {
 	UsersMeRead(ctx context.Context) (UsersMeReadRes, error)
 	// UsersMeUpdate invokes users.me.update operation.
 	//
-	// Update current user.
+	// Requires the current password. Changing email or password ends all existing JWT sessions.
 	//
 	// PUT /users/me
 	UsersMeUpdate(ctx context.Context, request *UpdateSelfRequest) (UsersMeUpdateRes, error)
@@ -223,7 +224,8 @@ func (c *Client) sendLogin(ctx context.Context, request *LoginRequest) (res Logi
 
 // Logout invokes logout operation.
 //
-// Invalidate user tokens.
+// The refresh token identifies the session. Repeated logout succeeds, including after access-token
+// expiry.
 //
 // POST /auth/logout
 func (c *Client) Logout(ctx context.Context, request *LogoutRequest) (LogoutRes, error) {
@@ -306,7 +308,7 @@ func (c *Client) sendLogout(ctx context.Context, request *LogoutRequest) (res Lo
 
 // Refresh invokes refresh operation.
 //
-// Refresh user token.
+// Refresh tokens are single-use. Reusing one ends that session, including successor tokens.
 //
 // POST /auth/refresh
 func (c *Client) Refresh(ctx context.Context, request *RefreshRequest) (RefreshRes, error) {
@@ -1174,7 +1176,7 @@ func (c *Client) sendUsersMeRead(ctx context.Context) (res UsersMeReadRes, err e
 
 // UsersMeUpdate invokes users.me.update operation.
 //
-// Update current user.
+// Requires the current password. Changing email or password ends all existing JWT sessions.
 //
 // PUT /users/me
 func (c *Client) UsersMeUpdate(ctx context.Context, request *UpdateSelfRequest) (UsersMeUpdateRes, error) {

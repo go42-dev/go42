@@ -42,16 +42,16 @@ func (m *MockcacheAccessor) EXPECT() *MockcacheAccessorMockRecorder {
 }
 
 // AllowRateLimit mocks base method.
-func (m *MockcacheAccessor) AllowRateLimit(ctx context.Context, key string, rate, burst int, ttl time.Duration) (bool, error) {
+func (m *MockcacheAccessor) AllowRateLimit(ctx context.Context, key string, interval time.Duration, burst int, ttl time.Duration) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AllowRateLimit", ctx, key, rate, burst, ttl)
+	ret := m.ctrl.Call(m, "AllowRateLimit", ctx, key, interval, burst, ttl)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AllowRateLimit indicates an expected call of AllowRateLimit.
-func (mr *MockcacheAccessorMockRecorder) AllowRateLimit(ctx, key, rate, burst, ttl any) *gomock.Call {
+func (mr *MockcacheAccessorMockRecorder) AllowRateLimit(ctx, key, interval, burst, ttl any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllowRateLimit", reflect.TypeOf((*MockcacheAccessor)(nil).AllowRateLimit), ctx, key, rate, burst, ttl)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllowRateLimit", reflect.TypeOf((*MockcacheAccessor)(nil).AllowRateLimit), ctx, key, interval, burst, ttl)
 }

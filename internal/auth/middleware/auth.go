@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -25,7 +23,6 @@ const (
 )
 
 type authServiceAccessor interface {
-	Logout(ctx context.Context, accessToken, refreshToken string) error
 	GetUserByID(ctx context.Context, id int) (*models.User, error)
 	GetUserByUUID(ctx context.Context, uuid string) (*models.User, error)
 	ValidateJWTToken(
@@ -33,7 +30,6 @@ type authServiceAccessor interface {
 		token string,
 		expectedPurpose domain.JWTTokenPurpose,
 	) (*domain.JWTClaims, error)
-	InvalidateJWTToken(ctx context.Context, token string, until time.Time) error
 	ValidateAPIToken(ctx context.Context, token string) (*models.Token, error)
 }
 
@@ -101,17 +97,13 @@ func processUserAuth(ctx *echo.Context, svc authServiceAccessor, token string) e
 
 	user, err := svc.GetUserByUUID(ctx.Request().Context(), claims.Subject)
 	if err != nil {
-		return fmt.Errorf("error retrieveing user: %w", err)
+		if errors.Is(err, domain.ErrEntityNotFound) {
+			return domain.ErrInvalidToken
+		}
+		return fmt.Errorf("%w: retrieve user: %w", domain.ErrAuthenticationUnavailable, err)
 	}
 
 	if !user.IsActive() {
-		if err := svc.InvalidateJWTToken(ctx.Request().Context(), token, claims.ExpiresAt.Time); err != nil {
-			slog.ErrorContext(
-				ctx.Request().Context(), "failed to invalidate access token",
-				slog.String("component", "auth-access-middleware"),
-				slog.Any("error", err),
-			)
-		}
 		return errors.New("user is not allowed to authenticate")
 	}
 

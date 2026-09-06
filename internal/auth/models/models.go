@@ -14,16 +14,17 @@ import (
 )
 
 type User struct {
-	ID        int
-	UUID      uuid.UUID
-	Email     string
-	Password  sql.Null[string]
-	Status    string
-	IsSystem  bool
-	Metadata  json.RawMessage
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	DeletedAt gorm.DeletedAt
+	ID                int
+	UUID              uuid.UUID
+	Email             string
+	Password          sql.Null[string]
+	CredentialVersion int64 `gorm:"default:1"`
+	Status            string
+	IsSystem          bool
+	Metadata          json.RawMessage
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	DeletedAt         gorm.DeletedAt
 
 	Roles []Role `gorm:"-"`
 }
@@ -42,6 +43,21 @@ func (u *User) SetPassword(password string) (err error) {
 func (u *User) IsActive() bool {
 	return u.Status == domain.UserStatusActive
 }
+
+// Session is one login and its rotating refresh-token family. JWT strings are
+// never persisted; the signed session and token IDs identify its state.
+type Session struct {
+	ID                uuid.UUID `gorm:"primaryKey"`
+	UserID            int
+	CredentialVersion int64
+	RefreshTokenID    uuid.UUID
+	ExpiresAt         time.Time
+	RevokedAt         sql.Null[time.Time]
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+func (*Session) TableName() string { return "auth_sessions" }
 
 func (u *User) RoleList() []string {
 	roles := make([]string, len(u.Roles))

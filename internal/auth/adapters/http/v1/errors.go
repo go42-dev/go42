@@ -27,6 +27,9 @@ func (a *Adapter) processError(ctx *echo.Context, err error) error {
 	case errors.Is(err, domain.ErrInvalidPagination):
 		return httpAPI.SendJSONError(ctx,
 			http.StatusBadRequest, http.StatusText(http.StatusBadRequest))
+	case errors.Is(err, domain.ErrRateLimited):
+		return httpAPI.SendJSONError(ctx,
+			http.StatusTooManyRequests, http.StatusText(http.StatusTooManyRequests))
 	case errors.Is(err, domain.ErrAuthenticationUnavailable):
 		return httpAPI.SendJSONError(ctx,
 			http.StatusServiceUnavailable, http.StatusText(http.StatusServiceUnavailable))

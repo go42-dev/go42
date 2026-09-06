@@ -57,6 +57,20 @@ func (mr *MockrepositoryMockRecorder) AssignRoleToUser(ctx, userID, role any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignRoleToUser", reflect.TypeOf((*Mockrepository)(nil).AssignRoleToUser), ctx, userID, role)
 }
 
+// CreateSession mocks base method.
+func (m *Mockrepository) CreateSession(ctx context.Context, session *models.Session) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateSession", ctx, session)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateSession indicates an expected call of CreateSession.
+func (mr *MockrepositoryMockRecorder) CreateSession(ctx, session any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSession", reflect.TypeOf((*Mockrepository)(nil).CreateSession), ctx, session)
+}
+
 // CreateUser mocks base method.
 func (m *Mockrepository) CreateUser(ctx context.Context, user *models.User) error {
 	m.ctrl.T.Helper()
@@ -83,6 +97,21 @@ func (m *Mockrepository) DeleteUser(ctx context.Context, user *models.User) erro
 func (mr *MockrepositoryMockRecorder) DeleteUser(ctx, user any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUser", reflect.TypeOf((*Mockrepository)(nil).DeleteUser), ctx, user)
+}
+
+// GetActiveSession mocks base method.
+func (m *Mockrepository) GetActiveSession(ctx context.Context, sessionID, userUUID string) (*models.Session, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetActiveSession", ctx, sessionID, userUUID)
+	ret0, _ := ret[0].(*models.Session)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetActiveSession indicates an expected call of GetActiveSession.
+func (mr *MockrepositoryMockRecorder) GetActiveSession(ctx, sessionID, userUUID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetActiveSession", reflect.TypeOf((*Mockrepository)(nil).GetActiveSession), ctx, sessionID, userUUID)
 }
 
 // GetToken mocks base method.
@@ -160,6 +189,35 @@ func (mr *MockrepositoryMockRecorder) ListUsers(ctx, limit, offset any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUsers", reflect.TypeOf((*Mockrepository)(nil).ListUsers), ctx, limit, offset)
 }
 
+// RevokeSession mocks base method.
+func (m *Mockrepository) RevokeSession(ctx context.Context, sessionID, userUUID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RevokeSession", ctx, sessionID, userUUID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RevokeSession indicates an expected call of RevokeSession.
+func (mr *MockrepositoryMockRecorder) RevokeSession(ctx, sessionID, userUUID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeSession", reflect.TypeOf((*Mockrepository)(nil).RevokeSession), ctx, sessionID, userUUID)
+}
+
+// RotateSession mocks base method.
+func (m *Mockrepository) RotateSession(ctx context.Context, sessionID, userUUID, previousTokenID, nextTokenID string, expiresAt time.Time) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RotateSession", ctx, sessionID, userUUID, previousTokenID, nextTokenID, expiresAt)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RotateSession indicates an expected call of RotateSession.
+func (mr *MockrepositoryMockRecorder) RotateSession(ctx, sessionID, userUUID, previousTokenID, nextTokenID, expiresAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RotateSession", reflect.TypeOf((*Mockrepository)(nil).RotateSession), ctx, sessionID, userUUID, previousTokenID, nextTokenID, expiresAt)
+}
+
 // UpdateUser mocks base method.
 func (m *Mockrepository) UpdateUser(ctx context.Context, user *models.User) error {
 	m.ctrl.T.Helper()
@@ -212,49 +270,19 @@ func (m *Mockcache) EXPECT() *MockcacheMockRecorder {
 	return m.recorder
 }
 
-// Get mocks base method.
-func (m *Mockcache) Get(ctx context.Context, key string) (string, bool, error) {
+// AllowRateLimit mocks base method.
+func (m *Mockcache) AllowRateLimit(ctx context.Context, key string, interval time.Duration, burst int, ttl time.Duration) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", ctx, key)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(bool)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// Get indicates an expected call of Get.
-func (mr *MockcacheMockRecorder) Get(ctx, key any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*Mockcache)(nil).Get), ctx, key)
-}
-
-// Set mocks base method.
-func (m *Mockcache) Set(ctx context.Context, key, value string, ttl time.Duration) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Set", ctx, key, value, ttl)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Set indicates an expected call of Set.
-func (mr *MockcacheMockRecorder) Set(ctx, key, value, ttl any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Set", reflect.TypeOf((*Mockcache)(nil).Set), ctx, key, value, ttl)
-}
-
-// SetIfAbsent mocks base method.
-func (m *Mockcache) SetIfAbsent(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetIfAbsent", ctx, key, value, ttl)
+	ret := m.ctrl.Call(m, "AllowRateLimit", ctx, key, interval, burst, ttl)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// SetIfAbsent indicates an expected call of SetIfAbsent.
-func (mr *MockcacheMockRecorder) SetIfAbsent(ctx, key, value, ttl any) *gomock.Call {
+// AllowRateLimit indicates an expected call of AllowRateLimit.
+func (mr *MockcacheMockRecorder) AllowRateLimit(ctx, key, interval, burst, ttl any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetIfAbsent", reflect.TypeOf((*Mockcache)(nil).SetIfAbsent), ctx, key, value, ttl)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllowRateLimit", reflect.TypeOf((*Mockcache)(nil).AllowRateLimit), ctx, key, interval, burst, ttl)
 }
 
 // MockoutboxService is a mock of outboxService interface.

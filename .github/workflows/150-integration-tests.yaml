@@ -94,6 +94,7 @@ jobs:
         env:
           LOG_LEVEL: warn
           ENVIRONMENT: ci-integration-tests
+          AUTH_RATE_LIMITER_ENABLED: false
           SERVER_HTTP_LISTEN: :8080
           SERVER_GRPC_LISTEN: :50051
           SERVER_GRPC_AUTHORIZATION_ENABLED: true

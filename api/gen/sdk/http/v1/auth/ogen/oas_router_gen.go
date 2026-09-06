@@ -484,7 +484,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							switch method {
 							case "POST":
 								r.name = LogoutOperation
-								r.summary = "Invalidate user tokens"
+								r.summary = "End the session"
 								r.operationID = "logout"
 								r.operationGroup = ""
 								r.pathPattern = "/auth/logout"
@@ -511,7 +511,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						switch method {
 						case "POST":
 							r.name = RefreshOperation
-							r.summary = "Refresh user token"
+							r.summary = "Rotate the session refresh token"
 							r.operationID = "refresh"
 							r.operationGroup = ""
 							r.pathPattern = "/auth/refresh"
@@ -617,7 +617,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 								return r, true
 							case "PUT":
 								r.name = UsersMeUpdateOperation
-								r.summary = "Update current user"
+								r.summary = "Update current user credentials"
 								r.operationID = "users.me.update"
 								r.operationGroup = ""
 								r.pathPattern = "/users/me"

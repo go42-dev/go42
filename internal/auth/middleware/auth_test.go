@@ -44,6 +44,15 @@ func TestAuthMiddleware_RequiresAccessToken(t *testing.T) {
 		Return(user, nil).
 		AnyTimes()
 
+	session := new(models.Session)
+	repository.EXPECT().
+		CreateSession(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, generated *models.Session) error {
+			*session = *generated
+			return nil
+		})
+	repository.EXPECT().GetActiveSession(gomock.Any(), gomock.Any(), user.UUID.String()).Return(session, nil)
+
 	outbox := authMocks.NewMockoutboxService(ctrl)
 	outbox.EXPECT().
 		NewOutboxMessage(gomock.Any(), domain.TopicNameAuthEvents, gomock.Any()).

@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -24,10 +23,12 @@ type serviceAccessor interface {
 	SignUp(ctx context.Context, email string, password string) (*models.User, error)
 	Login(ctx context.Context, email string, password string) (*domain.Tokens, error)
 	Refresh(ctx context.Context, token string) (*domain.Tokens, error)
-	Logout(ctx context.Context, accessToken, refreshToken string) error
+	Logout(ctx context.Context, refreshToken string) error
+	CheckIPLimit(ctx context.Context, action domain.AuthenticationAction, ip string) error
 
 	CreateUser(ctx context.Context, data *domain.CreateUserData) (*models.User, error)
 	UpdateUser(ctx context.Context, uuid string, data *domain.UpdateUserData) error
+	UpdateSelf(ctx context.Context, uuid string, data *domain.UpdateSelfData) error
 	DeleteUser(ctx context.Context, uuid string) error
 	ListUsers(ctx context.Context, limit, offset int) ([]*models.User, error)
 	GetUserByID(ctx context.Context, id int) (*models.User, error)
@@ -38,7 +39,6 @@ type serviceAccessor interface {
 		token string,
 		expectedPurpose domain.JWTTokenPurpose,
 	) (*domain.JWTClaims, error)
-	InvalidateJWTToken(ctx context.Context, token string, until time.Time) error
 	ValidateAPIToken(ctx context.Context, token string) (*models.Token, error)
 }
 
@@ -83,6 +83,13 @@ type SignupRequest struct {
 }
 
 func (a *Adapter) signup(ctx *echo.Context) error {
+	if err := a.service.CheckIPLimit(
+		ctx.Request().Context(),
+		domain.AuthenticationActionSignup,
+		ctx.RealIP(),
+	); err != nil {
+		return a.processError(ctx, err)
+	}
 	req := new(SignupRequest)
 
 	if err := ctx.Bind(req); err != nil {
@@ -113,6 +120,13 @@ type LoginRequest struct {
 }
 
 func (a *Adapter) login(ctx *echo.Context) error {
+	if err := a.service.CheckIPLimit(
+		ctx.Request().Context(),
+		domain.AuthenticationActionLogin,
+		ctx.RealIP(),
+	); err != nil {
+		return a.processError(ctx, err)
+	}
 	req := new(LoginRequest)
 
 	if err := ctx.Bind(req); err != nil {
@@ -165,8 +179,8 @@ func (a *Adapter) refresh(ctx *echo.Context) error {
 }
 
 type LogoutTokenRequest struct {
-	AccessToken  string `json:"access_token"  v:"required"`
-	RefreshToken string `json:"refresh_token" v:"required"`
+	AccessToken  string `json:"access_token,omitempty"`
+	RefreshToken string `json:"refresh_token"          v:"required"`
 }
 
 func (a *Adapter) logout(ctx *echo.Context) error {
@@ -185,7 +199,7 @@ func (a *Adapter) logout(ctx *echo.Context) error {
 		)
 	}
 
-	err := a.service.Logout(ctx.Request().Context(), req.AccessToken, req.RefreshToken)
+	err := a.service.Logout(ctx.Request().Context(), req.RefreshToken)
 	if err != nil {
 		return a.processError(ctx, err)
 	}
@@ -211,11 +225,19 @@ func (a *Adapter) readSelf(ctx *echo.Context) error {
 }
 
 type UpdateSelfRequest struct {
-	Email    string `json:"email"    v:"omitempty,email"`
-	Password string `json:"password" v:"omitempty,min=8,max=24"`
+	Email           string `json:"email"            v:"omitempty,email"`
+	Password        string `json:"password"         v:"omitempty,min=8,max=24"`
+	CurrentPassword string `json:"current_password" v:"required_with=Email Password"`
 }
 
 func (a *Adapter) updateSelf(ctx *echo.Context) error {
+	if err := a.service.CheckIPLimit(
+		ctx.Request().Context(),
+		domain.AuthenticationActionLogin,
+		ctx.RealIP(),
+	); err != nil {
+		return a.processError(ctx, err)
+	}
 	authInfo := auth.RetrieveAuthFromContext(ctx.Request().Context())
 	if authInfo == nil {
 		return httpAPI.SendJSONError(ctx,
@@ -237,18 +259,18 @@ func (a *Adapter) updateSelf(ctx *echo.Context) error {
 		)
 	}
 
-	updateData := new(domain.UpdateUserData)
+	updateData := &domain.UpdateSelfData{CurrentPassword: req.CurrentPassword}
 
 	if req.Email != "" {
 		email := strings.ToLower(strings.TrimSpace(req.Email))
 		updateData.Email = &email
 	}
 	if req.Password != "" {
-		password := strings.TrimSpace(req.Password)
+		password := req.Password
 		updateData.Password = &password
 	}
 
-	err := a.service.UpdateUser(ctx.Request().Context(), authInfo.UUID, updateData)
+	err := a.service.UpdateSelf(ctx.Request().Context(), authInfo.UUID, updateData)
 	if err != nil {
 		return a.processError(ctx, err)
 	}
@@ -329,7 +351,7 @@ func (a *Adapter) createUser(ctx *echo.Context) error {
 	data := new(domain.CreateUserData)
 
 	data.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	data.Password = strings.TrimSpace(req.Password)
+	data.Password = req.Password
 
 	user, err := a.service.CreateUser(ctx.Request().Context(), data)
 	if err != nil {
@@ -373,7 +395,7 @@ func (a *Adapter) updateUser(ctx *echo.Context) error {
 		data.Email = &email
 	}
 	if req.Password != "" {
-		password := strings.TrimSpace(req.Password)
+		password := req.Password
 		data.Password = &password
 	}
 

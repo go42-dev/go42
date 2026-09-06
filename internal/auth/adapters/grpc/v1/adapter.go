@@ -97,7 +97,7 @@ func (a *Adapter) GetUserByUUID(
 func (a *Adapter) CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.CreateUserResponse, error) {
 	data := &domain.CreateUserData{
 		Email:    strings.ToLower(strings.TrimSpace(req.Email)),
-		Password: strings.TrimSpace(req.Password),
+		Password: req.Password,
 	}
 
 	user, err := a.service.CreateUser(ctx, data)
@@ -118,7 +118,7 @@ func (a *Adapter) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) (*p
 		data.Email = &email
 	}
 	if req.Password != nil {
-		password := strings.TrimSpace(*req.Password)
+		password := *req.Password
 		data.Password = &password
 	}
 

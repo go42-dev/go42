@@ -483,7 +483,9 @@ type Outbox struct {
 // ╰──────────────────────────────╯
 
 type Auth struct {
+	RateLimiter            AuthRateLimiter
 	TokenUpdaterInterval   time.Duration `env:"AUTH_TOKEN_UPDATER_INTERVAL"    default:"5m"`
+	SessionCleanupInterval time.Duration `env:"AUTH_SESSION_CLEANUP_INTERVAL"  default:"1h" v:"gt=0"`
 	MinPasswordEntropyBits int           `env:"AUTH_MIN_PASSWORD_ENTROPY_BITS" default:"50"`
 	Cache                  struct {
 		Repository struct {
@@ -492,11 +494,22 @@ type Auth struct {
 	}
 	JWT struct {
 		InitialSecrets  []string      `env:"AUTH_JWT_SECRETS"               default:"0128899,9988210"`
-		AccessTokenTTL  time.Duration `env:"AUTH_JWT_ACCESS_TOKEN_TTL"      default:"15m"`
-		RefreshTokenTTL time.Duration `env:"AUTH_JWT_REFRESH_TOKEN_TTL"     default:"168h"`
+		AccessTokenTTL  time.Duration `env:"AUTH_JWT_ACCESS_TOKEN_TTL"      default:"15m" v:"gt=0"`
+		RefreshTokenTTL time.Duration `env:"AUTH_JWT_REFRESH_TOKEN_TTL"     default:"168h" v:"gt=0"`
 		Issuer          string        `env:"AUTH_JWT_ISSUER"                default:"go42"`
 		Audience        []string      `env:"AUTH_JWT_AUDIENCE"              default:"go42"`
 	}
+}
+
+type AuthRateLimiter struct {
+	Enabled                bool          `env:"AUTH_RATE_LIMITER_ENABLED"                  default:"false"`
+	LoginAccountRequests   int           `env:"AUTH_RATE_LIMITER_LOGIN_ACCOUNT_REQUESTS"   default:"5"     v:"gt=0"`
+	LoginIPRequests        int           `env:"AUTH_RATE_LIMITER_LOGIN_IP_REQUESTS"        default:"20"    v:"gt=0"`
+	LoginWindow            time.Duration `env:"AUTH_RATE_LIMITER_LOGIN_WINDOW"             default:"1m"    v:"gt=0"`
+	SignupIPRequests       int           `env:"AUTH_RATE_LIMITER_SIGNUP_IP_REQUESTS"       default:"5"     v:"gt=0"`
+	SignupWindow           time.Duration `env:"AUTH_RATE_LIMITER_SIGNUP_WINDOW"            default:"1h"    v:"gt=0"`
+	RefreshSessionRequests int           `env:"AUTH_RATE_LIMITER_REFRESH_SESSION_REQUESTS" default:"30"    v:"gt=0"`
+	RefreshWindow          time.Duration `env:"AUTH_RATE_LIMITER_REFRESH_WINDOW"           default:"1m"    v:"gt=0"`
 }
 
 // ---

@@ -84,7 +84,7 @@ test-unit:
 
 ## test-integration | run integration tests (http and grpc)
 # -count=1 is needed to prevent caching of test results.
-# @note Eequires running application and dependencies.
+# @note Start the application with `make run-integration` in another terminal.
 test-integration:
 	@go test -count=1 -v -race ./tests/integration/...
 

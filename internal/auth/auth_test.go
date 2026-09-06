@@ -1,12 +1,19 @@
 package auth_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -14,13 +21,23 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
+	"github.com/pressly/goose/v3"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 
 	"github.com/go42-dev/go42/internal/auth"
+	httpAdapter "github.com/go42-dev/go42/internal/auth/adapters/http/v1"
 	"github.com/go42-dev/go42/internal/auth/domain"
 	authMocks "github.com/go42-dev/go42/internal/auth/mocks"
 	"github.com/go42-dev/go42/internal/auth/models"
+	authRepository "github.com/go42-dev/go42/internal/auth/repository"
+	"github.com/go42-dev/go42/internal/cache/local"
+	"github.com/go42-dev/go42/internal/database"
+	"github.com/go42-dev/go42/internal/database/mysql"
+	"github.com/go42-dev/go42/internal/database/pgsql"
+	"github.com/go42-dev/go42/internal/database/sqlite"
 	outboxDomain "github.com/go42-dev/go42/internal/outbox/domain"
 )
 
@@ -44,9 +61,7 @@ type serviceHarness struct {
 }
 
 type serviceCache interface {
-	Get(context.Context, string) (value string, found bool, err error)
-	Set(context.Context, string, string, time.Duration) error
-	SetIfAbsent(context.Context, string, string, time.Duration) (stored bool, err error)
+	AllowRateLimit(context.Context, string, time.Duration, int, time.Duration) (bool, error)
 }
 
 func newServiceHarness(t *testing.T, extraOptions ...auth.Option) *serviceHarness {
@@ -77,48 +92,10 @@ func newTestService(
 		auth.WithJWTIssuer(testJWTIssuer),
 		auth.WithJWTAudience(testJWTAudience),
 		auth.WithMinPasswordEntropyBits(60),
+		auth.WithRateLimiterEnabled(false),
 	}
 	options = append(options, extraOptions...)
 	return auth.NewService(repository, outbox, cache, options...)
-}
-
-type statefulTestCache struct {
-	mu     sync.Mutex
-	values map[string]string
-}
-
-func (c *statefulTestCache) Get(_ context.Context, key string) (string, bool, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	value, found := c.values[key]
-	return value, found, nil
-}
-
-func (c *statefulTestCache) Set(
-	_ context.Context,
-	key string,
-	value string,
-	_ time.Duration,
-) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.values[key] = value
-	return nil
-}
-
-func (c *statefulTestCache) SetIfAbsent(
-	_ context.Context,
-	key string,
-	value string,
-	_ time.Duration,
-) (bool, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if _, found := c.values[key]; found {
-		return false, nil
-	}
-	c.values[key] = value
-	return true, nil
 }
 
 func newTestUser(t *testing.T, status string) *models.User {
@@ -189,16 +166,15 @@ func signTestJWT(
 	t.Helper()
 
 	claims := domain.JWTClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        uuid.NewString(),
-			Audience:  testJWTAudience,
-			Issuer:    testJWTIssuer,
-			Subject:   subject,
-			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-time.Minute)),
-			ExpiresAt: jwt.NewNumericDate(expiresAt),
-		},
-		KID:      sha256Hex(secret),
-		TokenUse: purpose,
+		ID:        uuid.NewString(),
+		Audience:  testJWTAudience,
+		Issuer:    testJWTIssuer,
+		Subject:   subject,
+		IssuedAt:  jwt.NewNumericDate(time.Now().Add(-time.Minute)),
+		ExpiresAt: jwt.NewNumericDate(expiresAt),
+		KID:       sha256Hex(secret),
+		TokenUse:  purpose,
+		SessionID: uuid.NewString(),
 	}
 
 	return signTestJWTWithClaims(t, jwt.SigningMethodHS256, secret, claims)
@@ -224,10 +200,6 @@ func sha256Hex(value string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func invalidatedTokenKey(token string) string {
-	return "auth_invalidated_" + sha256Hex(token)
-}
-
 func assertErrorIs(t *testing.T, err, target error) {
 	t.Helper()
 	if !errors.Is(err, target) {
@@ -244,6 +216,7 @@ func TestService_CheckPasswordStrength(t *testing.T) {
 		{name: "strong password", password: testPassword},
 		{name: "weak password", password: "password", wantErr: true},
 		{name: "empty password", password: "", wantErr: true},
+		{name: "bcrypt byte limit", password: strings.Repeat("Strong!password7", 5), wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -364,7 +337,8 @@ func TestService_Login(t *testing.T) {
 	user := newTestUser(t, domain.UserStatusActive)
 	h.repository.EXPECT().GetUserByEmail(gomock.Any(), testUserEmail).Return(user, nil)
 	expectOutboxEvent(h, user.ID, domain.EventTypeAuthLogin, nil)
-	h.cache.EXPECT().Get(gomock.Any(), gomock.Any()).Return("", false, nil).Times(2)
+	session := expectSessionCreation(h)
+	h.repository.EXPECT().GetActiveSession(gomock.Any(), gomock.Any(), user.UUID.String()).Return(session, nil).Times(2)
 
 	tokens, err := h.service.Login(context.Background(), "  ALICE@EXAMPLE.COM ", testPassword)
 	if err != nil {
@@ -401,7 +375,7 @@ func TestService_Login(t *testing.T) {
 }
 
 func TestService_LoginRejectsInvalidCredentials(t *testing.T) {
-	repositoryError := errors.New("not found")
+	repositoryError := domain.ErrEntityNotFound
 
 	tests := []struct {
 		name      string
@@ -434,6 +408,7 @@ func TestService_LoginIgnoresOutboxFailure(t *testing.T) {
 	user := newTestUser(t, domain.UserStatusActive)
 	h.repository.EXPECT().GetUserByEmail(gomock.Any(), testUserEmail).Return(user, nil)
 	expectOutboxEvent(h, user.ID, domain.EventTypeAuthLogin, errors.New("outbox unavailable"))
+	expectSessionCreation(h)
 
 	tokens, err := h.service.Login(context.Background(), testUserEmail, testPassword)
 	if err != nil {
@@ -782,380 +757,6 @@ func TestService_UserQueriesDelegateToRepository(t *testing.T) {
 		}
 	})
 }
-func TestService_Refresh(t *testing.T) {
-	h := newServiceHarness(t)
-	user := newTestUser(t, domain.UserStatusActive)
-	refreshToken := signTestJWT(
-		t,
-		testJWTSecret,
-		domain.JWTTokenPurposeRefresh,
-		user.UUID.String(),
-		time.Now().Add(time.Hour),
-	)
-	h.cache.EXPECT().Get(gomock.Any(), invalidatedTokenKey(refreshToken)).Return("", false, nil)
-	h.repository.EXPECT().GetUserByUUID(gomock.Any(), user.UUID.String()).Return(user, nil)
-	h.cache.EXPECT().SetIfAbsent(
-		gomock.Any(), invalidatedTokenKey(refreshToken), "_", gomock.Any(),
-	).Return(true, nil)
-
-	tokens, err := h.service.Refresh(context.Background(), refreshToken)
-	if err != nil {
-		t.Fatalf("Refresh() error = %v", err)
-	}
-	if tokens == nil || tokens.AccessToken == "" || tokens.RefreshToken == "" {
-		t.Fatalf("Refresh() tokens = %#v, want a complete token pair", tokens)
-	}
-	if tokens.ExpiresIn != int(testAccessTTL.Seconds()) {
-		t.Errorf("ExpiresIn = %d, want %d", tokens.ExpiresIn, int(testAccessTTL.Seconds()))
-	}
-	if tokens.AccessToken == refreshToken || tokens.RefreshToken == refreshToken {
-		t.Error("Refresh() reused the input refresh token")
-	}
-}
-
-func TestService_RefreshConsumesPresentedToken(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	repository := authMocks.NewMockrepository(ctrl)
-	outbox := authMocks.NewMockoutboxService(ctrl)
-	cache := &statefulTestCache{values: make(map[string]string)}
-	service := newTestService(repository, outbox, cache)
-	user := newTestUser(t, domain.UserStatusActive)
-	refreshToken := signTestJWT(
-		t,
-		testJWTSecret,
-		domain.JWTTokenPurposeRefresh,
-		user.UUID.String(),
-		time.Now().Add(time.Hour),
-	)
-	repository.EXPECT().
-		GetUserByUUID(gomock.Any(), user.UUID.String()).
-		Return(user, nil).
-		AnyTimes()
-
-	firstTokens, err := service.Refresh(context.Background(), refreshToken)
-	if err != nil {
-		t.Fatalf("first Refresh() error = %v", err)
-	}
-	if firstTokens == nil {
-		t.Fatal("first Refresh() tokens = nil")
-	}
-
-	replayedTokens, err := service.Refresh(context.Background(), refreshToken)
-	assertErrorIs(t, err, domain.ErrInvalidToken)
-	if replayedTokens != nil {
-		t.Errorf("replayed Refresh() tokens = %#v, want nil", replayedTokens)
-	}
-}
-
-func TestService_RefreshAllowsOnlyOneConcurrentUse(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	repository := authMocks.NewMockrepository(ctrl)
-	outbox := authMocks.NewMockoutboxService(ctrl)
-	cache := &statefulTestCache{values: make(map[string]string)}
-	service := newTestService(repository, outbox, cache)
-	user := newTestUser(t, domain.UserStatusActive)
-	refreshToken := signTestJWT(
-		t,
-		testJWTSecret,
-		domain.JWTTokenPurposeRefresh,
-		user.UUID.String(),
-		time.Now().Add(time.Hour),
-	)
-	repository.EXPECT().
-		GetUserByUUID(gomock.Any(), user.UUID.String()).
-		Return(user, nil).
-		AnyTimes()
-
-	const attempts = 16
-	type result struct {
-		tokens *domain.Tokens
-		err    error
-	}
-	start := make(chan struct{})
-	results := make(chan result, attempts)
-	var wg sync.WaitGroup
-	for range attempts {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			<-start
-			tokens, err := service.Refresh(context.Background(), refreshToken)
-			results <- result{tokens: tokens, err: err}
-		}()
-	}
-	close(start)
-	wg.Wait()
-	close(results)
-
-	var succeeded, replayed int
-	for result := range results {
-		switch {
-		case result.err == nil:
-			succeeded++
-			if result.tokens == nil {
-				t.Error("successful Refresh() tokens = nil")
-			}
-		case errors.Is(result.err, domain.ErrInvalidToken):
-			replayed++
-			if result.tokens != nil {
-				t.Errorf("replayed Refresh() tokens = %#v, want nil", result.tokens)
-			}
-		default:
-			t.Errorf("Refresh() error = %v", result.err)
-		}
-	}
-	if succeeded != 1 || replayed != attempts-1 {
-		t.Errorf(
-			"Refresh() outcomes = %d succeeded, %d replayed; want 1 succeeded, %d replayed",
-			succeeded, replayed, attempts-1,
-		)
-	}
-}
-
-func TestService_RefreshFailsClosedWhenTokenClaimFails(t *testing.T) {
-	h := newServiceHarness(t)
-	user := newTestUser(t, domain.UserStatusActive)
-	refreshToken := signTestJWT(
-		t,
-		testJWTSecret,
-		domain.JWTTokenPurposeRefresh,
-		user.UUID.String(),
-		time.Now().Add(time.Hour),
-	)
-	cacheErr := errors.New("cache unavailable")
-	h.cache.EXPECT().Get(gomock.Any(), invalidatedTokenKey(refreshToken)).Return("", false, nil)
-	h.repository.EXPECT().GetUserByUUID(gomock.Any(), user.UUID.String()).Return(user, nil)
-	h.cache.EXPECT().SetIfAbsent(
-		gomock.Any(), invalidatedTokenKey(refreshToken), "_", gomock.Any(),
-	).Return(false, cacheErr)
-
-	tokens, err := h.service.Refresh(context.Background(), refreshToken)
-	assertErrorIs(t, err, cacheErr)
-	if tokens != nil {
-		t.Errorf("Refresh() tokens = %#v, want nil", tokens)
-	}
-}
-
-func TestService_RefreshEnforcesTokenPurpose(t *testing.T) {
-	h := newServiceHarness(t)
-	user := newTestUser(t, domain.UserStatusActive)
-	accessToken := signTestJWT(
-		t,
-		testJWTSecret,
-		domain.JWTTokenPurposeAccess,
-		user.UUID.String(),
-		time.Now().Add(time.Hour),
-	)
-
-	tokens, err := h.service.Refresh(context.Background(), accessToken)
-	assertErrorIs(t, err, domain.ErrInvalidToken)
-	if tokens != nil {
-		t.Errorf("Refresh(access token) tokens = %#v, want nil", tokens)
-	}
-}
-
-func TestService_RefreshRejectsMalformedToken(t *testing.T) {
-	h := newServiceHarness(t)
-
-	tokens, err := h.service.Refresh(context.Background(), "not-a-jwt")
-	assertErrorIs(t, err, domain.ErrInvalidToken)
-	if tokens != nil {
-		t.Errorf("Refresh() tokens = %#v, want nil", tokens)
-	}
-}
-
-func TestService_RefreshPropagatesUserLookupError(t *testing.T) {
-	h := newServiceHarness(t)
-	user := newTestUser(t, domain.UserStatusActive)
-	refreshToken := signTestJWT(
-		t,
-		testJWTSecret,
-		domain.JWTTokenPurposeRefresh,
-		user.UUID.String(),
-		time.Now().Add(time.Hour),
-	)
-	lookupError := errors.New("repository unavailable")
-	h.cache.EXPECT().Get(gomock.Any(), invalidatedTokenKey(refreshToken)).Return("", false, nil)
-	h.repository.EXPECT().GetUserByUUID(gomock.Any(), user.UUID.String()).Return(nil, lookupError)
-
-	tokens, err := h.service.Refresh(context.Background(), refreshToken)
-	assertErrorIs(t, err, lookupError)
-	if tokens != nil {
-		t.Errorf("Refresh() tokens = %#v, want nil", tokens)
-	}
-}
-
-func TestService_RefreshRejectsInactiveUserAndInvalidatesToken(t *testing.T) {
-	h := newServiceHarness(t)
-	user := newTestUser(t, domain.UserStatusInactive)
-	refreshToken := signTestJWT(
-		t,
-		testJWTSecret,
-		domain.JWTTokenPurposeRefresh,
-		user.UUID.String(),
-		time.Now().Add(time.Hour),
-	)
-	h.cache.EXPECT().Get(gomock.Any(), invalidatedTokenKey(refreshToken)).Return("", false, nil)
-	h.repository.EXPECT().GetUserByUUID(gomock.Any(), user.UUID.String()).Return(user, nil)
-	h.cache.EXPECT().Set(
-		gomock.Any(),
-		invalidatedTokenKey(refreshToken),
-		"_",
-		gomock.Any(),
-	).Return(errors.New("cache unavailable"))
-
-	tokens, err := h.service.Refresh(context.Background(), refreshToken)
-	assertErrorIs(t, err, domain.ErrInvalidToken)
-	if tokens != nil {
-		t.Errorf("Refresh() tokens = %#v, want nil", tokens)
-	}
-}
-
-func TestService_Logout(t *testing.T) {
-	h := newServiceHarness(t)
-	user := newTestUser(t, domain.UserStatusActive)
-	expiresAt := time.Now().Add(time.Hour)
-	accessToken := signTestJWT(
-		t, testJWTSecret, domain.JWTTokenPurposeAccess, user.UUID.String(), expiresAt,
-	)
-	refreshToken := signTestJWT(
-		t, testJWTSecret, domain.JWTTokenPurposeRefresh, user.UUID.String(), expiresAt,
-	)
-	h.cache.EXPECT().Get(gomock.Any(), invalidatedTokenKey(accessToken)).Return("", false, nil)
-	h.cache.EXPECT().Get(gomock.Any(), invalidatedTokenKey(refreshToken)).Return("", false, nil)
-	h.cache.EXPECT().Set(
-		gomock.Any(), invalidatedTokenKey(accessToken), "_", gomock.Any(),
-	).Return(nil)
-	h.cache.EXPECT().Set(
-		gomock.Any(), invalidatedTokenKey(refreshToken), "_", gomock.Any(),
-	).Return(nil)
-	h.repository.EXPECT().GetUserByUUID(gomock.Any(), user.UUID.String()).Return(user, nil)
-	expectOutboxEvent(h, user.ID, domain.EventTypeAuthLogout, nil)
-
-	if err := h.service.Logout(context.Background(), accessToken, refreshToken); err != nil {
-		t.Fatalf("Logout() error = %v", err)
-	}
-}
-
-func TestService_LogoutEnforcesTokenPurposes(t *testing.T) {
-	h := newServiceHarness(t)
-	user := newTestUser(t, domain.UserStatusActive)
-	expiresAt := time.Now().Add(time.Hour)
-	accessToken := signTestJWT(
-		t, testJWTSecret, domain.JWTTokenPurposeAccess, user.UUID.String(), expiresAt,
-	)
-	refreshToken := signTestJWT(
-		t, testJWTSecret, domain.JWTTokenPurposeRefresh, user.UUID.String(), expiresAt,
-	)
-
-	err := h.service.Logout(context.Background(), refreshToken, accessToken)
-	assertErrorIs(t, err, domain.ErrInvalidToken)
-}
-
-func TestService_LogoutRejectsInvalidRefreshTokenAfterValidAccessToken(t *testing.T) {
-	h := newServiceHarness(t)
-	user := newTestUser(t, domain.UserStatusActive)
-	accessToken := signTestJWT(
-		t,
-		testJWTSecret,
-		domain.JWTTokenPurposeAccess,
-		user.UUID.String(),
-		time.Now().Add(time.Hour),
-	)
-	h.cache.EXPECT().Get(gomock.Any(), invalidatedTokenKey(accessToken)).Return("", false, nil)
-
-	err := h.service.Logout(context.Background(), accessToken, "not-a-jwt")
-	if err == nil {
-		t.Fatal("Logout() error = nil, want invalid refresh token error")
-	}
-	if !strings.Contains(err.Error(), "invalid refresh token") {
-		t.Errorf("Logout() error = %q, want refresh-token context", err)
-	}
-}
-
-func TestService_LogoutStopsWhenTokenInvalidationFails(t *testing.T) {
-	invalidationError := errors.New("cache unavailable")
-
-	tests := []struct {
-		name       string
-		failAccess bool
-	}{
-		{name: "access token", failAccess: true},
-		{name: "refresh token"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			h := newServiceHarness(t)
-			user := newTestUser(t, domain.UserStatusActive)
-			expiresAt := time.Now().Add(time.Hour)
-			accessToken := signTestJWT(
-				t, testJWTSecret, domain.JWTTokenPurposeAccess, user.UUID.String(), expiresAt,
-			)
-			refreshToken := signTestJWT(
-				t, testJWTSecret, domain.JWTTokenPurposeRefresh, user.UUID.String(), expiresAt,
-			)
-			h.cache.EXPECT().Get(gomock.Any(), invalidatedTokenKey(accessToken)).Return("", false, nil)
-			h.cache.EXPECT().Get(gomock.Any(), invalidatedTokenKey(refreshToken)).Return("", false, nil)
-
-			if tt.failAccess {
-				h.cache.EXPECT().Set(
-					gomock.Any(), invalidatedTokenKey(accessToken), "_", gomock.Any(),
-				).Return(invalidationError)
-			} else {
-				h.cache.EXPECT().Set(
-					gomock.Any(), invalidatedTokenKey(accessToken), "_", gomock.Any(),
-				).Return(nil)
-				h.cache.EXPECT().Set(
-					gomock.Any(), invalidatedTokenKey(refreshToken), "_", gomock.Any(),
-				).Return(invalidationError)
-			}
-
-			err := h.service.Logout(context.Background(), accessToken, refreshToken)
-			assertErrorIs(t, err, invalidationError)
-		})
-	}
-}
-
-func TestService_LogoutPropagatesUserLookupError(t *testing.T) {
-	h := newServiceHarness(t)
-	user := newTestUser(t, domain.UserStatusActive)
-	expiresAt := time.Now().Add(time.Hour)
-	accessToken := signTestJWT(
-		t, testJWTSecret, domain.JWTTokenPurposeAccess, user.UUID.String(), expiresAt,
-	)
-	refreshToken := signTestJWT(
-		t, testJWTSecret, domain.JWTTokenPurposeRefresh, user.UUID.String(), expiresAt,
-	)
-	lookupError := errors.New("repository unavailable")
-	h.cache.EXPECT().Get(gomock.Any(), invalidatedTokenKey(accessToken)).Return("", false, nil)
-	h.cache.EXPECT().Get(gomock.Any(), invalidatedTokenKey(refreshToken)).Return("", false, nil)
-	h.cache.EXPECT().Set(gomock.Any(), gomock.Any(), "_", gomock.Any()).Return(nil).Times(2)
-	h.repository.EXPECT().GetUserByUUID(gomock.Any(), user.UUID.String()).Return(nil, lookupError)
-
-	err := h.service.Logout(context.Background(), accessToken, refreshToken)
-	assertErrorIs(t, err, lookupError)
-}
-
-func TestService_LogoutIgnoresOutboxFailure(t *testing.T) {
-	h := newServiceHarness(t)
-	user := newTestUser(t, domain.UserStatusActive)
-	expiresAt := time.Now().Add(time.Hour)
-	accessToken := signTestJWT(
-		t, testJWTSecret, domain.JWTTokenPurposeAccess, user.UUID.String(), expiresAt,
-	)
-	refreshToken := signTestJWT(
-		t, testJWTSecret, domain.JWTTokenPurposeRefresh, user.UUID.String(), expiresAt,
-	)
-	h.cache.EXPECT().Get(gomock.Any(), gomock.Any()).Return("", false, nil).Times(2)
-	h.cache.EXPECT().Set(gomock.Any(), gomock.Any(), "_", gomock.Any()).Return(nil).Times(2)
-	h.repository.EXPECT().GetUserByUUID(gomock.Any(), user.UUID.String()).Return(user, nil)
-	expectOutboxEvent(h, user.ID, domain.EventTypeAuthLogout, errors.New("outbox unavailable"))
-
-	if err := h.service.Logout(context.Background(), accessToken, refreshToken); err != nil {
-		t.Fatalf("Logout() error = %v, want nil", err)
-	}
-}
 func TestService_ValidateJWTToken(t *testing.T) {
 	h := newServiceHarness(t)
 	user := newTestUser(t, domain.UserStatusActive)
@@ -1166,7 +767,7 @@ func TestService_ValidateJWTToken(t *testing.T) {
 		user.UUID.String(),
 		time.Now().Add(time.Hour),
 	)
-	h.cache.EXPECT().Get(gomock.Any(), invalidatedTokenKey(token)).Return("", false, nil)
+	h.repository.EXPECT().GetActiveSession(gomock.Any(), gomock.Any(), gomock.Any()).Return(&models.Session{}, nil)
 
 	claims, err := h.service.ValidateJWTToken(
 		context.Background(), token, domain.JWTTokenPurposeAccess,
@@ -1191,16 +792,15 @@ func TestService_ValidateJWTToken(t *testing.T) {
 func TestService_ValidateJWTTokenEnforcesSecurityContract(t *testing.T) {
 	validClaims := func() domain.JWTClaims {
 		return domain.JWTClaims{
-			RegisteredClaims: jwt.RegisteredClaims{
-				ID:        uuid.NewString(),
-				Audience:  testJWTAudience,
-				Issuer:    testJWTIssuer,
-				Subject:   "subject",
-				IssuedAt:  jwt.NewNumericDate(time.Now().Add(-time.Minute)),
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-			},
-			KID:      sha256Hex(testJWTSecret),
-			TokenUse: domain.JWTTokenPurposeAccess,
+			ID:        uuid.NewString(),
+			Audience:  testJWTAudience,
+			Issuer:    testJWTIssuer,
+			Subject:   "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			KID:       sha256Hex(testJWTSecret),
+			TokenUse:  domain.JWTTokenPurposeAccess,
+			SessionID: uuid.NewString(),
 		}
 	}
 
@@ -1241,12 +841,47 @@ func TestService_ValidateJWTTokenEnforcesSecurityContract(t *testing.T) {
 			method: jwt.SigningMethodHS256,
 			mutate: func(claims *domain.JWTClaims) { claims.ExpiresAt = nil },
 		},
+		{
+			name: "missing issued at", method: jwt.SigningMethodHS256,
+			mutate: func(claims *domain.JWTClaims) { claims.IssuedAt = nil },
+		},
+		{
+			name: "future issued at", method: jwt.SigningMethodHS256,
+			mutate: func(claims *domain.JWTClaims) { claims.IssuedAt = jwt.NewNumericDate(time.Now().Add(time.Hour)) },
+		},
+		{
+			name: "missing session ID", method: jwt.SigningMethodHS256,
+			mutate: func(claims *domain.JWTClaims) { claims.SessionID = "" },
+		},
+		{
+			name: "invalid session ID", method: jwt.SigningMethodHS256,
+			mutate: func(claims *domain.JWTClaims) { claims.SessionID = "invalid" },
+		},
+		{
+			name: "missing token ID", method: jwt.SigningMethodHS256,
+			mutate: func(claims *domain.JWTClaims) { claims.ID = "" },
+		},
+		{
+			name: "invalid token ID", method: jwt.SigningMethodHS256,
+			mutate: func(claims *domain.JWTClaims) { claims.ID = "invalid" },
+		},
+		{
+			name: "missing subject", method: jwt.SigningMethodHS256,
+			mutate: func(claims *domain.JWTClaims) { claims.Subject = "" },
+		},
+		{
+			name: "invalid subject", method: jwt.SigningMethodHS256,
+			mutate: func(claims *domain.JWTClaims) { claims.Subject = "invalid" },
+		},
+		{
+			name: "unknown key ID", method: jwt.SigningMethodHS256,
+			mutate: func(claims *domain.JWTClaims) { claims.KID = "unknown" },
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := newServiceHarness(t)
-			h.cache.EXPECT().Get(gomock.Any(), gomock.Any()).Return("", false, nil).AnyTimes()
 			claims := validClaims()
 			tt.mutate(&claims)
 			token := signTestJWTWithClaims(t, tt.method, testJWTSecret, claims)
@@ -1286,7 +921,7 @@ func TestService_ValidateJWTTokenRejectsInvalidPurposeArgument(t *testing.T) {
 		t,
 		testJWTSecret,
 		domain.JWTTokenPurposeAccess,
-		"subject",
+		"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 		time.Now().Add(time.Hour),
 	)
 
@@ -1303,7 +938,7 @@ func TestService_ValidateJWTTokenRejectsWrongTokenPurpose(t *testing.T) {
 		t,
 		testJWTSecret,
 		domain.JWTTokenPurposeRefresh,
-		"subject",
+		"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 		time.Now().Add(time.Hour),
 	)
 
@@ -1334,7 +969,7 @@ func TestService_ValidateJWTTokenRejectsMalformedExpiredAndInvalidSignature(t *t
 					t,
 					testJWTSecret,
 					domain.JWTTokenPurposeAccess,
-					"subject",
+					"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 					time.Now().Add(-time.Minute),
 				)
 			},
@@ -1346,7 +981,7 @@ func TestService_ValidateJWTTokenRejectsMalformedExpiredAndInvalidSignature(t *t
 					t,
 					"different-secret",
 					domain.JWTTokenPurposeAccess,
-					"subject",
+					"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 					time.Now().Add(time.Hour),
 				)
 			},
@@ -1370,11 +1005,10 @@ func TestService_ValidateJWTTokenRejectsMalformedExpiredAndInvalidSignature(t *t
 func TestService_ValidateJWTTokenRejectsNonHMACAlgorithm(t *testing.T) {
 	h := newServiceHarness(t)
 	claims := domain.JWTClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   "subject",
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-		},
-		TokenUse: domain.JWTTokenPurposeAccess,
+		Subject:   "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		TokenUse:  domain.JWTTokenPurposeAccess,
+		SessionID: uuid.NewString(),
 	}
 	token, err := jwt.NewWithClaims(jwt.SigningMethodNone, claims).
 		SignedString(jwt.UnsafeAllowNoneSignatureType)
@@ -1399,10 +1033,10 @@ func TestService_ValidateJWTTokenRejectsRevokedToken(t *testing.T) {
 		t,
 		testJWTSecret,
 		domain.JWTTokenPurposeAccess,
-		"subject",
+		"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 		time.Now().Add(time.Hour),
 	)
-	h.cache.EXPECT().Get(gomock.Any(), invalidatedTokenKey(token)).Return("_", true, nil)
+	h.repository.EXPECT().GetActiveSession(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, domain.ErrInvalidToken)
 
 	claims, err := h.service.ValidateJWTToken(
 		context.Background(), token, domain.JWTTokenPurposeAccess,
@@ -1419,11 +1053,11 @@ func TestService_ValidateJWTTokenFailsClosedWhenRevocationLookupFails(t *testing
 		t,
 		testJWTSecret,
 		domain.JWTTokenPurposeAccess,
-		"subject",
+		"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 		time.Now().Add(time.Hour),
 	)
-	cacheErr := errors.New("cache unavailable")
-	h.cache.EXPECT().Get(gomock.Any(), invalidatedTokenKey(token)).Return("", false, cacheErr)
+	cacheErr := errors.New("database unavailable")
+	h.repository.EXPECT().GetActiveSession(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, cacheErr)
 
 	claims, err := h.service.ValidateJWTToken(
 		context.Background(), token, domain.JWTTokenPurposeAccess,
@@ -1435,50 +1069,23 @@ func TestService_ValidateJWTTokenFailsClosedWhenRevocationLookupFails(t *testing
 	}
 }
 
-func TestService_InvalidateJWTTokenHashesKeyAndSetsExpiration(t *testing.T) {
-	h := newServiceHarness(t)
-	token := "sensitive.raw.jwt"
-	until := time.Now().Add(30 * time.Minute)
-	h.cache.EXPECT().Set(
-		gomock.Any(),
-		invalidatedTokenKey(token),
-		"_",
-		gomock.Any(),
-	).DoAndReturn(func(_ context.Context, _ string, _ string, ttl time.Duration) error {
-		if ttl < 29*time.Minute || ttl > 31*time.Minute {
-			t.Errorf("cache TTL = %v, want approximately 30m", ttl)
-		}
-		return nil
-	})
-
-	if err := h.service.InvalidateJWTToken(context.Background(), token, until); err != nil {
-		t.Fatalf("InvalidateJWTToken() error = %v", err)
-	}
-}
-
-func TestService_InvalidateJWTTokenPropagatesCacheError(t *testing.T) {
-	h := newServiceHarness(t)
-	cacheError := errors.New("cache unavailable")
-	h.cache.EXPECT().Set(gomock.Any(), gomock.Any(), "_", gomock.Any()).Return(cacheError)
-
-	err := h.service.InvalidateJWTToken(context.Background(), "token", time.Now().Add(time.Hour))
-	assertErrorIs(t, err, cacheError)
-}
-
 func TestService_ConfiguredJWTKeyRing(t *testing.T) {
 	const (
 		previousSecret = "previous-secret"
 		currentSecret  = "current-secret"
 	)
 	h := newServiceHarness(t, auth.WithJWTSecrets([]string{previousSecret, currentSecret}))
-	h.cache.EXPECT().Get(gomock.Any(), gomock.Any()).Return("", false, nil).AnyTimes()
+	h.repository.EXPECT().
+		GetActiveSession(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(&models.Session{}, nil).
+		AnyTimes()
 
 	for _, secret := range []string{testJWTSecret, previousSecret, currentSecret} {
 		token := signTestJWT(
 			t,
 			secret,
 			domain.JWTTokenPurposeAccess,
-			"subject",
+			"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 			time.Now().Add(time.Hour),
 		)
 		if _, err := h.service.ValidateJWTToken(
@@ -1491,6 +1098,7 @@ func TestService_ConfiguredJWTKeyRing(t *testing.T) {
 	user := newTestUser(t, domain.UserStatusActive)
 	h.repository.EXPECT().GetUserByEmail(gomock.Any(), testUserEmail).Return(user, nil)
 	expectOutboxEvent(h, user.ID, domain.EventTypeAuthLogin, nil)
+	expectSessionCreation(h)
 	tokens, err := h.service.Login(context.Background(), testUserEmail, testPassword)
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
@@ -1622,4 +1230,883 @@ func TestService_ValidateAPITokenRejectsInvalidFormat(t *testing.T) {
 			}
 		})
 	}
+}
+
+func expectSessionCreation(h *serviceHarness) *models.Session {
+	session := new(models.Session)
+	h.repository.EXPECT().
+		CreateSession(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, generated *models.Session) error {
+			*session = *generated
+			return nil
+		})
+	return session
+}
+
+type discardAuthEvents struct{}
+
+func (discardAuthEvents) NewOutboxMessage(context.Context, string, *outboxDomain.Message) error {
+	return nil
+}
+
+type sessionHarness struct {
+	db      database.Database
+	repo    *authRepository.Repository
+	cache   *local.Wrapper
+	service *auth.Service
+	user    *models.User
+}
+
+func sessionOptions(extra ...auth.Option) []auth.Option {
+	return append([]auth.Option{
+		auth.WithJWTSecrets([]string{testJWTSecret}),
+		auth.WithJWTIssuer(testJWTIssuer), auth.WithJWTAudience(testJWTAudience),
+		auth.WithJWTAccessTokenTTL(testAccessTTL), auth.WithJWTRefreshTokenTTL(testRefreshTTL),
+		auth.WithMinPasswordEntropyBits(60), auth.WithRateLimiterEnabled(false),
+	}, extra...)
+}
+
+func newSessionHarness(t *testing.T, extra ...auth.Option) *sessionHarness {
+	t.Helper()
+	var db database.Database
+	var err error
+	engine, dialect := "sqlite", goose.DialectSQLite3
+	// Optional DSNs must point to disposable test databases. Normal unit tests
+	// use a separate SQLite database per test and require no external services.
+	switch {
+	case os.Getenv("GO42_AUTH_TEST_PGSQL_DSN") != "":
+		engine, dialect = "pgsql", goose.DialectPostgres
+		db, err = pgsql.Open(t.Context(), os.Getenv("GO42_AUTH_TEST_PGSQL_DSN"), "")
+	case os.Getenv("GO42_AUTH_TEST_MYSQL_DSN") != "":
+		engine, dialect = "mysql", goose.DialectMySQL
+		db, err = mysql.Open(t.Context(), os.Getenv("GO42_AUTH_TEST_MYSQL_DSN"), "")
+	default:
+		db, err = sqlite.Open(filepath.Join(t.TempDir(), "auth.db"))
+	}
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := db.Shutdown(ctx); err != nil {
+			t.Error(err)
+		}
+	})
+	sqlDB, err := db.Master().DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(dialect, sqlDB, os.DirFS(filepath.Join("..", "..", "migrate", engine)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.Up(t.Context()); err != nil {
+		t.Fatalf("migrate %s: %v", engine, err)
+	}
+
+	cache := local.New(local.WithCapacity(100))
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := cache.Shutdown(ctx); err != nil {
+			t.Error(err)
+		}
+	})
+	repo := authRepository.New(database.NewBaseRepository(db), cache, time.Minute)
+	user := newTestUser(t, domain.UserStatusActive)
+	user.ID, user.UUID, user.CredentialVersion = 0, uuid.New(), 1
+	user.Email = "session-" + user.UUID.String() + "@example.com"
+	if err := repo.CreateUser(t.Context(), user); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.AssignRoleToUser(t.Context(), user.ID, domain.RBACRoleUser); err != nil {
+		t.Fatal(err)
+	}
+	return &sessionHarness{db: db, repo: repo, cache: cache, user: user,
+		service: auth.NewService(repo, discardAuthEvents{}, cache, sessionOptions(extra...)...)}
+}
+
+func (h *sessionHarness) login(t *testing.T) *domain.Tokens {
+	t.Helper()
+	tokens, err := h.service.Login(t.Context(), h.user.Email, testPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tokens
+}
+
+func (h *sessionHarness) assertRevoked(t *testing.T, tokens *domain.Tokens) {
+	t.Helper()
+	if _, err := h.service.ValidateJWTToken(
+		t.Context(),
+		tokens.AccessToken,
+		domain.JWTTokenPurposeAccess,
+	); !errors.Is(
+		err,
+		domain.ErrInvalidToken,
+	) {
+		t.Errorf("access validation = %v, want revoked", err)
+	}
+	if _, err := h.service.Refresh(t.Context(), tokens.RefreshToken); !errors.Is(err, domain.ErrInvalidToken) {
+		t.Errorf("refresh = %v, want revoked", err)
+	}
+}
+
+func TestSessions_RotationAndReplayRevokeTheFamily(t *testing.T) {
+	h := newSessionHarness(t)
+	initial := h.login(t)
+	unrelated := h.login(t)
+	next, err := h.service.Refresh(t.Context(), initial.RefreshToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.RefreshToken == initial.RefreshToken {
+		t.Fatal("refresh token was not rotated")
+	}
+	if _, err := h.service.ValidateJWTToken(t.Context(), next.AccessToken, domain.JWTTokenPurposeAccess); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.service.Refresh(t.Context(), initial.RefreshToken); !errors.Is(err, domain.ErrInvalidToken) {
+		t.Fatalf("replay = %v", err)
+	}
+	h.assertRevoked(t, next)
+	if _, err := h.service.Refresh(t.Context(), unrelated.RefreshToken); err != nil {
+		t.Errorf("unrelated session revoked: %v", err)
+	}
+}
+
+func TestSessions_ConcurrentRefreshHasOneWinnerAndRevokesOnReuse(t *testing.T) {
+	h := newSessionHarness(t)
+	initial := h.login(t)
+	const requests = 8
+	type result struct {
+		tokens *domain.Tokens
+		err    error
+	}
+	results := make(chan result, requests)
+	start := make(chan struct{})
+	for range requests {
+		go func() {
+			<-start
+			tokens, err := h.service.Refresh(t.Context(), initial.RefreshToken)
+			results <- result{tokens, err}
+		}()
+	}
+	close(start)
+	var winner *domain.Tokens
+	winners := 0
+	for range requests {
+		got := <-results
+		if got.err == nil {
+			winners++
+			winner = got.tokens
+		} else if !errors.Is(got.err, domain.ErrInvalidToken) {
+			t.Errorf("refresh: %v", got.err)
+		}
+	}
+	if winners != 1 {
+		t.Fatalf("successful refreshes = %d, want 1", winners)
+	}
+	h.assertRevoked(t, winner)
+}
+
+func TestSessions_LogoutIsIdempotentAndRevokesAcrossInstances(t *testing.T) {
+	h := newSessionHarness(t)
+	initial := h.login(t)
+	next, err := h.service.Refresh(t.Context(), initial.RefreshToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := h.service.Logout(t.Context(), initial.RefreshToken); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.assertRevoked(t, next)
+	other := auth.NewService(h.repo, discardAuthEvents{}, nil, sessionOptions()...)
+	if _, err := other.ValidateJWTToken(
+		t.Context(),
+		initial.AccessToken,
+		domain.JWTTokenPurposeAccess,
+	); !errors.Is(
+		err,
+		domain.ErrInvalidToken,
+	) {
+		t.Errorf("separate instance with empty cache accepted revoked session: %v", err)
+	}
+}
+
+func TestSessions_ConcurrentLogoutAndRefreshLeaveNoUsableSession(t *testing.T) {
+	h := newSessionHarness(t)
+	initial := h.login(t)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	var refreshed *domain.Tokens
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		var err error
+		refreshed, err = h.service.Refresh(t.Context(), initial.RefreshToken)
+		if err != nil && !errors.Is(err, domain.ErrInvalidToken) {
+			t.Error(err)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		if err := h.service.Logout(t.Context(), initial.RefreshToken); err != nil {
+			t.Error(err)
+		}
+	}()
+	close(start)
+	wg.Wait()
+	h.assertRevoked(t, initial)
+	if refreshed != nil {
+		h.assertRevoked(t, refreshed)
+	}
+}
+
+func TestSessions_CredentialChangesRequireProofAndInvalidateAllSessions(t *testing.T) {
+	for _, field := range []string{"password", "email"} {
+		t.Run(field, func(t *testing.T) {
+			h := newSessionHarness(t)
+			first, second := h.login(t), h.login(t)
+			data := &domain.UpdateSelfData{}
+			value := "N3w!correctPassword#"
+			if field == "password" {
+				data.Password = &value
+			} else {
+				value = "updated-" + h.user.Email
+				data.Email = &value
+			}
+			for _, proof := range []string{"", "wrong password"} {
+				data.CurrentPassword = proof
+				if err := h.service.UpdateSelf(
+					t.Context(),
+					h.user.UUID.String(),
+					data,
+				); !errors.Is(
+					err,
+					domain.ErrInvalidCredentials,
+				) {
+					t.Errorf("proof %q: %v", proof, err)
+				}
+			}
+			data.CurrentPassword = testPassword
+			if err := h.service.UpdateSelf(t.Context(), h.user.UUID.String(), data); err != nil {
+				t.Fatal(err)
+			}
+			h.assertRevoked(t, first)
+			h.assertRevoked(t, second)
+			email, password := h.user.Email, testPassword
+			if field == "password" {
+				password = value
+			} else {
+				email = value
+			}
+			if _, err := h.service.Login(t.Context(), email, password); err != nil {
+				t.Fatalf("login with updated credentials: %v", err)
+			}
+		})
+	}
+}
+
+type staleLoginRepository struct {
+	*authRepository.Repository
+	user *models.User
+}
+
+func (r staleLoginRepository) GetUserByEmail(context.Context, string) (*models.User, error) {
+	return r.user, nil
+}
+
+func TestSessions_AdminResetRejectsConcurrentLoginWithOldCredentials(t *testing.T) {
+	h := newSessionHarness(t)
+	initial := h.login(t)
+	stale, err := h.repo.GetUserByEmail(t.Context(), h.user.Email)
+	if err != nil {
+		t.Fatal(err)
+	}
+	password := "N3w!correctPassword#"
+	if err := h.service.UpdateUser(
+		t.Context(),
+		h.user.UUID.String(),
+		&domain.UpdateUserData{Password: &password},
+	); err != nil {
+		t.Fatal(err)
+	}
+	h.assertRevoked(t, initial)
+	// Complete a login whose password lookup happened before the reset commit.
+	concurrent := auth.NewService(
+		staleLoginRepository{h.repo, stale},
+		discardAuthEvents{},
+		h.cache,
+		sessionOptions()...)
+	tokens, err := concurrent.Login(t.Context(), stale.Email, testPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.assertRevoked(t, tokens)
+}
+
+func TestSessions_InactiveDeletedExpiredAndMissingSessionsAreRejected(t *testing.T) {
+	for _, state := range []string{"inactive_user", "deleted_user", "expired_session", "missing_session"} {
+		t.Run(state, func(t *testing.T) {
+			h := newSessionHarness(t)
+			tokens := h.login(t)
+			claims, err := h.service.ValidateJWTToken(t.Context(), tokens.AccessToken, domain.JWTTokenPurposeAccess)
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch state {
+			case "inactive_user":
+				err = h.db.Master().Model(h.user).Update("status", domain.UserStatusInactive).Error
+			case "deleted_user":
+				err = h.repo.DeleteUser(t.Context(), h.user)
+			case "expired_session":
+				err = h.db.Master().
+					Model(&models.Session{}).
+					Where("id = ?", claims.SessionID).
+					Update("expires_at", time.Now().UTC().Add(-time.Hour)).
+					Error
+			case "missing_session":
+				err = h.db.Master().Where("id = ?", claims.SessionID).Delete(&models.Session{}).Error
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			h.assertRevoked(t, tokens)
+		})
+	}
+}
+
+func tokenEncodingVariants(t *testing.T, token string) []string {
+	t.Helper()
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	last := strings.IndexByte(alphabet, token[len(token)-1])
+	if last < 0 || last%4 != 0 {
+		t.Fatal("expected canonical HS256 token")
+	}
+	return []string{token[:len(token)-1] + string(alphabet[last^1]), token + "\n", token + "\r\n", token + "="}
+}
+
+func TestSessions_RejectNoncanonicalTokensAtHTTPBoundary(t *testing.T) {
+	h := newSessionHarness(t)
+	tokens := h.login(t)
+	e := echo.New()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+	for _, token := range tokenEncodingVariants(t, tokens.RefreshToken) {
+		response := sessionHTTPRequest(
+			t,
+			e,
+			http.MethodPost,
+			"/api/v1/auth/refresh",
+			"",
+			map[string]string{"token": token},
+		)
+		if response.Code != http.StatusUnauthorized {
+			t.Errorf("noncanonical refresh status = %d", response.Code)
+		}
+	}
+	if err := h.service.Logout(t.Context(), tokens.RefreshToken); err != nil {
+		t.Fatal(err)
+	}
+	for _, token := range tokenEncodingVariants(t, tokens.AccessToken) {
+		if strings.ContainsAny(token, "\r\n") {
+			continue
+		} // HTTP headers prohibit line breaks.
+		response := sessionHTTPRequest(t, e, http.MethodGet, "/api/v1/users/me", token, nil)
+		if response.Code != http.StatusUnauthorized {
+			t.Errorf("noncanonical access status = %d", response.Code)
+		}
+	}
+}
+
+func TestSessions_HTTPLogoutAcceptsExpiredOrOmittedAccessToken(t *testing.T) {
+	for _, includeAccess := range []bool{false, true} {
+		t.Run(map[bool]string{false: "omitted", true: "expired"}[includeAccess], func(t *testing.T) {
+			h := newSessionHarness(t, auth.WithJWTAccessTokenTTL(time.Nanosecond))
+			tokens := h.login(t)
+			e := echo.New()
+			httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+			body := map[string]string{"refresh_token": tokens.RefreshToken}
+			if includeAccess {
+				body["access_token"] = tokens.AccessToken
+			}
+			for range 2 {
+				response := sessionHTTPRequest(t, e, http.MethodPost, "/api/v1/auth/logout", "", body)
+				if response.Code != http.StatusOK {
+					t.Fatalf("logout status = %d", response.Code)
+				}
+			}
+			h.assertRevoked(t, tokens)
+		})
+	}
+}
+
+func TestSessions_HTTPUpdateRequiresCurrentPassword(t *testing.T) {
+	h := newSessionHarness(t)
+	tokens := h.login(t)
+	e := echo.New()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+	body := map[string]string{"password": "N3w!correctPassword#"}
+	if response := sessionHTTPRequest(
+		t,
+		e,
+		http.MethodPut,
+		"/api/v1/users/me",
+		tokens.AccessToken,
+		body,
+	); response.Code != http.StatusBadRequest {
+		t.Fatalf("missing proof status = %d", response.Code)
+	}
+	body["current_password"] = testPassword
+	if response := sessionHTTPRequest(
+		t,
+		e,
+		http.MethodPut,
+		"/api/v1/users/me",
+		tokens.AccessToken,
+		body,
+	); response.Code != http.StatusOK {
+		t.Fatalf("valid proof status = %d: %s", response.Code, response.Body.String())
+	}
+	h.assertRevoked(t, tokens)
+}
+
+func TestSessions_EnforceTokenPurposeAndSessionOwner(t *testing.T) {
+	h := newSessionHarness(t)
+	tokens := h.login(t)
+	if _, err := h.service.Refresh(t.Context(), tokens.AccessToken); !errors.Is(err, domain.ErrInvalidToken) {
+		t.Errorf("access used as refresh: %v", err)
+	}
+	if err := h.service.Logout(t.Context(), tokens.AccessToken); !errors.Is(err, domain.ErrInvalidToken) {
+		t.Errorf("access used for logout: %v", err)
+	}
+	claims, err := h.service.ValidateJWTToken(t.Context(), tokens.RefreshToken, domain.JWTTokenPurposeRefresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims.Subject = uuid.NewString()
+	wrongOwner := signTestJWTWithClaims(t, jwt.SigningMethodHS256, testJWTSecret, *claims)
+	if _, err := h.service.Refresh(t.Context(), wrongOwner); !errors.Is(err, domain.ErrInvalidToken) {
+		t.Errorf("wrong session owner: %v", err)
+	}
+	if _, err := h.service.Refresh(t.Context(), tokens.RefreshToken); err != nil {
+		t.Errorf("wrong owner revoked the real session: %v", err)
+	}
+}
+
+func sessionHTTPRequest(t *testing.T, e *echo.Echo, method, path, bearer string, data any) *httptest.ResponseRecorder {
+	t.Helper()
+	body, err := json.Marshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(method, path, bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	if bearer != "" {
+		request.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	response := httptest.NewRecorder()
+	e.ServeHTTP(response, request)
+	return response
+}
+
+func TestSessions_FailedWritesDoNotIssueTokensOrReportLogoutSuccess(t *testing.T) {
+	for _, operation := range []string{"create", "rotate", "revoke reuse", "logout"} {
+		t.Run(operation, func(t *testing.T) {
+			h := newServiceHarness(t)
+			storageErr := errors.New("database write failed")
+			token := signTestJWT(
+				t,
+				testJWTSecret,
+				domain.JWTTokenPurposeRefresh,
+				"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+				time.Now().Add(time.Hour),
+			)
+			var tokens *domain.Tokens
+			var err error
+			switch operation {
+			case "create":
+				user := newTestUser(t, domain.UserStatusActive)
+				h.repository.EXPECT().GetUserByEmail(gomock.Any(), testUserEmail).Return(user, nil)
+				h.repository.EXPECT().CreateSession(gomock.Any(), gomock.Any()).Return(storageErr)
+				tokens, err = h.service.Login(t.Context(), testUserEmail, testPassword)
+			case "rotate":
+				h.repository.EXPECT().
+					RotateSession(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(false, storageErr)
+				tokens, err = h.service.Refresh(t.Context(), token)
+			case "revoke reuse":
+				h.repository.EXPECT().
+					RotateSession(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(false, nil)
+				h.repository.EXPECT().RevokeSession(gomock.Any(), gomock.Any(), gomock.Any()).Return(storageErr)
+				tokens, err = h.service.Refresh(t.Context(), token)
+			case "logout":
+				h.repository.EXPECT().RevokeSession(gomock.Any(), gomock.Any(), gomock.Any()).Return(storageErr)
+				err = h.service.Logout(t.Context(), token)
+			}
+			assertErrorIs(t, err, domain.ErrAuthenticationUnavailable)
+			assertErrorIs(t, err, storageErr)
+			if tokens != nil {
+				t.Fatal("tokens returned despite a failed session write")
+			}
+		})
+	}
+}
+
+func TestSessions_HTTPDatabaseOutageFailsClosed(t *testing.T) {
+	h := newSessionHarness(t)
+	tokens := h.login(t)
+	e := echo.New()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+	sqlDB, err := h.db.Master().DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		method, path, bearer string
+		body                 any
+	}{
+		{http.MethodPost, "/api/v1/auth/login", "", map[string]string{"email": h.user.Email, "password": "TestPassword123!"}},
+		{http.MethodPost, "/api/v1/auth/refresh", "", map[string]string{"token": tokens.RefreshToken}},
+		{http.MethodPost, "/api/v1/auth/logout", "", map[string]string{"refresh_token": tokens.RefreshToken}},
+		{http.MethodGet, "/api/v1/users/me", tokens.AccessToken, nil},
+	} {
+		t.Run(test.path, func(t *testing.T) {
+			response := sessionHTTPRequest(t, e, test.method, test.path, test.bearer, test.body)
+			if response.Code != http.StatusServiceUnavailable {
+				t.Fatalf("database outage status=%d: %s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
+type primaryOnlyDatabase struct{ database.Database }
+
+func (primaryOnlyDatabase) Slave() *gorm.DB {
+	panic("authentication must not use a potentially stale read replica")
+}
+
+func TestSessions_AuthenticationReadsThePrimaryDatabase(t *testing.T) {
+	h := newSessionHarness(t)
+	repo := authRepository.New(database.NewBaseRepository(primaryOnlyDatabase{h.db}), h.cache, time.Minute)
+	service := auth.NewService(repo, discardAuthEvents{}, h.cache, sessionOptions()...)
+	tokens, err := service.Login(t.Context(), h.user.Email, testPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := echo.New()
+	httpAdapter.New(service).Register(e.Group("/api/v1"))
+	response := sessionHTTPRequest(t, e, http.MethodGet, "/api/v1/users/me", tokens.AccessToken, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("user authentication status=%d: %s", response.Code, response.Body.String())
+	}
+	next, err := service.Refresh(t.Context(), tokens.RefreshToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Logout(t.Context(), next.RefreshToken); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ValidateJWTToken(
+		t.Context(),
+		next.AccessToken,
+		domain.JWTTokenPurposeAccess,
+	); !errors.Is(
+		err,
+		domain.ErrInvalidToken,
+	) {
+		t.Fatalf("revocation was not visible immediately: %v", err)
+	}
+}
+
+func TestSessions_InvalidJWTConfigurationFailsClosed(t *testing.T) {
+	for _, option := range []auth.Option{
+		auth.WithJWTSecrets([]string{""}), auth.WithJWTIssuer(""), auth.WithJWTAudience(nil),
+		auth.WithJWTAudience([]string{""}), auth.WithJWTAccessTokenTTL(0), auth.WithJWTRefreshTokenTTL(0),
+	} {
+		h := newServiceHarness(t, option)
+		token := signTestJWT(
+			t,
+			testJWTSecret,
+			domain.JWTTokenPurposeRefresh,
+			"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+			time.Now().Add(time.Hour),
+		)
+		_, err := h.service.Refresh(t.Context(), token)
+		assertErrorIs(t, err, domain.ErrAuthenticationUnavailable)
+	}
+	service := auth.NewService(nil, nil, nil)
+	token := signTestJWT(
+		t,
+		testJWTSecret,
+		domain.JWTTokenPurposeRefresh,
+		"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+		time.Now().Add(time.Hour),
+	)
+	_, err := service.Refresh(t.Context(), token)
+	assertErrorIs(t, err, domain.ErrAuthenticationUnavailable)
+}
+
+func TestSessions_RepositoryNormalizesExpiryTimezones(t *testing.T) {
+	h := newSessionHarness(t)
+	expired := time.Now().Add(-time.Minute).In(time.FixedZone("test", 14*60*60))
+	session := &models.Session{
+		ID: uuid.New(), UserID: h.user.ID, CredentialVersion: h.user.CredentialVersion,
+		RefreshTokenID: uuid.New(), ExpiresAt: expired,
+	}
+	if err := h.repo.CreateSession(t.Context(), session); err != nil {
+		t.Fatal(err)
+	}
+	_, err := h.repo.GetActiveSession(t.Context(), session.ID.String(), h.user.UUID.String())
+	assertErrorIs(t, err, domain.ErrInvalidToken)
+	tokens := h.login(t)
+	claims, err := h.service.ValidateJWTToken(t.Context(), tokens.RefreshToken, domain.JWTTokenPurposeRefresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotated, err := h.repo.RotateSession(
+		t.Context(),
+		claims.SessionID,
+		claims.Subject,
+		claims.ID,
+		uuid.NewString(),
+		expired,
+	)
+	if err != nil || !rotated {
+		t.Fatalf("rotate session: rotated=%v, error=%v", rotated, err)
+	}
+	_, err = h.repo.GetActiveSession(t.Context(), claims.SessionID, claims.Subject)
+	assertErrorIs(t, err, domain.ErrInvalidToken)
+}
+
+func TestSessions_CleanupRetainsUnexpiredSessions(t *testing.T) {
+	h := newSessionHarness(t)
+	active, expired, revoked := h.login(t), h.login(t), h.login(t)
+	expiredClaims, err := h.service.ValidateJWTToken(t.Context(), expired.RefreshToken, domain.JWTTokenPurposeRefresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revokedClaims, err := h.service.ValidateJWTToken(t.Context(), revoked.RefreshToken, domain.JWTTokenPurposeRefresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.service.Logout(t.Context(), revoked.RefreshToken); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.db.Master().Model(&models.Session{}).Where("id = ?", expiredClaims.SessionID).
+		Update("expires_at", time.Now().UTC().Add(-time.Hour)).Error; err != nil {
+		t.Fatal(err)
+	}
+	deleted, err := h.repo.DeleteExpiredSessions(t.Context())
+	if err != nil || deleted < 1 {
+		t.Fatalf("cleanup deleted=%d, error=%v", deleted, err)
+	}
+	for _, test := range []struct {
+		id   string
+		want int64
+	}{{expiredClaims.SessionID, 0}, {revokedClaims.SessionID, 1}} {
+		var count int64
+		if err := h.db.Master().
+			Model(&models.Session{}).
+			Where("id = ?", test.id).
+			Count(&count).
+			Error; err != nil ||
+			count != test.want {
+			t.Fatalf("retained session count=%d, want=%d, error=%v", count, test.want, err)
+		}
+	}
+	if _, err := h.service.ValidateJWTToken(t.Context(), active.AccessToken, domain.JWTTokenPurposeAccess); err != nil {
+		t.Fatalf("cleanup removed an active session: %v", err)
+	}
+}
+
+func TestAuthRateLimits_NormalizesKnownAndUnknownAccounts(t *testing.T) {
+	for _, known := range []bool{false, true} {
+		t.Run(strconv.FormatBool(known), func(t *testing.T) {
+			h := newSessionHarness(t,
+				auth.WithRateLimiterEnabled(true),
+				auth.WithLoginAccountRequests(3),
+				auth.WithLoginWindow(time.Hour),
+			)
+			email := h.user.Email
+			if !known {
+				email = "unknown-" + email
+			}
+			for _, spelling := range []string{email, strings.ToUpper(email), " " + email + " "} {
+				_, err := h.service.Login(t.Context(), spelling, "wrong password")
+				assertErrorIs(t, err, domain.ErrInvalidCredentials)
+			}
+			_, err := h.service.Login(t.Context(), email, testPassword)
+			assertErrorIs(t, err, domain.ErrRateLimited)
+			_, err = h.service.Login(t.Context(), "different-"+email, "wrong password")
+			assertErrorIs(t, err, domain.ErrInvalidCredentials)
+		})
+	}
+}
+
+func TestAuthRateLimits_ReauthenticationSharesAccountBudget(t *testing.T) {
+	h := newSessionHarness(t,
+		auth.WithRateLimiterEnabled(true),
+		auth.WithLoginAccountRequests(2),
+		auth.WithLoginWindow(time.Hour),
+	)
+	tokens := h.login(t)
+	newEmail := "updated-" + h.user.Email
+	data := &domain.UpdateSelfData{
+		UpdateUserData: domain.UpdateUserData{Email: &newEmail}, CurrentPassword: "wrong password",
+	}
+	err := h.service.UpdateSelf(t.Context(), h.user.UUID.String(), data)
+	assertErrorIs(t, err, domain.ErrInvalidCredentials)
+	data.CurrentPassword = testPassword
+	err = h.service.UpdateSelf(t.Context(), h.user.UUID.String(), data)
+	assertErrorIs(t, err, domain.ErrRateLimited)
+	if _, err := h.service.ValidateJWTToken(t.Context(), tokens.AccessToken, domain.JWTTokenPurposeAccess); err != nil {
+		t.Fatalf("rejected credential changes revoked the session: %v", err)
+	}
+	user, err := h.repo.GetUserByUUID(t.Context(), h.user.UUID.String())
+	if err != nil || user.Email != h.user.Email {
+		t.Fatalf("rejected credential change altered the account: user=%+v, error=%v", user, err)
+	}
+}
+
+func TestAuthRateLimits_DefaultIPLimitsRunBeforeRequestValidation(t *testing.T) {
+	h := newSessionHarness(t, auth.WithRateLimiterEnabled(true))
+	e := echo.New()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+	for _, test := range []struct {
+		path  string
+		burst int
+	}{{"/api/v1/auth/login", 20}, {"/api/v1/auth/signup", 5}} {
+		t.Run(test.path, func(t *testing.T) {
+			for range test.burst {
+				response := sessionHTTPRequest(t, e, http.MethodPost, test.path, "", map[string]string{})
+				if response.Code != http.StatusBadRequest {
+					t.Fatalf("within IP budget: status=%d, body=%s", response.Code, response.Body.String())
+				}
+			}
+			response := sessionHTTPRequest(t, e, http.MethodPost, test.path, "", map[string]string{})
+			if response.Code != http.StatusTooManyRequests {
+				t.Fatalf("exceeded IP budget: status=%d", response.Code)
+			}
+		})
+	}
+	if err := h.service.CheckIPLimit(t.Context(), domain.AuthenticationActionLogin, "192.0.2.2"); err != nil {
+		t.Fatalf("different IP shares an exhausted bucket: %v", err)
+	}
+}
+
+func TestAuthRateLimits_RefreshBudgetFollowsSessionAcrossRotation(t *testing.T) {
+	h := newSessionHarness(t,
+		auth.WithRateLimiterEnabled(true),
+		auth.WithRefreshSessionRequests(2),
+		auth.WithRefreshWindow(time.Hour),
+	)
+	tokens, unrelated := h.login(t), h.login(t)
+	for range 2 {
+		var err error
+		tokens, err = h.service.Refresh(t.Context(), tokens.RefreshToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := echo.New()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+	response := sessionHTTPRequest(
+		t,
+		e,
+		http.MethodPost,
+		"/api/v1/auth/refresh",
+		"",
+		map[string]string{"token": tokens.RefreshToken},
+	)
+	if response.Code != http.StatusTooManyRequests {
+		t.Fatalf("refresh over budget: status=%d", response.Code)
+	}
+	if _, err := h.service.ValidateJWTToken(
+		t.Context(),
+		tokens.RefreshToken,
+		domain.JWTTokenPurposeRefresh,
+	); err != nil {
+		t.Fatalf("throttling consumed or revoked the current refresh token: %v", err)
+	}
+	if _, err := h.service.Refresh(t.Context(), unrelated.RefreshToken); err != nil {
+		t.Fatalf("different session shares exhausted refresh budget: %v", err)
+	}
+	if err := h.service.Logout(t.Context(), tokens.RefreshToken); err != nil {
+		t.Fatalf("rate limit prevented logout: %v", err)
+	}
+}
+
+func TestAuthRateLimits_BackendErrorsFailClosed(t *testing.T) {
+	backendErr := errors.New("limiter unavailable")
+	for _, action := range []string{"login IP", "signup IP", "account", "refresh"} {
+		t.Run(action, func(t *testing.T) {
+			h := newServiceHarness(t, auth.WithRateLimiterEnabled(true))
+			h.cache.EXPECT().
+				AllowRateLimit(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(false, backendErr)
+			var err error
+			switch action {
+			case "login IP":
+				err = h.service.CheckIPLimit(t.Context(), domain.AuthenticationActionLogin, "192.0.2.1")
+			case "signup IP":
+				err = h.service.CheckIPLimit(t.Context(), domain.AuthenticationActionSignup, "192.0.2.1")
+			case "account":
+				_, err = h.service.Login(t.Context(), testUserEmail, testPassword)
+			case "refresh":
+				token := signTestJWT(
+					t,
+					testJWTSecret,
+					domain.JWTTokenPurposeRefresh,
+					"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+					time.Now().Add(time.Hour),
+				)
+				_, err = h.service.Refresh(t.Context(), token)
+			}
+			assertErrorIs(t, err, domain.ErrAuthenticationUnavailable)
+			assertErrorIs(t, err, backendErr)
+		})
+	}
+}
+
+func TestAuthRateLimits_HTTPFailureAndDenial(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{name: "backend unavailable", err: errors.New("cache offline"), status: http.StatusServiceUnavailable},
+		{name: "budget exhausted", status: http.StatusTooManyRequests},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newServiceHarness(t, auth.WithRateLimiterEnabled(true))
+			h.cache.EXPECT().
+				AllowRateLimit(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(false, test.err)
+			e := echo.New()
+			httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+			response := sessionHTTPRequest(t, e, http.MethodPost, "/api/v1/auth/login", "", nil)
+			if response.Code != test.status || response.Header().Get("Retry-After") != "" {
+				t.Fatalf("status=%d, Retry-After=%q", response.Code, response.Header().Get("Retry-After"))
+			}
+		})
+	}
+}
+
+func TestAuthRateLimits_MissingConfigurationFailsClosed(t *testing.T) {
+	service := auth.NewService(nil, nil, nil)
+	err := service.CheckIPLimit(t.Context(), domain.AuthenticationActionLogin, "192.0.2.1")
+	assertErrorIs(t, err, domain.ErrAuthenticationUnavailable)
+	h := newServiceHarness(t, auth.WithRateLimiterEnabled(true), auth.WithLoginIPRequests(0))
+	err = h.service.CheckIPLimit(t.Context(), domain.AuthenticationActionLogin, "192.0.2.1")
+	assertErrorIs(t, err, domain.ErrAuthenticationUnavailable)
 }

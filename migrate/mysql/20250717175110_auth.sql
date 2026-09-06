@@ -4,6 +4,7 @@ create table if not exists auth_users (
     id bigint unsigned not null auto_increment primary key,
     uuid char(36) not null,
     password varchar(255) null,
+    credential_version bigint not null default 1,
     email varchar(255) not null,
     status varchar(255) not null default 'active',
     is_system boolean not null default false,
@@ -15,6 +16,23 @@ create table if not exists auth_users (
     unique key idx_auth_users_email (email),
     key idx_auth_users_deleted_at (deleted_at)
 ) engine = innodb default charset = utf8mb4 collate = utf8mb4_unicode_ci;
+
+create table if not exists auth_sessions (
+    id char(36) primary key,
+    user_id bigint unsigned not null,
+    credential_version bigint not null,
+    refresh_token_id char(36) not null,
+    expires_at datetime not null,
+    revoked_at datetime null,
+    created_at datetime not null default current_timestamp,
+    updated_at datetime not null default current_timestamp,
+    constraint fk_auth_sessions_user foreign key (user_id) references auth_users (
+        id
+    ) on delete cascade
+) engine = innodb default charset = utf8mb4 collate = utf8mb4_unicode_ci;
+
+create index idx_auth_sessions_user_id on auth_sessions (user_id);
+create index idx_auth_sessions_expires_at on auth_sessions (expires_at);
 
 create table if not exists auth_users_history
 (
@@ -127,4 +145,5 @@ drop table if exists auth_role_permissions;
 drop table if exists auth_permissions;
 drop table if exists auth_roles;
 drop table if exists auth_users_history;
+drop table if exists auth_sessions;
 drop table if exists auth_users;

@@ -16,13 +16,14 @@ type Handler interface {
 	Login(ctx context.Context, req *LoginRequest) (LoginRes, error)
 	// Logout implements logout operation.
 	//
-	// Invalidate user tokens.
+	// The refresh token identifies the session. Repeated logout succeeds, including after access-token
+	// expiry.
 	//
 	// POST /auth/logout
 	Logout(ctx context.Context, req *LogoutRequest) (LogoutRes, error)
 	// Refresh implements refresh operation.
 	//
-	// Refresh user token.
+	// Refresh tokens are single-use. Reusing one ends that session, including successor tokens.
 	//
 	// POST /auth/refresh
 	Refresh(ctx context.Context, req *RefreshRequest) (RefreshRes, error)
@@ -64,7 +65,7 @@ type Handler interface {
 	UsersMeRead(ctx context.Context) (UsersMeReadRes, error)
 	// UsersMeUpdate implements users.me.update operation.
 	//
-	// Update current user.
+	// Requires the current password. Changing email or password ends all existing JWT sessions.
 	//
 	// PUT /users/me
 	UsersMeUpdate(ctx context.Context, req *UpdateSelfRequest) (UsersMeUpdateRes, error)

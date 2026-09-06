@@ -24,7 +24,8 @@ func (UnimplementedHandler) Login(ctx context.Context, req *LoginRequest) (r Log
 
 // Logout implements logout operation.
 //
-// Invalidate user tokens.
+// The refresh token identifies the session. Repeated logout succeeds, including after access-token
+// expiry.
 //
 // POST /auth/logout
 func (UnimplementedHandler) Logout(ctx context.Context, req *LogoutRequest) (r LogoutRes, _ error) {
@@ -33,7 +34,7 @@ func (UnimplementedHandler) Logout(ctx context.Context, req *LogoutRequest) (r L
 
 // Refresh implements refresh operation.
 //
-// Refresh user token.
+// Refresh tokens are single-use. Reusing one ends that session, including successor tokens.
 //
 // POST /auth/refresh
 func (UnimplementedHandler) Refresh(ctx context.Context, req *RefreshRequest) (r RefreshRes, _ error) {
@@ -96,7 +97,7 @@ func (UnimplementedHandler) UsersMeRead(ctx context.Context) (r UsersMeReadRes, 
 
 // UsersMeUpdate implements users.me.update operation.
 //
-// Update current user.
+// Requires the current password. Changing email or password ends all existing JWT sessions.
 //
 // PUT /users/me
 func (UnimplementedHandler) UsersMeUpdate(ctx context.Context, req *UpdateSelfRequest) (r UsersMeUpdateRes, _ error) {

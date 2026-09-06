@@ -30,7 +30,7 @@ func (s *LoginRequest) setDefaults() {
 func (s *LogoutRequest) setDefaults() {
 	{
 		val := string("")
-		s.AccessToken = val
+		s.AccessToken.SetTo(val)
 	}
 	{
 		val := string("")

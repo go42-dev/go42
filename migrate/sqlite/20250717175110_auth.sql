@@ -4,6 +4,7 @@ create table if not exists auth_users (
     id integer primary key autoincrement,
     uuid text not null unique,
     password text,
+    credential_version integer not null default 1,
     email text not null unique,
     status text not null default 'active',
     is_system integer not null default 0,
@@ -16,6 +17,23 @@ create table if not exists auth_users (
 create index if not exists idx_auth_users_uuid on auth_users (uuid);
 create index if not exists idx_auth_users_email on auth_users (email);
 create index if not exists idx_auth_users_deleted_at on auth_users (deleted_at);
+
+create table if not exists auth_sessions (
+    id text primary key,
+    user_id integer not null,
+    credential_version integer not null,
+    refresh_token_id text not null,
+    expires_at datetime not null,
+    revoked_at datetime null,
+    created_at datetime not null default current_timestamp,
+    updated_at datetime not null default current_timestamp,
+    constraint fk_auth_sessions_user foreign key (user_id) references auth_users (
+        id
+    ) on delete cascade
+);
+
+create index idx_auth_sessions_user_id on auth_sessions (user_id);
+create index idx_auth_sessions_expires_at on auth_sessions (expires_at);
 
 create table if not exists auth_users_history
 (
@@ -130,4 +148,5 @@ drop table if exists auth_role_permissions;
 drop table if exists auth_permissions;
 drop table if exists auth_roles;
 drop table if exists auth_users_history;
+drop table if exists auth_sessions;
 drop table if exists auth_users;

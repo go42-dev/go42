@@ -89,6 +89,7 @@ where
 
 -- +goose Down
 
+delete from auth_sessions;
 delete from auth_api_tokens_permissions;
 delete from auth_api_tokens;
 delete from auth_role_permissions;

@@ -56,3 +56,51 @@ func WithMinPasswordEntropyBits(bits int) Option {
 		s.minPasswordEntropyBits = bits
 	}
 }
+
+func WithRateLimiterEnabled(enabled bool) Option {
+	return func(s *Service) {
+		s.rateLimiterEnabled = enabled
+	}
+}
+
+func WithLoginAccountRequests(requests int) Option {
+	return func(s *Service) {
+		s.loginAccountRequests = requests
+	}
+}
+
+func WithLoginIPRequests(requests int) Option {
+	return func(s *Service) {
+		s.loginIPRequests = requests
+	}
+}
+
+func WithLoginWindow(window time.Duration) Option {
+	return func(s *Service) {
+		s.loginWindow = window
+	}
+}
+
+func WithSignupIPRequests(requests int) Option {
+	return func(s *Service) {
+		s.signupIPRequests = requests
+	}
+}
+
+func WithSignupWindow(window time.Duration) Option {
+	return func(s *Service) {
+		s.signupWindow = window
+	}
+}
+
+func WithRefreshSessionRequests(requests int) Option {
+	return func(s *Service) {
+		s.refreshSessionRequests = requests
+	}
+}
+
+func WithRefreshWindow(window time.Duration) Option {
+	return func(s *Service) {
+		s.refreshWindow = window
+	}
+}

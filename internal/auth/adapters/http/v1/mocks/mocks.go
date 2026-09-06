@@ -12,7 +12,6 @@ package mocks
 import (
 	context "context"
 	reflect "reflect"
-	time "time"
 
 	domain "github.com/go42-dev/go42/internal/auth/domain"
 	models "github.com/go42-dev/go42/internal/auth/models"
@@ -41,6 +40,20 @@ func NewMockserviceAccessor(ctrl *gomock.Controller) *MockserviceAccessor {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockserviceAccessor) EXPECT() *MockserviceAccessorMockRecorder {
 	return m.recorder
+}
+
+// CheckIPLimit mocks base method.
+func (m *MockserviceAccessor) CheckIPLimit(ctx context.Context, action domain.AuthenticationAction, ip string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckIPLimit", ctx, action, ip)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CheckIPLimit indicates an expected call of CheckIPLimit.
+func (mr *MockserviceAccessorMockRecorder) CheckIPLimit(ctx, action, ip any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckIPLimit", reflect.TypeOf((*MockserviceAccessor)(nil).CheckIPLimit), ctx, action, ip)
 }
 
 // CreateUser mocks base method.
@@ -102,20 +115,6 @@ func (mr *MockserviceAccessorMockRecorder) GetUserByUUID(ctx, uuid any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserByUUID", reflect.TypeOf((*MockserviceAccessor)(nil).GetUserByUUID), ctx, uuid)
 }
 
-// InvalidateJWTToken mocks base method.
-func (m *MockserviceAccessor) InvalidateJWTToken(ctx context.Context, token string, until time.Time) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InvalidateJWTToken", ctx, token, until)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// InvalidateJWTToken indicates an expected call of InvalidateJWTToken.
-func (mr *MockserviceAccessorMockRecorder) InvalidateJWTToken(ctx, token, until any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateJWTToken", reflect.TypeOf((*MockserviceAccessor)(nil).InvalidateJWTToken), ctx, token, until)
-}
-
 // ListUsers mocks base method.
 func (m *MockserviceAccessor) ListUsers(ctx context.Context, limit, offset int) ([]*models.User, error) {
 	m.ctrl.T.Helper()
@@ -147,17 +146,17 @@ func (mr *MockserviceAccessorMockRecorder) Login(ctx, email, password any) *gomo
 }
 
 // Logout mocks base method.
-func (m *MockserviceAccessor) Logout(ctx context.Context, accessToken, refreshToken string) error {
+func (m *MockserviceAccessor) Logout(ctx context.Context, refreshToken string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Logout", ctx, accessToken, refreshToken)
+	ret := m.ctrl.Call(m, "Logout", ctx, refreshToken)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Logout indicates an expected call of Logout.
-func (mr *MockserviceAccessorMockRecorder) Logout(ctx, accessToken, refreshToken any) *gomock.Call {
+func (mr *MockserviceAccessorMockRecorder) Logout(ctx, refreshToken any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Logout", reflect.TypeOf((*MockserviceAccessor)(nil).Logout), ctx, accessToken, refreshToken)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Logout", reflect.TypeOf((*MockserviceAccessor)(nil).Logout), ctx, refreshToken)
 }
 
 // Refresh mocks base method.
@@ -188,6 +187,20 @@ func (m *MockserviceAccessor) SignUp(ctx context.Context, email, password string
 func (mr *MockserviceAccessorMockRecorder) SignUp(ctx, email, password any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SignUp", reflect.TypeOf((*MockserviceAccessor)(nil).SignUp), ctx, email, password)
+}
+
+// UpdateSelf mocks base method.
+func (m *MockserviceAccessor) UpdateSelf(ctx context.Context, uuid string, data *domain.UpdateSelfData) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateSelf", ctx, uuid, data)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateSelf indicates an expected call of UpdateSelf.
+func (mr *MockserviceAccessorMockRecorder) UpdateSelf(ctx, uuid, data any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSelf", reflect.TypeOf((*MockserviceAccessor)(nil).UpdateSelf), ctx, uuid, data)
 }
 
 // UpdateUser mocks base method.

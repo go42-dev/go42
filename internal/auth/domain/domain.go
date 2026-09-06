@@ -73,14 +73,16 @@ var (
 	ErrAuthenticationUnavailable = errors.New("authentication unavailable")
 	ErrPasswordWeak              = errors.New("password is too weak")
 	ErrInvalidPagination         = errors.New("invalid pagination")
+	ErrRateLimited               = errors.New("too many authentication attempts")
 )
 
 // ----
 
 type JWTClaims struct {
 	jwt.RegisteredClaims
-	KID      string          `json:"kid,omitempty"`
-	TokenUse JWTTokenPurpose `json:"token_use"`
+	KID       string          `json:"kid,omitempty"`
+	TokenUse  JWTTokenPurpose `json:"token_use"`
+	SessionID string          `json:"sid"`
 }
 
 type JWTTokenPurpose string
@@ -149,3 +151,15 @@ type UpdateUserData struct {
 	Email    *string
 	Password *string
 }
+
+type UpdateSelfData struct {
+	UpdateUserData
+	CurrentPassword string
+}
+
+type AuthenticationAction string
+
+const (
+	AuthenticationActionLogin  AuthenticationAction = "login"
+	AuthenticationActionSignup AuthenticationAction = "signup"
+)

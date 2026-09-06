@@ -56,8 +56,9 @@ type LoginRequest struct {
 
 // LogoutRequest defines model for LogoutRequest.
 type LogoutRequest struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
+	// AccessToken Optional; logout uses the refresh token to identify the session.
+	AccessToken  *string `json:"access_token,omitempty"`
+	RefreshToken string  `json:"refresh_token"`
 }
 
 // RefreshRequest defines model for RefreshRequest.
@@ -78,10 +79,11 @@ type Tokens struct {
 	RefreshToken *string `json:"refresh_token,omitempty"`
 }
 
-// UpdateSelfRequest defines model for UpdateSelfRequest.
+// UpdateSelfRequest current_password is required when email or password is supplied.
 type UpdateSelfRequest struct {
-	Email    *string `json:"email,omitempty"`
-	Password *string `json:"password,omitempty"`
+	CurrentPassword *string `json:"current_password,omitempty"`
+	Email           *string `json:"email,omitempty"`
+	Password        *string `json:"password,omitempty"`
 }
 
 // UpdateUserRequest defines model for UpdateUserRequest.
@@ -98,6 +100,12 @@ type User struct {
 	Roles       *[]string `json:"roles,omitempty"`
 	Uuid        *string   `json:"uuid,omitempty"`
 }
+
+// AuthenticationUnavailable defines model for AuthenticationUnavailable.
+type AuthenticationUnavailable = Error
+
+// RateLimited defines model for RateLimited.
+type RateLimited = Error
 
 // UnexpectedResponse defines model for UnexpectedResponse.
 type UnexpectedResponse = Error
@@ -217,28 +225,36 @@ type ClientInterface interface {
 	// Corresponds with POST /auth/login (the `Login` operationId).
 	Login(ctx context.Context, body LoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// LogoutWithBody Invalidate user tokens
+	// LogoutWithBody End the session
+	//
+	// The refresh token identifies the session. Repeated logout succeeds, including after access-token expiry.
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /auth/logout (the `Logout` operationId).
 	LogoutWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// Logout Invalidate user tokens
+	// Logout End the session
+	//
+	// The refresh token identifies the session. Repeated logout succeeds, including after access-token expiry.
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /auth/logout (the `Logout` operationId).
 	Logout(ctx context.Context, body LogoutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// RefreshWithBody Refresh user token
+	// RefreshWithBody Rotate the session refresh token
+	//
+	// Refresh tokens are single-use. Reusing one ends that session, including successor tokens.
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /auth/refresh (the `Refresh` operationId).
 	RefreshWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// Refresh Refresh user token
+	// Refresh Rotate the session refresh token
+	//
+	// Refresh tokens are single-use. Reusing one ends that session, including successor tokens.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -283,14 +299,18 @@ type ClientInterface interface {
 	// Corresponds with GET /users/me (the `UsersMeRead` operationId).
 	UsersMeRead(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UsersMeUpdateWithBody Update current user
+	// UsersMeUpdateWithBody Update current user credentials
+	//
+	// Requires the current password. Changing email or password ends all existing JWT sessions.
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PUT /users/me (the `UsersMeUpdate` operationId).
 	UsersMeUpdateWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UsersMeUpdate Update current user
+	// UsersMeUpdate Update current user credentials
+	//
+	// Requires the current password. Changing email or password ends all existing JWT sessions.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -356,7 +376,9 @@ func (c *Client) Login(ctx context.Context, body LoginJSONRequestBody, reqEditor
 	return c.Client.Do(req)
 }
 
-// LogoutWithBody Invalidate user tokens
+// LogoutWithBody End the session
+//
+// The refresh token identifies the session. Repeated logout succeeds, including after access-token expiry.
 //
 // Takes any type of body and a specified content type.
 //
@@ -373,7 +395,9 @@ func (c *Client) LogoutWithBody(ctx context.Context, contentType string, body io
 	return c.Client.Do(req)
 }
 
-// Logout Invalidate user tokens
+// Logout End the session
+//
+// The refresh token identifies the session. Repeated logout succeeds, including after access-token expiry.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -390,7 +414,9 @@ func (c *Client) Logout(ctx context.Context, body LogoutJSONRequestBody, reqEdit
 	return c.Client.Do(req)
 }
 
-// RefreshWithBody Refresh user token
+// RefreshWithBody Rotate the session refresh token
+//
+// Refresh tokens are single-use. Reusing one ends that session, including successor tokens.
 //
 // Takes any type of body and a specified content type.
 //
@@ -407,7 +433,9 @@ func (c *Client) RefreshWithBody(ctx context.Context, contentType string, body i
 	return c.Client.Do(req)
 }
 
-// Refresh Refresh user token
+// Refresh Rotate the session refresh token
+//
+// Refresh tokens are single-use. Reusing one ends that session, including successor tokens.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -522,7 +550,9 @@ func (c *Client) UsersMeRead(ctx context.Context, reqEditors ...RequestEditorFn)
 	return c.Client.Do(req)
 }
 
-// UsersMeUpdateWithBody Update current user
+// UsersMeUpdateWithBody Update current user credentials
+//
+// Requires the current password. Changing email or password ends all existing JWT sessions.
 //
 // Takes any type of body and a specified content type.
 //
@@ -539,7 +569,9 @@ func (c *Client) UsersMeUpdateWithBody(ctx context.Context, contentType string, 
 	return c.Client.Do(req)
 }
 
-// UsersMeUpdate Update current user
+// UsersMeUpdate Update current user credentials
+//
+// Requires the current password. Changing email or password ends all existing JWT sessions.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -1126,28 +1158,36 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /auth/login (the `Login` operationId).
 	LoginWithResponse(ctx context.Context, body LoginJSONRequestBody, reqEditors ...RequestEditorFn) (*LoginResponse, error)
 
-	// LogoutWithBodyWithResponse Invalidate user tokens
+	// LogoutWithBodyWithResponse End the session
+	//
+	// The refresh token identifies the session. Repeated logout succeeds, including after access-token expiry.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /auth/logout (the `Logout` operationId).
 	LogoutWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LogoutResponse, error)
 
-	// LogoutWithResponse Invalidate user tokens
+	// LogoutWithResponse End the session
+	//
+	// The refresh token identifies the session. Repeated logout succeeds, including after access-token expiry.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /auth/logout (the `Logout` operationId).
 	LogoutWithResponse(ctx context.Context, body LogoutJSONRequestBody, reqEditors ...RequestEditorFn) (*LogoutResponse, error)
 
-	// RefreshWithBodyWithResponse Refresh user token
+	// RefreshWithBodyWithResponse Rotate the session refresh token
+	//
+	// Refresh tokens are single-use. Reusing one ends that session, including successor tokens.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /auth/refresh (the `Refresh` operationId).
 	RefreshWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RefreshResponse, error)
 
-	// RefreshWithResponse Refresh user token
+	// RefreshWithResponse Rotate the session refresh token
+	//
+	// Refresh tokens are single-use. Reusing one ends that session, including successor tokens.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1196,14 +1236,18 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /users/me (the `UsersMeRead` operationId).
 	UsersMeReadWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*UsersMeReadResponse, error)
 
-	// UsersMeUpdateWithBodyWithResponse Update current user
+	// UsersMeUpdateWithBodyWithResponse Update current user credentials
+	//
+	// Requires the current password. Changing email or password ends all existing JWT sessions.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PUT /users/me (the `UsersMeUpdate` operationId).
 	UsersMeUpdateWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UsersMeUpdateResponse, error)
 
-	// UsersMeUpdateWithResponse Update current user
+	// UsersMeUpdateWithResponse Update current user credentials
+	//
+	// Requires the current password. Changing email or password ends all existing JWT sessions.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1244,6 +1288,10 @@ type LoginResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *Tokens
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *RateLimited
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *AuthenticationUnavailable
 	// JSONDefault the response for an HTTP default `application/json` response
 	JSONDefault *UnexpectedResponse
 }
@@ -1251,6 +1299,16 @@ type LoginResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r LoginResponse) GetJSON200() *Tokens {
 	return r.JSON200
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r LoginResponse) GetJSON429() *RateLimited {
+	return r.JSON429
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r LoginResponse) GetJSON503() *AuthenticationUnavailable {
+	return r.JSON503
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
@@ -1290,8 +1348,15 @@ func (r LoginResponse) ContentType() string {
 type LogoutResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *AuthenticationUnavailable
 	// JSONDefault the response for an HTTP default `application/json` response
 	JSONDefault *UnexpectedResponse
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r LogoutResponse) GetJSON503() *AuthenticationUnavailable {
+	return r.JSON503
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
@@ -1333,6 +1398,10 @@ type RefreshResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *Tokens
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *RateLimited
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *AuthenticationUnavailable
 	// JSONDefault the response for an HTTP default `application/json` response
 	JSONDefault *UnexpectedResponse
 }
@@ -1340,6 +1409,16 @@ type RefreshResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r RefreshResponse) GetJSON200() *Tokens {
 	return r.JSON200
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r RefreshResponse) GetJSON429() *RateLimited {
+	return r.JSON429
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r RefreshResponse) GetJSON503() *AuthenticationUnavailable {
+	return r.JSON503
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
@@ -1381,6 +1460,10 @@ type SignupResponse struct {
 	HTTPResponse *http.Response
 	// JSON201 the response for an HTTP 201 `application/json` response
 	JSON201 *User
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *RateLimited
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *AuthenticationUnavailable
 	// JSONDefault the response for an HTTP default `application/json` response
 	JSONDefault *UnexpectedResponse
 }
@@ -1388,6 +1471,16 @@ type SignupResponse struct {
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
 func (r SignupResponse) GetJSON201() *User {
 	return r.JSON201
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r SignupResponse) GetJSON429() *RateLimited {
+	return r.JSON429
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r SignupResponse) GetJSON503() *AuthenticationUnavailable {
+	return r.JSON503
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
@@ -1571,8 +1664,22 @@ func (r UsersMeReadResponse) ContentType() string {
 type UsersMeUpdateResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *RateLimited
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *AuthenticationUnavailable
 	// JSONDefault the response for an HTTP default `application/json` response
 	JSONDefault *UnexpectedResponse
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r UsersMeUpdateResponse) GetJSON429() *RateLimited {
+	return r.JSON429
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r UsersMeUpdateResponse) GetJSON503() *AuthenticationUnavailable {
+	return r.JSON503
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
@@ -1765,7 +1872,9 @@ func (c *ClientWithResponses) LoginWithResponse(ctx context.Context, body LoginJ
 	return ParseLoginResponse(rsp)
 }
 
-// LogoutWithBodyWithResponse Invalidate user tokens
+// LogoutWithBodyWithResponse End the session
+//
+// The refresh token identifies the session. Repeated logout succeeds, including after access-token expiry.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -1778,7 +1887,9 @@ func (c *ClientWithResponses) LogoutWithBodyWithResponse(ctx context.Context, co
 	return ParseLogoutResponse(rsp)
 }
 
-// LogoutWithResponse Invalidate user tokens
+// LogoutWithResponse End the session
+//
+// The refresh token identifies the session. Repeated logout succeeds, including after access-token expiry.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -1791,7 +1902,9 @@ func (c *ClientWithResponses) LogoutWithResponse(ctx context.Context, body Logou
 	return ParseLogoutResponse(rsp)
 }
 
-// RefreshWithBodyWithResponse Refresh user token
+// RefreshWithBodyWithResponse Rotate the session refresh token
+//
+// Refresh tokens are single-use. Reusing one ends that session, including successor tokens.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -1804,7 +1917,9 @@ func (c *ClientWithResponses) RefreshWithBodyWithResponse(ctx context.Context, c
 	return ParseRefreshResponse(rsp)
 }
 
-// RefreshWithResponse Refresh user token
+// RefreshWithResponse Rotate the session refresh token
+//
+// Refresh tokens are single-use. Reusing one ends that session, including successor tokens.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -1895,7 +2010,9 @@ func (c *ClientWithResponses) UsersMeReadWithResponse(ctx context.Context, reqEd
 	return ParseUsersMeReadResponse(rsp)
 }
 
-// UsersMeUpdateWithBodyWithResponse Update current user
+// UsersMeUpdateWithBodyWithResponse Update current user credentials
+//
+// Requires the current password. Changing email or password ends all existing JWT sessions.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -1908,7 +2025,9 @@ func (c *ClientWithResponses) UsersMeUpdateWithBodyWithResponse(ctx context.Cont
 	return ParseUsersMeUpdateResponse(rsp)
 }
 
-// UsersMeUpdateWithResponse Update current user
+// UsersMeUpdateWithResponse Update current user credentials
+//
+// Requires the current password. Changing email or password ends all existing JWT sessions.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -2000,6 +2119,20 @@ func ParseLoginResponse(rsp *http.Response) (*LoginResponse, error) {
 	case rsp.StatusCode == 403:
 		break // No content-type
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest RateLimited
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest AuthenticationUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -2031,6 +2164,16 @@ func ParseLogoutResponse(rsp *http.Response) (*LogoutResponse, error) {
 
 	case rsp.StatusCode == 400:
 		break // No content-type
+
+	case rsp.StatusCode == 401:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest AuthenticationUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
@@ -2068,8 +2211,22 @@ func ParseRefreshResponse(rsp *http.Response) (*RefreshResponse, error) {
 	case rsp.StatusCode == 400:
 		break // No content-type
 
-	case rsp.StatusCode == 403:
+	case rsp.StatusCode == 401:
 		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest RateLimited
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest AuthenticationUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
@@ -2109,6 +2266,20 @@ func ParseSignupResponse(rsp *http.Response) (*SignupResponse, error) {
 
 	case rsp.StatusCode == 409:
 		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest RateLimited
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest AuthenticationUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
@@ -2259,6 +2430,20 @@ func ParseUsersMeUpdateResponse(rsp *http.Response) (*UsersMeUpdateResponse, err
 	case rsp.StatusCode == 401:
 		break // No content-type
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest RateLimited
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest AuthenticationUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -2394,31 +2579,36 @@ func ParseUsersUpdateResponse(rsp *http.Response) (*UsersUpdateResponse, error) 
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"DgA=",
+	"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",
+	"Ef5cNRmN3MtcajP5efzzeMQqPro5osv58n8DAA==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

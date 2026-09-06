@@ -80,9 +80,10 @@ where
 
 -- +goose Down
 
-truncate table auth_api_tokens_permissions;
-truncate table auth_api_tokens;
-truncate table auth_role_permissions;
-truncate table auth_permissions;
-truncate table auth_roles;
-truncate table auth_users;
+delete from auth_sessions;
+delete from auth_api_tokens_permissions;
+delete from auth_api_tokens;
+delete from auth_role_permissions;
+delete from auth_permissions;
+delete from auth_roles;
+delete from auth_users;

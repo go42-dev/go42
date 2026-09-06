@@ -200,7 +200,7 @@ func assertCacheRateLimitContract(t *testing.T, engine cache.Engine) {
 	key := uniqueCacheKey("rate-limit")
 
 	for request := range 3 {
-		allowed, err := engine.AllowRateLimit(t.Context(), key, 1, 2, 5*time.Second)
+		allowed, err := engine.AllowRateLimit(t.Context(), key, time.Second, 2, 5*time.Second)
 		if err != nil {
 			t.Fatalf("AllowRateLimit(%d) error = %v", request, err)
 		}

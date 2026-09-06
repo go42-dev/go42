@@ -487,6 +487,14 @@ func main() {
 			auth.WithJWTIssuer(cfg.Auth.JWT.Issuer),
 			auth.WithJWTAudience(cfg.Auth.JWT.Audience),
 			auth.WithMinPasswordEntropyBits(cfg.Auth.MinPasswordEntropyBits),
+			auth.WithRateLimiterEnabled(cfg.Auth.RateLimiter.Enabled),
+			auth.WithLoginAccountRequests(cfg.Auth.RateLimiter.LoginAccountRequests),
+			auth.WithLoginIPRequests(cfg.Auth.RateLimiter.LoginIPRequests),
+			auth.WithLoginWindow(cfg.Auth.RateLimiter.LoginWindow),
+			auth.WithSignupIPRequests(cfg.Auth.RateLimiter.SignupIPRequests),
+			auth.WithSignupWindow(cfg.Auth.RateLimiter.SignupWindow),
+			auth.WithRefreshSessionRequests(cfg.Auth.RateLimiter.RefreshSessionRequests),
+			auth.WithRefreshWindow(cfg.Auth.RateLimiter.RefreshWindow),
 		)
 
 		authTokenLastUsedUpdater := authWorkers.NewTokenLastUsedUpdater(
@@ -497,6 +505,12 @@ func main() {
 			),
 		)
 		go authTokenLastUsedUpdater.Run(ctx, cfg.Auth.TokenUpdaterInterval)
+
+		authSessionCleaner := authWorkers.NewSessionCleaner(
+			authRepository,
+			slog.Default().With(slog.String("component", "auth-session-cleaner")),
+		)
+		go authSessionCleaner.Run(ctx, cfg.Auth.SessionCleanupInterval)
 
 		authEventsSubscriber := authWorkers.NewAuthEventSubscriber(
 			authRepository,

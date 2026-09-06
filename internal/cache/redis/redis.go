@@ -9,6 +9,8 @@ import (
 
 	"github.com/avast/retry-go/v4"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 type Wrapper struct {
@@ -28,10 +30,9 @@ const (
 
 // allowRateLimitScript implements GCRA atomically inside Redis.
 var allowRateLimitScript = redis.NewScript(`
-local rate = tonumber(ARGV[1])
+local interval = tonumber(ARGV[1])
 local burst = tonumber(ARGV[2])
 local ttl_ms = tonumber(ARGV[3])
-local interval = math.max(1, math.floor(1000000 / rate))
 local now_parts = redis.call('TIME')
 local now = (tonumber(now_parts[1]) * 1000000) + tonumber(now_parts[2])
 local tat = tonumber(redis.call('GET', KEYS[1]))
@@ -168,37 +169,23 @@ func (w *Wrapper) SetIfAbsent(
 func (w *Wrapper) AllowRateLimit(
 	ctx context.Context,
 	key string,
-	rate int,
+	interval time.Duration,
 	burst int,
 	ttl time.Duration,
 ) (bool, error) {
-	if rate <= 0 {
-		return false, fmt.Errorf("rate must be positive")
+	ttl, err := tools.RateLimitTTL(interval, burst, ttl)
+	if err != nil {
+		return false, err
 	}
-	if burst <= 0 {
-		return false, fmt.Errorf("burst must be positive")
-	}
-	if ttl <= 0 {
-		return false, fmt.Errorf("ttl must be positive")
-	}
-
-	ttlMilliseconds := ttl.Milliseconds()
-	if ttlMilliseconds < 1 {
-		ttlMilliseconds = 1
-	}
-
 	allowed, err := allowRateLimitScript.Run(
 		ctx,
 		w.client,
 		[]string{key},
-		rate,
+		max(int64(1), interval.Microseconds()),
 		burst,
-		ttlMilliseconds,
+		max(int64(1), ttl.Milliseconds()),
 	).Int()
-	if err != nil {
-		return false, err
-	}
-	return allowed == 1, nil
+	return allowed == 1 && err == nil, err
 }
 
 func (w *Wrapper) Invalidate(ctx context.Context, key string) error {
