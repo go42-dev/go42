@@ -27,17 +27,31 @@ func encodeLoginResponse(response LoginRes, w http.ResponseWriter, span trace.Sp
 		return nil
 
 	case *LoginBadRequest:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(400)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *LoginForbidden:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(403)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *LoginTooManyRequests:
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(429)
 
 		e := new(jx.Encoder)
@@ -49,7 +63,7 @@ func encodeLoginResponse(response LoginRes, w http.ResponseWriter, span trace.Sp
 		return nil
 
 	case *LoginServiceUnavailable:
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(503)
 		span.SetStatus(codes.Error, http.StatusText(503))
 
@@ -74,17 +88,31 @@ func encodeLogoutResponse(response LogoutRes, w http.ResponseWriter, span trace.
 		return nil
 
 	case *LogoutBadRequest:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(400)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *LogoutUnauthorized:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(401)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
-	case *Error:
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	case *LogoutServiceUnavailable:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(503)
 		span.SetStatus(codes.Error, http.StatusText(503))
 
@@ -116,17 +144,31 @@ func encodeRefreshResponse(response RefreshRes, w http.ResponseWriter, span trac
 		return nil
 
 	case *RefreshBadRequest:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(400)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *RefreshUnauthorized:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(401)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *RefreshTooManyRequests:
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(429)
 
 		e := new(jx.Encoder)
@@ -138,7 +180,7 @@ func encodeRefreshResponse(response RefreshRes, w http.ResponseWriter, span trac
 		return nil
 
 	case *RefreshServiceUnavailable:
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(503)
 		span.SetStatus(codes.Error, http.StatusText(503))
 
@@ -170,17 +212,31 @@ func encodeSignupResponse(response SignupRes, w http.ResponseWriter, span trace.
 		return nil
 
 	case *SignupBadRequest:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(400)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *SignupConflict:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(409)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *SignupTooManyRequests:
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(429)
 
 		e := new(jx.Encoder)
@@ -192,7 +248,7 @@ func encodeSignupResponse(response SignupRes, w http.ResponseWriter, span trace.
 		return nil
 
 	case *SignupServiceUnavailable:
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(503)
 		span.SetStatus(codes.Error, http.StatusText(503))
 
@@ -224,12 +280,26 @@ func encodeUsersCreateResponse(response UsersCreateRes, w http.ResponseWriter, s
 		return nil
 
 	case *UsersCreateBadRequest:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(400)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *UsersCreateUnauthorized:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(401)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
@@ -246,17 +316,38 @@ func encodeUsersDeleteResponse(response UsersDeleteRes, w http.ResponseWriter, s
 		return nil
 
 	case *UsersDeleteBadRequest:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(400)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *UsersDeleteUnauthorized:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(401)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *UsersDeleteNotFound:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(404)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
@@ -280,17 +371,38 @@ func encodeUsersGetResponse(response UsersGetRes, w http.ResponseWriter, span tr
 		return nil
 
 	case *UsersGetBadRequest:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(400)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *UsersGetUnauthorized:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(401)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *UsersGetNotFound:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(404)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
@@ -322,12 +434,26 @@ func encodeUsersListResponse(response UsersListRes, w http.ResponseWriter, span 
 		return nil
 
 	case *UsersListBadRequest:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(400)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *UsersListUnauthorized:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(401)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
@@ -350,8 +476,15 @@ func encodeUsersMeReadResponse(response UsersMeReadRes, w http.ResponseWriter, s
 
 		return nil
 
-	case *UsersMeReadUnauthorized:
+	case *Error:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(401)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
@@ -368,17 +501,31 @@ func encodeUsersMeUpdateResponse(response UsersMeUpdateRes, w http.ResponseWrite
 		return nil
 
 	case *UsersMeUpdateBadRequest:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(400)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *UsersMeUpdateUnauthorized:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(401)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *UsersMeUpdateTooManyRequests:
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(429)
 
 		e := new(jx.Encoder)
@@ -390,7 +537,7 @@ func encodeUsersMeUpdateResponse(response UsersMeUpdateRes, w http.ResponseWrite
 		return nil
 
 	case *UsersMeUpdateServiceUnavailable:
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(503)
 		span.SetStatus(codes.Error, http.StatusText(503))
 
@@ -415,17 +562,38 @@ func encodeUsersUpdateResponse(response UsersUpdateRes, w http.ResponseWriter, s
 		return nil
 
 	case *UsersUpdateBadRequest:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(400)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *UsersUpdateUnauthorized:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(401)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
 	case *UsersUpdateNotFound:
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(404)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
@@ -435,7 +603,7 @@ func encodeUsersUpdateResponse(response UsersUpdateRes, w http.ResponseWriter, s
 }
 
 func encodeErrorResponse(response *UnexpectedResponseStatusCode, w http.ResponseWriter, span trace.Span) error {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Type", "application/problem+json")
 	code := response.StatusCode
 	if code == 0 {
 		// Set default status code.

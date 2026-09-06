@@ -12,6 +12,11 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v5"
+	"go.uber.org/mock/gomock"
+
+	oapi "github.com/go42-dev/go42/api/gen/sdk/http/v1/auth/oapi-codegen"
+	ogen "github.com/go42-dev/go42/api/gen/sdk/http/v1/auth/ogen"
+	"github.com/go42-dev/go42/internal/api/http/mocks"
 )
 
 func TestReadyReturnsDependencyStatus(t *testing.T) {
@@ -236,6 +241,94 @@ func TestClientIPIgnoresForwardedAddressFromUntrustedPeer(t *testing.T) {
 
 	if got := server.e.IPExtractor(request); got != "198.51.100.10" {
 		t.Errorf("IPExtractor() = %q, want direct peer IP", got)
+	}
+}
+
+func TestHTTPClientsDecodeServerErrors(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		status int
+	}{
+		{name: "global rate limit", status: nethttp.StatusTooManyRequests},
+		{name: "handler failure", status: nethttp.StatusInternalServerError},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			options := []Option{WithBodyLimit(1024)}
+			if test.status == nethttp.StatusTooManyRequests {
+				limiter := mocks.NewMockrateLimiterAccessor(gomock.NewController(t))
+				limiter.EXPECT().Limit(gomock.Any(), "127.0.0.1").Return(false, nil).Times(2)
+				options = append(options, func(s *Server) { s.rateLimiter = limiter })
+			}
+			server := newTestServer(t, options...)
+			t.Cleanup(server.shutdownCancel)
+			server.v1.POST("/auth/login", func(*echo.Context) error {
+				if test.status == nethttp.StatusTooManyRequests {
+					t.Error("rate-limited request reached the handler")
+				}
+				return echo.ErrInternalServerError.Wrap(errors.New("private storage failure"))
+			})
+			endpoint := httptest.NewServer(server.e)
+			t.Cleanup(endpoint.Close)
+
+			t.Run("ogen", func(t *testing.T) {
+				client, err := ogen.NewClient(endpoint.URL+"/api/v1", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				response, err := client.Login(t.Context(), &ogen.LoginRequest{
+					Email: "user@example.com", Password: "TestPassword123!",
+				})
+				var problem *ogen.Error
+				if test.status == nethttp.StatusTooManyRequests {
+					if err != nil {
+						t.Fatalf("decode rate-limit response: %v", err)
+					}
+					rateLimited, ok := response.(*ogen.LoginTooManyRequests)
+					if !ok {
+						t.Fatalf("unexpected rate-limit response: %T", response)
+					}
+					problem = (*ogen.Error)(rateLimited)
+				} else {
+					var unexpected *ogen.UnexpectedResponseStatusCode
+					if !errors.As(err, &unexpected) || unexpected.StatusCode != test.status {
+						t.Fatalf("login error = %v, want typed HTTP %d error", err, test.status)
+					}
+					problem = &unexpected.Response
+				}
+				if int(problem.Status) != test.status || problem.Title != nethttp.StatusText(test.status) ||
+					problem.Type != "/api/v1/auth/login" || problem.Detail.IsSet() {
+					t.Fatalf("login response = %+v, want problem details for HTTP %d", problem, test.status)
+				}
+			})
+
+			t.Run("oapi-codegen", func(t *testing.T) {
+				client, err := oapi.NewClientWithResponses(endpoint.URL + "/api/v1")
+				if err != nil {
+					t.Fatal(err)
+				}
+				response, err := client.LoginWithResponse(t.Context(), oapi.LoginJSONRequestBody{
+					Email: "user@example.com", Password: "TestPassword123!",
+				})
+				if err != nil {
+					t.Fatalf("decode login response: %v", err)
+				}
+				problem := response.ApplicationproblemJSONDefault
+				if test.status == nethttp.StatusTooManyRequests {
+					problem = response.ApplicationproblemJSON429
+				}
+				if response.StatusCode() != test.status {
+					t.Fatalf("login status = %d, want %d", response.StatusCode(), test.status)
+				}
+				if response.ContentType() != MIMEApplicationProblemJSON {
+					t.Fatalf("login content type = %q, want problem+json", response.ContentType())
+				}
+				if problem == nil || int(problem.Status) != test.status ||
+					problem.Title != nethttp.StatusText(test.status) ||
+					problem.Type != "/api/v1/auth/login" || problem.Detail != nil {
+					t.Fatalf("login problem = %+v, want problem details for HTTP %d", problem, test.status)
+				}
+			})
+		})
 	}
 }
 

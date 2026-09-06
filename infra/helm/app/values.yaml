@@ -16,6 +16,18 @@ tolerations: {}
 
 replicaCount: 1
 
+# Allow more time than the startup probe budget for the rollout to make progress.
+# Set deployment tooling's wait timeout accordingly (for example, Helm --timeout 20m).
+progressDeadlineSeconds: 1200
+
+# Allow up to 15 minutes for migrations and dependency initialization.
+# Increase both this budget (periodSeconds * failureThreshold) and the progress
+# deadline for longer startup times. Probing succeeds as soon as /health responds.
+startupProbe:
+  periodSeconds: 5
+  timeoutSeconds: 2
+  failureThreshold: 180
+
 resources:
   requests:
     cpu: 500m

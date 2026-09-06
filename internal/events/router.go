@@ -49,6 +49,8 @@ type Router struct {
 	logger          *slog.Logger
 	watermillLogger watermill.LoggerAdapter
 	handlerID       atomic.Uint64
+	shuttingDown    atomic.Bool
+	errors          chan error
 }
 
 type DeliveryPolicy struct {
@@ -67,6 +69,7 @@ func NewRouter(backend Backend, policy DeliveryPolicy, opts ...Option) (*Router,
 	r := &Router{
 		backend: backend,
 		policy:  policy,
+		errors:  make(chan error, 1),
 	}
 	for _, opt := range opts {
 		opt(r)
@@ -188,6 +191,7 @@ func (r *Router) Start(ctx context.Context) error {
 	select {
 	case <-r.router.Running():
 	case err := <-runErr:
+		close(r.errors)
 		if err == nil {
 			return errors.New("event router stopped during startup")
 		}
@@ -195,27 +199,34 @@ func (r *Router) Start(ctx context.Context) error {
 	}
 
 	go func() {
+		defer close(r.errors)
 		err := <-runErr
-		// if ctx is canceled, we don't want to log an error because it's expected behavior
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || r.shuttingDown.Load() {
 			return
 		}
+		if err == nil {
+			err = errors.New("event router stopped unexpectedly without error")
+		} else {
+			err = fmt.Errorf("event router stopped unexpectedly: %w", err)
+		}
+		r.errors <- err
 		metrics.Counter("application_event_router_stops_total", map[string]any{
 			"reason": "unexpected",
 		}).Inc()
-		// otherwise this is unexpected and we should log it
-		if err != nil {
-			r.logger.ErrorContext(ctx, "event router stopped", slog.Any("error", err))
-			return
-		}
-		// should not happen, but log it just in case
-		r.logger.ErrorContext(ctx, "event router stopped unexpectedly without error")
+		r.logger.ErrorContext(ctx, "event router stopped", slog.Any("error", err))
 	}()
 
 	return nil
 }
 
+// Errors reports at most one unexpected termination after Start succeeds.
+// It closes when the router stops; normal shutdown closes it without an error.
+func (r *Router) Errors() <-chan error {
+	return r.errors
+}
+
 func (r *Router) Shutdown(ctx context.Context) error {
+	r.shuttingDown.Store(true)
 	done := make(chan error, 1)
 	go func() {
 		routerErr := r.router.Close()

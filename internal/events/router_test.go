@@ -59,6 +59,69 @@ func TestRouterMovesMessageToDeadLetterTopicAfterRetries(t *testing.T) {
 	assertDeadLetterDelivery(t, 2, false, 3)
 }
 
+func TestRouterReportsUnexpectedStop(t *testing.T) {
+	router, backend, _ := newRunningTestRouter(t)
+	if err := backend.Shutdown(t.Context()); err != nil {
+		t.Fatalf("stop event backend: %v", err)
+	}
+
+	err, open := waitForRouterError(t, router.Errors())
+	if !open || err == nil {
+		t.Fatalf("router termination = (%v, %t), want an unexpected termination error", err, open)
+	}
+	if err, open := waitForRouterError(t, router.Errors()); open {
+		t.Fatalf("router reported more than one failure: %v", err)
+	}
+}
+
+func TestRouterShutdownDoesNotReportFailure(t *testing.T) {
+	router, _, _ := newRunningTestRouter(t)
+	if err := router.Shutdown(t.Context()); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+	if err, open := waitForRouterError(t, router.Errors()); open {
+		t.Fatalf("explicit shutdown reported a failure: %v", err)
+	}
+}
+
+func TestRouterCancellationDoesNotReportFailure(t *testing.T) {
+	router, _, cancel := newRunningTestRouter(t)
+	cancel()
+	if err, open := waitForRouterError(t, router.Errors()); open {
+		t.Fatalf("context cancellation reported a failure: %v", err)
+	}
+}
+
+func newRunningTestRouter(t *testing.T) (*events.Router, *gochan.GoChan, context.CancelFunc) {
+	t.Helper()
+	backend := gochan.New(gochan.WithLogger(slog.New(slog.DiscardHandler)))
+	router, err := events.NewRouter(backend, events.DeliveryPolicy{
+		DeadLetterTopicSuffix: routerDLQSuffix,
+		CloseTimeout:          time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewRouter() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	registerRouterCleanup(t, router, cancel)
+	if err := router.Subscribe("lifecycle", func(context.Context, []byte) error { return nil }); err != nil {
+		t.Fatalf("Subscribe() error = %v", err)
+	}
+	startRouter(t, router, ctx)
+	return router, backend, cancel
+}
+
+func waitForRouterError(t *testing.T, failures <-chan error) (error, bool) {
+	t.Helper()
+	select {
+	case err, open := <-failures:
+		return err, open
+	case <-time.After(routerTestTimeout):
+		t.Fatal("timed out waiting for router termination")
+		return nil, false
+	}
+}
+
 func assertDeadLetterDelivery(t *testing.T, maxRetries int, permanent bool, wantAttempts int32) {
 	t.Helper()
 	backend := gochan.New(gochan.WithLogger(slog.New(slog.DiscardHandler)))

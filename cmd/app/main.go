@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -534,11 +535,12 @@ func main() {
 		go outboxPublisher.Run(ctx, cfg.Outbox.WorkerRunInterval, cfg.Outbox.WorkerBatchSize)
 	}
 
-	// Define readiness check function for both HTTP and GRPC servers.
-	// Any Ping() fail will change status of readiness endpoint to failing.
-	// Subsequently, kubernetes will stop sending traffic to this pod.
-	// Kubernetes will also restart the pod if liveness probe fails.
+	// readinessCancel used to dynamically detect failures and disable probe
+	readinessCtx, readinessCancel := context.WithCancelCause(ctx)
 	readinessCheck := func(ctx context.Context) error {
+		if err := context.Cause(readinessCtx); err != nil {
+			return err
+		}
 		return errors.Join(
 			dbEngine.Ping(ctx),
 			cacheEngine.Ping(ctx),
@@ -650,6 +652,11 @@ func main() {
 			log.Fatalf("failed to start grpc server: %v\n", err)
 		}
 	}()
+
+	go watchReadiness(
+		ctx, readinessCancel,
+		eventsEngine.Errors(),
+	)
 
 	// entities passed into shutdown are processed in the same order
 	shutdown(
@@ -1031,6 +1038,48 @@ func initTracing(ctx context.Context, cfg *config.Config) ShutMeDown {
 		slog.Float64("sampling_rate", cfg.Tracing.SamplingRate))
 
 	return tp
+}
+
+func watchReadiness(
+	ctx context.Context, readinessCancel context.CancelCauseFunc, observables ...<-chan error,
+) {
+	watchCtx, stopWatching := context.WithCancel(ctx)
+	defer stopWatching()
+
+	var watchers sync.WaitGroup
+	var failure sync.Once
+
+	for _, observable := range observables {
+		if observable == nil {
+			continue
+		}
+		watchers.Go(func() {
+			for {
+				select {
+				// shutdown signal received, stop watching (parent context canceled)
+				case <-watchCtx.Done():
+					return
+				// error received from observable, mark unready and stop watching
+				case err, ok := <-observable:
+					// if observable channel is closed or context canceled, stop watching
+					if !ok || watchCtx.Err() != nil {
+						return
+					}
+					// we received genuine error from observable channel
+					if err != nil {
+						failure.Do(func() {
+							readinessCancel(err)
+							// cancel watchCtx to stop all other watchers
+							stopWatching()
+						})
+						return
+					}
+				}
+			}
+		})
+	}
+
+	watchers.Wait()
 }
 
 func shutdown(cfg *config.Config, mainCancel context.CancelFunc, closers ...ShutMeDown) {

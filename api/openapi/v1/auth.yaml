@@ -33,8 +33,16 @@ paths:
                 $ref: '#/components/schemas/User'
         '400':
           description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '409':
           description: User already exists
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
@@ -62,8 +70,16 @@ paths:
                 $ref: '#/components/schemas/Tokens'
         '400':
           description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: User inactive
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
@@ -92,8 +108,16 @@ paths:
                 $ref: '#/components/schemas/Tokens'
         '400':
           description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Invalid, expired, reused or inactive session
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
@@ -118,8 +142,16 @@ paths:
           description: Tokens invalidated successfully
         '400':
           description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Invalid refresh token
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '503':
           $ref: '#/components/responses/AuthenticationUnavailable'
         default:
@@ -144,6 +176,10 @@ paths:
                 $ref: '#/components/schemas/User'
         '401':
           description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         default:
           $ref: '#/components/responses/UnexpectedResponse'
     put:
@@ -168,8 +204,16 @@ paths:
           description: User updated
         '400':
           description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
@@ -212,8 +256,16 @@ paths:
                   $ref: '#/components/schemas/User'
         '400':
           description: Invalid pagination
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         default:
           $ref: '#/components/responses/UnexpectedResponse'
     post:
@@ -241,8 +293,16 @@ paths:
                 $ref: '#/components/schemas/User'
         '400':
           description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         default:
           $ref: '#/components/responses/UnexpectedResponse'
   /users/{uuid}:
@@ -272,10 +332,22 @@ paths:
                 $ref: '#/components/schemas/User'
         '400':
           description: Invalid UUID
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: User not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         default:
           $ref: '#/components/responses/UnexpectedResponse'
     put:
@@ -306,10 +378,22 @@ paths:
           description: User updated
         '400':
           description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: User not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         default:
           $ref: '#/components/responses/UnexpectedResponse'
     delete:
@@ -334,10 +418,22 @@ paths:
           description: User deleted
         '400':
           description: Invalid UUID
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: User not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         default:
           $ref: '#/components/responses/UnexpectedResponse'
 # ---
@@ -355,19 +451,19 @@ components:
     RateLimited:
       description: Too many authentication attempts
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: '#/components/schemas/Error'
     AuthenticationUnavailable:
       description: Authentication storage or rate limiter is unavailable
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: '#/components/schemas/Error'
     UnexpectedResponse:
       description: Unexpected response
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:

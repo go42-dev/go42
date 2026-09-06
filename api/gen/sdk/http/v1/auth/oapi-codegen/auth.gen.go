@@ -1288,12 +1288,16 @@ type LoginResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *Tokens
-	// JSON429 the response for an HTTP 429 `application/json` response
-	JSON429 *RateLimited
-	// JSON503 the response for an HTTP 503 `application/json` response
-	JSON503 *AuthenticationUnavailable
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *UnexpectedResponse
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
+	ApplicationproblemJSON429 *RateLimited
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *AuthenticationUnavailable
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *UnexpectedResponse
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -1301,19 +1305,29 @@ func (r LoginResponse) GetJSON200() *Tokens {
 	return r.JSON200
 }
 
-// GetJSON429 returns the response for an HTTP 429 `application/json` response
-func (r LoginResponse) GetJSON429() *RateLimited {
-	return r.JSON429
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r LoginResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
 }
 
-// GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r LoginResponse) GetJSON503() *AuthenticationUnavailable {
-	return r.JSON503
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r LoginResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
 }
 
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r LoginResponse) GetJSONDefault() *UnexpectedResponse {
-	return r.JSONDefault
+// GetApplicationproblemJSON429 returns the response for an HTTP 429 `application/problem+json` response
+func (r LoginResponse) GetApplicationproblemJSON429() *RateLimited {
+	return r.ApplicationproblemJSON429
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r LoginResponse) GetApplicationproblemJSON503() *AuthenticationUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r LoginResponse) GetApplicationproblemJSONDefault() *UnexpectedResponse {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1348,20 +1362,34 @@ func (r LoginResponse) ContentType() string {
 type LogoutResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	// JSON503 the response for an HTTP 503 `application/json` response
-	JSON503 *AuthenticationUnavailable
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *UnexpectedResponse
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *AuthenticationUnavailable
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *UnexpectedResponse
 }
 
-// GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r LogoutResponse) GetJSON503() *AuthenticationUnavailable {
-	return r.JSON503
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r LogoutResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
 }
 
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r LogoutResponse) GetJSONDefault() *UnexpectedResponse {
-	return r.JSONDefault
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r LogoutResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r LogoutResponse) GetApplicationproblemJSON503() *AuthenticationUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r LogoutResponse) GetApplicationproblemJSONDefault() *UnexpectedResponse {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1398,12 +1426,16 @@ type RefreshResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *Tokens
-	// JSON429 the response for an HTTP 429 `application/json` response
-	JSON429 *RateLimited
-	// JSON503 the response for an HTTP 503 `application/json` response
-	JSON503 *AuthenticationUnavailable
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *UnexpectedResponse
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
+	ApplicationproblemJSON429 *RateLimited
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *AuthenticationUnavailable
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *UnexpectedResponse
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -1411,19 +1443,29 @@ func (r RefreshResponse) GetJSON200() *Tokens {
 	return r.JSON200
 }
 
-// GetJSON429 returns the response for an HTTP 429 `application/json` response
-func (r RefreshResponse) GetJSON429() *RateLimited {
-	return r.JSON429
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r RefreshResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
 }
 
-// GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r RefreshResponse) GetJSON503() *AuthenticationUnavailable {
-	return r.JSON503
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r RefreshResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
 }
 
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r RefreshResponse) GetJSONDefault() *UnexpectedResponse {
-	return r.JSONDefault
+// GetApplicationproblemJSON429 returns the response for an HTTP 429 `application/problem+json` response
+func (r RefreshResponse) GetApplicationproblemJSON429() *RateLimited {
+	return r.ApplicationproblemJSON429
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r RefreshResponse) GetApplicationproblemJSON503() *AuthenticationUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RefreshResponse) GetApplicationproblemJSONDefault() *UnexpectedResponse {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1460,12 +1502,16 @@ type SignupResponse struct {
 	HTTPResponse *http.Response
 	// JSON201 the response for an HTTP 201 `application/json` response
 	JSON201 *User
-	// JSON429 the response for an HTTP 429 `application/json` response
-	JSON429 *RateLimited
-	// JSON503 the response for an HTTP 503 `application/json` response
-	JSON503 *AuthenticationUnavailable
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *UnexpectedResponse
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Error
+	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
+	ApplicationproblemJSON429 *RateLimited
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *AuthenticationUnavailable
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *UnexpectedResponse
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
@@ -1473,19 +1519,29 @@ func (r SignupResponse) GetJSON201() *User {
 	return r.JSON201
 }
 
-// GetJSON429 returns the response for an HTTP 429 `application/json` response
-func (r SignupResponse) GetJSON429() *RateLimited {
-	return r.JSON429
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SignupResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
 }
 
-// GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r SignupResponse) GetJSON503() *AuthenticationUnavailable {
-	return r.JSON503
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r SignupResponse) GetApplicationproblemJSON409() *Error {
+	return r.ApplicationproblemJSON409
 }
 
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r SignupResponse) GetJSONDefault() *UnexpectedResponse {
-	return r.JSONDefault
+// GetApplicationproblemJSON429 returns the response for an HTTP 429 `application/problem+json` response
+func (r SignupResponse) GetApplicationproblemJSON429() *RateLimited {
+	return r.ApplicationproblemJSON429
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r SignupResponse) GetApplicationproblemJSON503() *AuthenticationUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SignupResponse) GetApplicationproblemJSONDefault() *UnexpectedResponse {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1522,8 +1578,12 @@ type UsersListResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *[]User
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *UnexpectedResponse
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *UnexpectedResponse
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -1531,9 +1591,19 @@ func (r UsersListResponse) GetJSON200() *[]User {
 	return r.JSON200
 }
 
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r UsersListResponse) GetJSONDefault() *UnexpectedResponse {
-	return r.JSONDefault
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r UsersListResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UsersListResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UsersListResponse) GetApplicationproblemJSONDefault() *UnexpectedResponse {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1570,8 +1640,12 @@ type UsersCreateResponse struct {
 	HTTPResponse *http.Response
 	// JSON201 the response for an HTTP 201 `application/json` response
 	JSON201 *User
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *UnexpectedResponse
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *UnexpectedResponse
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
@@ -1579,9 +1653,19 @@ func (r UsersCreateResponse) GetJSON201() *User {
 	return r.JSON201
 }
 
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r UsersCreateResponse) GetJSONDefault() *UnexpectedResponse {
-	return r.JSONDefault
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r UsersCreateResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UsersCreateResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UsersCreateResponse) GetApplicationproblemJSONDefault() *UnexpectedResponse {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1618,8 +1702,10 @@ type UsersMeReadResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *User
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *UnexpectedResponse
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *UnexpectedResponse
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -1627,9 +1713,14 @@ func (r UsersMeReadResponse) GetJSON200() *User {
 	return r.JSON200
 }
 
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r UsersMeReadResponse) GetJSONDefault() *UnexpectedResponse {
-	return r.JSONDefault
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UsersMeReadResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UsersMeReadResponse) GetApplicationproblemJSONDefault() *UnexpectedResponse {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1664,27 +1755,41 @@ func (r UsersMeReadResponse) ContentType() string {
 type UsersMeUpdateResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	// JSON429 the response for an HTTP 429 `application/json` response
-	JSON429 *RateLimited
-	// JSON503 the response for an HTTP 503 `application/json` response
-	JSON503 *AuthenticationUnavailable
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *UnexpectedResponse
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
+	ApplicationproblemJSON429 *RateLimited
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *AuthenticationUnavailable
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *UnexpectedResponse
 }
 
-// GetJSON429 returns the response for an HTTP 429 `application/json` response
-func (r UsersMeUpdateResponse) GetJSON429() *RateLimited {
-	return r.JSON429
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r UsersMeUpdateResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
 }
 
-// GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r UsersMeUpdateResponse) GetJSON503() *AuthenticationUnavailable {
-	return r.JSON503
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UsersMeUpdateResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
 }
 
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r UsersMeUpdateResponse) GetJSONDefault() *UnexpectedResponse {
-	return r.JSONDefault
+// GetApplicationproblemJSON429 returns the response for an HTTP 429 `application/problem+json` response
+func (r UsersMeUpdateResponse) GetApplicationproblemJSON429() *RateLimited {
+	return r.ApplicationproblemJSON429
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r UsersMeUpdateResponse) GetApplicationproblemJSON503() *AuthenticationUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UsersMeUpdateResponse) GetApplicationproblemJSONDefault() *UnexpectedResponse {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1719,13 +1824,34 @@ func (r UsersMeUpdateResponse) ContentType() string {
 type UsersDeleteResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *UnexpectedResponse
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *UnexpectedResponse
 }
 
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r UsersDeleteResponse) GetJSONDefault() *UnexpectedResponse {
-	return r.JSONDefault
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r UsersDeleteResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UsersDeleteResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UsersDeleteResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UsersDeleteResponse) GetApplicationproblemJSONDefault() *UnexpectedResponse {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1762,8 +1888,14 @@ type UsersGetResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *User
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *UnexpectedResponse
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *UnexpectedResponse
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -1771,9 +1903,24 @@ func (r UsersGetResponse) GetJSON200() *User {
 	return r.JSON200
 }
 
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r UsersGetResponse) GetJSONDefault() *UnexpectedResponse {
-	return r.JSONDefault
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r UsersGetResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UsersGetResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UsersGetResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UsersGetResponse) GetApplicationproblemJSONDefault() *UnexpectedResponse {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1808,13 +1955,34 @@ func (r UsersGetResponse) ContentType() string {
 type UsersUpdateResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *UnexpectedResponse
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *UnexpectedResponse
 }
 
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r UsersUpdateResponse) GetJSONDefault() *UnexpectedResponse {
-	return r.JSONDefault
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r UsersUpdateResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UsersUpdateResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UsersUpdateResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UsersUpdateResponse) GetApplicationproblemJSONDefault() *UnexpectedResponse {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -2113,32 +2281,40 @@ func ParseLoginResponse(rsp *http.Response) (*LoginResponse, error) {
 		}
 		response.JSON200 = &dest
 
-	case rsp.StatusCode == 400:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
-	case rsp.StatusCode == 403:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
 		var dest RateLimited
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON429 = &dest
+		response.ApplicationproblemJSON429 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest AuthenticationUnavailable
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON503 = &dest
+		response.ApplicationproblemJSON503 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSONDefault = &dest
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2162,25 +2338,33 @@ func ParseLogoutResponse(rsp *http.Response) (*LogoutResponse, error) {
 	case rsp.StatusCode == 200:
 		break // No content-type
 
-	case rsp.StatusCode == 400:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
-	case rsp.StatusCode == 401:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest AuthenticationUnavailable
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON503 = &dest
+		response.ApplicationproblemJSON503 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSONDefault = &dest
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2208,32 +2392,40 @@ func ParseRefreshResponse(rsp *http.Response) (*RefreshResponse, error) {
 		}
 		response.JSON200 = &dest
 
-	case rsp.StatusCode == 400:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
-	case rsp.StatusCode == 401:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
 		var dest RateLimited
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON429 = &dest
+		response.ApplicationproblemJSON429 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest AuthenticationUnavailable
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON503 = &dest
+		response.ApplicationproblemJSON503 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSONDefault = &dest
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2261,32 +2453,40 @@ func ParseSignupResponse(rsp *http.Response) (*SignupResponse, error) {
 		}
 		response.JSON201 = &dest
 
-	case rsp.StatusCode == 400:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
-	case rsp.StatusCode == 409:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
 		var dest RateLimited
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON429 = &dest
+		response.ApplicationproblemJSON429 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest AuthenticationUnavailable
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON503 = &dest
+		response.ApplicationproblemJSON503 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSONDefault = &dest
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2314,18 +2514,26 @@ func ParseUsersListResponse(rsp *http.Response) (*UsersListResponse, error) {
 		}
 		response.JSON200 = &dest
 
-	case rsp.StatusCode == 400:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
-	case rsp.StatusCode == 401:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSONDefault = &dest
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2353,18 +2561,26 @@ func ParseUsersCreateResponse(rsp *http.Response) (*UsersCreateResponse, error) 
 		}
 		response.JSON201 = &dest
 
-	case rsp.StatusCode == 400:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
-	case rsp.StatusCode == 401:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSONDefault = &dest
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2392,15 +2608,19 @@ func ParseUsersMeReadResponse(rsp *http.Response) (*UsersMeReadResponse, error) 
 		}
 		response.JSON200 = &dest
 
-	case rsp.StatusCode == 401:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSONDefault = &dest
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2424,32 +2644,40 @@ func ParseUsersMeUpdateResponse(rsp *http.Response) (*UsersMeUpdateResponse, err
 	case rsp.StatusCode == 200:
 		break // No content-type
 
-	case rsp.StatusCode == 400:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
-	case rsp.StatusCode == 401:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
 		var dest RateLimited
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON429 = &dest
+		response.ApplicationproblemJSON429 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest AuthenticationUnavailable
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON503 = &dest
+		response.ApplicationproblemJSON503 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSONDefault = &dest
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2473,21 +2701,33 @@ func ParseUsersDeleteResponse(rsp *http.Response) (*UsersDeleteResponse, error) 
 	case rsp.StatusCode == 200:
 		break // No content-type
 
-	case rsp.StatusCode == 400:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
-	case rsp.StatusCode == 401:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
-	case rsp.StatusCode == 404:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSONDefault = &dest
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2515,21 +2755,33 @@ func ParseUsersGetResponse(rsp *http.Response) (*UsersGetResponse, error) {
 		}
 		response.JSON200 = &dest
 
-	case rsp.StatusCode == 400:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
-	case rsp.StatusCode == 401:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
-	case rsp.StatusCode == 404:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSONDefault = &dest
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2553,21 +2805,33 @@ func ParseUsersUpdateResponse(rsp *http.Response) (*UsersUpdateResponse, error) 
 	case rsp.StatusCode == 200:
 		break // No content-type
 
-	case rsp.StatusCode == 400:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
-	case rsp.StatusCode == 401:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
-	case rsp.StatusCode == 404:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSONDefault = &dest
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2579,36 +2843,36 @@ func ParseUsersUpdateResponse(rsp *http.Response) (*UsersUpdateResponse, error) 
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"Ef5cNRmN3MtcajP5efzzeMQqPro5osv58n8DAA==",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

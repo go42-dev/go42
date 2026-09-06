@@ -27,6 +27,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
+	oapi "github.com/go42-dev/go42/api/gen/sdk/http/v1/auth/oapi-codegen"
+	ogen "github.com/go42-dev/go42/api/gen/sdk/http/v1/auth/ogen"
+	httpAPI "github.com/go42-dev/go42/internal/api/http"
 	"github.com/go42-dev/go42/internal/auth"
 	httpAdapter "github.com/go42-dev/go42/internal/auth/adapters/http/v1"
 	"github.com/go42-dev/go42/internal/auth/domain"
@@ -2109,4 +2112,170 @@ func TestAuthRateLimits_MissingConfigurationFailsClosed(t *testing.T) {
 	h := newServiceHarness(t, auth.WithRateLimiterEnabled(true), auth.WithLoginIPRequests(0))
 	err = h.service.CheckIPLimit(t.Context(), domain.AuthenticationActionLogin, "192.0.2.1")
 	assertErrorIs(t, err, domain.ErrAuthenticationUnavailable)
+}
+
+func TestAuthHTTPClientsDecodeLoginErrors(t *testing.T) {
+	const password = "TestPassword123!"
+	for _, test := range []struct {
+		name      string
+		email     string
+		limited   bool
+		configure func(*serviceHarness)
+		status    int
+	}{
+		{
+			name: "invalid request", email: "not-an-email", status: http.StatusBadRequest,
+		},
+		{
+			name: "invalid credentials", email: testUserEmail, status: http.StatusBadRequest,
+			configure: func(h *serviceHarness) {
+				h.repository.EXPECT().GetUserByEmail(gomock.Any(), testUserEmail).
+					Return(nil, domain.ErrEntityNotFound).Times(2)
+			},
+		},
+		{
+			name: "auth rate limited", email: testUserEmail, limited: true, status: http.StatusTooManyRequests,
+			configure: func(h *serviceHarness) {
+				h.cache.EXPECT().
+					AllowRateLimit(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(false, nil).Times(2)
+			},
+		},
+		{
+			name: "auth limiter unavailable", email: testUserEmail, limited: true, status: http.StatusServiceUnavailable,
+			configure: func(h *serviceHarness) {
+				h.cache.EXPECT().
+					AllowRateLimit(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(false, errors.New("cache offline")).Times(2)
+			},
+		},
+		{
+			name: "database unavailable", email: testUserEmail, status: http.StatusServiceUnavailable,
+			configure: func(h *serviceHarness) {
+				h.repository.EXPECT().GetUserByEmail(gomock.Any(), testUserEmail).
+					Return(nil, errors.New("database offline")).Times(2)
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newServiceHarness(t, auth.WithRateLimiterEnabled(test.limited))
+			if test.configure != nil {
+				test.configure(h)
+			}
+			e := echo.New()
+			httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+			server := httptest.NewServer(e)
+			t.Cleanup(server.Close)
+
+			t.Run("ogen", func(t *testing.T) {
+				client, err := ogen.NewClient(server.URL+"/api/v1", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				response, err := client.Login(t.Context(), &ogen.LoginRequest{Email: test.email, Password: password})
+				if err != nil {
+					t.Fatalf("decode login response: %v", err)
+				}
+				var problem *ogen.Error
+				var status int
+				switch response := response.(type) {
+				case *ogen.LoginBadRequest:
+					problem, status = (*ogen.Error)(response), http.StatusBadRequest
+				case *ogen.LoginTooManyRequests:
+					problem, status = (*ogen.Error)(response), http.StatusTooManyRequests
+				case *ogen.LoginServiceUnavailable:
+					problem, status = (*ogen.Error)(response), http.StatusServiceUnavailable
+				default:
+					t.Fatalf("unexpected login response: %T", response)
+				}
+				if status != test.status || int(problem.Status) != test.status ||
+					problem.Title != http.StatusText(test.status) || problem.Type != "/api/v1/auth/login" {
+					t.Fatalf(
+						"login response = %+v (HTTP %d), want problem details for HTTP %d",
+						problem,
+						status,
+						test.status,
+					)
+				}
+			})
+
+			t.Run("oapi-codegen", func(t *testing.T) {
+				client, err := oapi.NewClientWithResponses(server.URL + "/api/v1")
+				if err != nil {
+					t.Fatal(err)
+				}
+				response, err := client.LoginWithResponse(t.Context(), oapi.LoginJSONRequestBody{
+					Email: test.email, Password: password,
+				})
+				if err != nil {
+					t.Fatalf("decode login response: %v", err)
+				}
+				var problem *oapi.Error
+				switch test.status {
+				case http.StatusBadRequest:
+					problem = response.ApplicationproblemJSON400
+				case http.StatusTooManyRequests:
+					problem = response.ApplicationproblemJSON429
+				case http.StatusServiceUnavailable:
+					problem = response.ApplicationproblemJSON503
+				}
+				if response.StatusCode() != test.status {
+					t.Fatalf("login status = %d, want %d", response.StatusCode(), test.status)
+				}
+				if response.ContentType() != httpAPI.MIMEApplicationProblemJSON {
+					t.Fatalf("login content type = %q, want problem+json", response.ContentType())
+				}
+				if problem == nil || int(problem.Status) != test.status ||
+					problem.Title != http.StatusText(test.status) || problem.Type != "/api/v1/auth/login" {
+					t.Fatalf("login problem = %+v, want problem details for HTTP %d", problem, test.status)
+				}
+			})
+		})
+	}
+}
+
+func TestAuthHTTPClientsDecodeInvalidRefresh(t *testing.T) {
+	h := newServiceHarness(t)
+	e := echo.New()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+	server := httptest.NewServer(e)
+	t.Cleanup(server.Close)
+
+	t.Run("ogen", func(t *testing.T) {
+		client, err := ogen.NewClient(server.URL+"/api/v1", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := client.Refresh(t.Context(), &ogen.RefreshRequest{Token: "invalid-token"})
+		if err != nil {
+			t.Fatalf("decode refresh response: %v", err)
+		}
+		problem, ok := response.(*ogen.RefreshUnauthorized)
+		if !ok || problem.Status != http.StatusUnauthorized ||
+			problem.Title != http.StatusText(http.StatusUnauthorized) || problem.Type != "/api/v1/auth/refresh" {
+			t.Fatalf("refresh response = %+v, want typed 401 problem details", response)
+		}
+	})
+
+	t.Run("oapi-codegen", func(t *testing.T) {
+		client, err := oapi.NewClientWithResponses(server.URL + "/api/v1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := client.RefreshWithResponse(t.Context(), oapi.RefreshJSONRequestBody{Token: "invalid-token"})
+		if err != nil {
+			t.Fatalf("decode refresh response: %v", err)
+		}
+		problem := response.ApplicationproblemJSON401
+		if response.StatusCode() != http.StatusUnauthorized {
+			t.Fatalf("refresh status = %d, want 401", response.StatusCode())
+		}
+		if response.ContentType() != httpAPI.MIMEApplicationProblemJSON {
+			t.Fatalf("refresh content type = %q, want problem+json", response.ContentType())
+		}
+		if problem == nil || problem.Status != http.StatusUnauthorized ||
+			problem.Title != http.StatusText(http.StatusUnauthorized) || problem.Type != "/api/v1/auth/refresh" {
+			t.Fatalf("refresh problem = %+v, want typed 401 problem details", problem)
+		}
+	})
 }

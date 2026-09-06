@@ -137,7 +137,7 @@ func (s *Error) SetErrors(val []ErrorErrorsItem) {
 	s.Errors = val
 }
 
-func (*Error) logoutRes() {}
+func (*Error) usersMeReadRes() {}
 
 type ErrorErrorsItem struct{}
 
@@ -166,13 +166,11 @@ func (s *Jwt) SetRoles(val []string) {
 	s.Roles = val
 }
 
-// LoginBadRequest is response for Login operation.
-type LoginBadRequest struct{}
+type LoginBadRequest Error
 
 func (*LoginBadRequest) loginRes() {}
 
-// LoginForbidden is response for Login operation.
-type LoginForbidden struct{}
+type LoginForbidden Error
 
 func (*LoginForbidden) loginRes() {}
 
@@ -210,8 +208,7 @@ type LoginTooManyRequests Error
 
 func (*LoginTooManyRequests) loginRes() {}
 
-// LogoutBadRequest is response for Logout operation.
-type LogoutBadRequest struct{}
+type LogoutBadRequest Error
 
 func (*LogoutBadRequest) logoutRes() {}
 
@@ -247,8 +244,11 @@ func (s *LogoutRequest) SetRefreshToken(val string) {
 	s.RefreshToken = val
 }
 
-// LogoutUnauthorized is response for Logout operation.
-type LogoutUnauthorized struct{}
+type LogoutServiceUnavailable Error
+
+func (*LogoutServiceUnavailable) logoutRes() {}
+
+type LogoutUnauthorized Error
 
 func (*LogoutUnauthorized) logoutRes() {}
 
@@ -344,8 +344,7 @@ func (o OptString) Or(d string) string {
 	return d
 }
 
-// RefreshBadRequest is response for Refresh operation.
-type RefreshBadRequest struct{}
+type RefreshBadRequest Error
 
 func (*RefreshBadRequest) refreshRes() {}
 
@@ -372,8 +371,7 @@ type RefreshTooManyRequests Error
 
 func (*RefreshTooManyRequests) refreshRes() {}
 
-// RefreshUnauthorized is response for Refresh operation.
-type RefreshUnauthorized struct{}
+type RefreshUnauthorized Error
 
 func (*RefreshUnauthorized) refreshRes() {}
 
@@ -403,13 +401,11 @@ func (s *SignUpRequest) SetPassword(val string) {
 	s.Password = val
 }
 
-// SignupBadRequest is response for Signup operation.
-type SignupBadRequest struct{}
+type SignupBadRequest Error
 
 func (*SignupBadRequest) signupRes() {}
 
-// SignupConflict is response for Signup operation.
-type SignupConflict struct{}
+type SignupConflict Error
 
 func (*SignupConflict) signupRes() {}
 
@@ -615,23 +611,19 @@ func (*User) usersCreateRes() {}
 func (*User) usersGetRes()    {}
 func (*User) usersMeReadRes() {}
 
-// UsersCreateBadRequest is response for UsersCreate operation.
-type UsersCreateBadRequest struct{}
+type UsersCreateBadRequest Error
 
 func (*UsersCreateBadRequest) usersCreateRes() {}
 
-// UsersCreateUnauthorized is response for UsersCreate operation.
-type UsersCreateUnauthorized struct{}
+type UsersCreateUnauthorized Error
 
 func (*UsersCreateUnauthorized) usersCreateRes() {}
 
-// UsersDeleteBadRequest is response for UsersDelete operation.
-type UsersDeleteBadRequest struct{}
+type UsersDeleteBadRequest Error
 
 func (*UsersDeleteBadRequest) usersDeleteRes() {}
 
-// UsersDeleteNotFound is response for UsersDelete operation.
-type UsersDeleteNotFound struct{}
+type UsersDeleteNotFound Error
 
 func (*UsersDeleteNotFound) usersDeleteRes() {}
 
@@ -640,28 +632,23 @@ type UsersDeleteOK struct{}
 
 func (*UsersDeleteOK) usersDeleteRes() {}
 
-// UsersDeleteUnauthorized is response for UsersDelete operation.
-type UsersDeleteUnauthorized struct{}
+type UsersDeleteUnauthorized Error
 
 func (*UsersDeleteUnauthorized) usersDeleteRes() {}
 
-// UsersGetBadRequest is response for UsersGet operation.
-type UsersGetBadRequest struct{}
+type UsersGetBadRequest Error
 
 func (*UsersGetBadRequest) usersGetRes() {}
 
-// UsersGetNotFound is response for UsersGet operation.
-type UsersGetNotFound struct{}
+type UsersGetNotFound Error
 
 func (*UsersGetNotFound) usersGetRes() {}
 
-// UsersGetUnauthorized is response for UsersGet operation.
-type UsersGetUnauthorized struct{}
+type UsersGetUnauthorized Error
 
 func (*UsersGetUnauthorized) usersGetRes() {}
 
-// UsersListBadRequest is response for UsersList operation.
-type UsersListBadRequest struct{}
+type UsersListBadRequest Error
 
 func (*UsersListBadRequest) usersListRes() {}
 
@@ -669,18 +656,11 @@ type UsersListOKApplicationJSON []User
 
 func (*UsersListOKApplicationJSON) usersListRes() {}
 
-// UsersListUnauthorized is response for UsersList operation.
-type UsersListUnauthorized struct{}
+type UsersListUnauthorized Error
 
 func (*UsersListUnauthorized) usersListRes() {}
 
-// UsersMeReadUnauthorized is response for UsersMeRead operation.
-type UsersMeReadUnauthorized struct{}
-
-func (*UsersMeReadUnauthorized) usersMeReadRes() {}
-
-// UsersMeUpdateBadRequest is response for UsersMeUpdate operation.
-type UsersMeUpdateBadRequest struct{}
+type UsersMeUpdateBadRequest Error
 
 func (*UsersMeUpdateBadRequest) usersMeUpdateRes() {}
 
@@ -697,18 +677,15 @@ type UsersMeUpdateTooManyRequests Error
 
 func (*UsersMeUpdateTooManyRequests) usersMeUpdateRes() {}
 
-// UsersMeUpdateUnauthorized is response for UsersMeUpdate operation.
-type UsersMeUpdateUnauthorized struct{}
+type UsersMeUpdateUnauthorized Error
 
 func (*UsersMeUpdateUnauthorized) usersMeUpdateRes() {}
 
-// UsersUpdateBadRequest is response for UsersUpdate operation.
-type UsersUpdateBadRequest struct{}
+type UsersUpdateBadRequest Error
 
 func (*UsersUpdateBadRequest) usersUpdateRes() {}
 
-// UsersUpdateNotFound is response for UsersUpdate operation.
-type UsersUpdateNotFound struct{}
+type UsersUpdateNotFound Error
 
 func (*UsersUpdateNotFound) usersUpdateRes() {}
 
@@ -717,7 +694,6 @@ type UsersUpdateOK struct{}
 
 func (*UsersUpdateOK) usersUpdateRes() {}
 
-// UsersUpdateUnauthorized is response for UsersUpdate operation.
-type UsersUpdateUnauthorized struct{}
+type UsersUpdateUnauthorized Error
 
 func (*UsersUpdateUnauthorized) usersUpdateRes() {}

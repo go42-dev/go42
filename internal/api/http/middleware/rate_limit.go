@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/labstack/echo/v5"
 )
@@ -26,7 +25,7 @@ func NewRateLimiter(limiter rateLimiterAcessor) echo.MiddlewareFunc {
 				return fmt.Errorf("rate limiter unavailable: %w", err)
 			}
 			if !allowed {
-				return c.NoContent(http.StatusTooManyRequests)
+				return echo.ErrTooManyRequests
 			}
 			return next(c)
 		}
