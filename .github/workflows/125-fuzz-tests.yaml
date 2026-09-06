@@ -24,51 +24,13 @@ on:
 permissions: {}
 
 jobs:
-  discover:
-    name: Discover fuzz targets
-    runs-on: ${{ inputs.runs_on || 'ubuntu-latest' }}
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    outputs:
-      matrix: ${{ steps.targets.outputs.matrix }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Setup Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-      - name: Discover fuzz targets
-        id: targets
-        run: |-
-          tests=$(go test -json -list '^Fuzz' ./...) || { printf '%s\n' "$tests"; exit 1; }
-          module=$(go list -m)
-          matrix=$(printf '%s\n' "$tests" | jq -sc --arg module "$module" '
-            [.[] | select(.Action == "output")
-            | select(.Output | test("^Fuzz[[:alnum:]_]*\n$"))
-            | {package: ("." + (.Package | ltrimstr($module))), target: (.Output | rtrimstr("\n"))}]
-            | sort_by(.package, .target)
-            | {include: .}
-          ')
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-
   fuzz-tests:
-    name: ${{ matrix.package }} / ${{ matrix.target }}
-    needs: discover
-    if: ${{ needs.discover.outputs.matrix != '{"include":[]}' }}
+    name: fuzz-tests
     runs-on: ${{ inputs.runs_on || 'ubuntu-latest' }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
     env:
-      FUZZ_PACKAGE: ${{ matrix.package }}
-      FUZZ_TARGET: ${{ matrix.target }}
       FUZZ_TIME: ${{ inputs.fuzz_time || '5m' }}
     steps:
       - name: Checkout repository
@@ -87,17 +49,17 @@ jobs:
         with:
           path: ${{ steps.corpus.outputs.path }}
           # A new key lets successful runs save newly discovered inputs.
-          key: fuzz-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.package }}-${{ matrix.target }}-${{ hashFiles('go.mod')
-            }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: fuzz-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.mod') }}-${{ github.run_id }}-${{ github.run_attempt
+            }}
           restore-keys: |
-            fuzz-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.package }}-${{ matrix.target }}-${{ hashFiles('go.mod') }}-
-      - name: Fuzz target
-        run: go test -run '^$' -fuzz "^${FUZZ_TARGET}$" -fuzztime "$FUZZ_TIME" -parallel 2 "$FUZZ_PACKAGE"
+            fuzz-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.mod') }}-
+      - name: Fuzz all targets
+        run: go run ./cmd/fuzz -fuzztime "$FUZZ_TIME"
       - name: Upload failing corpus for reproduction
         if: ${{ failure() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: fuzz-failure-${{ strategy.job-index }}-${{ matrix.target }}
-          path: ${{ matrix.package }}/testdata/fuzz/**
+          name: fuzz-failures-${{ github.run_attempt }}
+          path: '**/testdata/fuzz/**'
           if-no-files-found: ignore
           retention-days: 7

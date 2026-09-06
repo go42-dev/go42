@@ -1,5 +1,5 @@
-{{- $databaseEngine := default "sqlite" (index .Values.env "DATABASE_ENGINE") -}}
-{{- if and (eq $databaseEngine "sqlite") (gt (int .Values.replicaCount) 1) -}}
+{{- $usesSQLite := include "go42.usesSQLite" . -}}
+{{- if and $usesSQLite (gt (int .Values.replicaCount) 1) -}}
 {{- fail "SQLite deployments support only one replica; use MySQL or PostgreSQL to scale horizontally" -}}
 {{- end }}
 apiVersion: apps/v1
@@ -10,7 +10,7 @@ metadata:
     {{- include "go42.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
-  {{- if eq $databaseEngine "sqlite" }}
+  {{- if $usesSQLite }}
   strategy:
     type: Recreate
   {{- end }}
@@ -45,7 +45,7 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- if or .Values.persistence.enabled (eq $databaseEngine "sqlite") }}
+          {{- if $usesSQLite }}
           volumeMounts:
             - name: data
               mountPath: /data
@@ -76,7 +76,7 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if or .Values.persistence.enabled (eq $databaseEngine "sqlite") }}
+      {{- if $usesSQLite }}
       volumes:
         - name: data
           {{- if .Values.persistence.enabled }}

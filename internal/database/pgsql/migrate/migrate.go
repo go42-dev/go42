@@ -16,9 +16,12 @@ import (
 )
 
 const (
-	lockID         = 1288990
-	lockTimeoutSec = 30
-	lockAttemptCnt = 15
+	// Keep the lock ID stable so different application versions coordinate.
+	lockID                 = 1288990
+	lockRetryIntervalSec   = 5
+	lockRetryCount         = 90 // 7.5 minutes before query time.
+	unlockRetryIntervalSec = 2
+	unlockRetryCount       = 30 // 1 minute before query time.
 )
 
 func Migrate(
@@ -93,8 +96,8 @@ func Migrate(
 	// this is required to prevent concurrent migrations that could lead to database inconsistencies
 	locker, err := lock.NewPostgresSessionLocker(
 		lock.WithLockID(lockID),
-		lock.WithLockTimeout(lockTimeoutSec, lockAttemptCnt),
-		lock.WithUnlockTimeout(lockTimeoutSec, lockAttemptCnt),
+		lock.WithLockTimeout(lockRetryIntervalSec, lockRetryCount),
+		lock.WithUnlockTimeout(unlockRetryIntervalSec, unlockRetryCount),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create session locker: %w", err)
@@ -104,7 +107,7 @@ func Migrate(
 		goose.DialectPostgres,
 		db,
 		os.DirFS(schemaPath),
-		goose.WithLogger(slog.NewLogLogger(logger.Handler(), slog.LevelInfo)),
+		goose.WithSlog(logger),
 		goose.WithVerbose(true),
 		goose.WithSessionLocker(locker),
 	)

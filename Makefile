@@ -89,13 +89,7 @@ test-unit:
 
 ## test-fuzz | run all fuzz targets (30 seconds per target)
 test-fuzz:
-	@set -eu; \
-	tests=$$(go test -json -list '^Fuzz' ./...) || { printf '%s\n' "$$tests"; exit 1; }; \
-	targets=$$(printf '%s\n' "$$tests" | jq -r 'select(.Action == "output") | select(.Output | test("^Fuzz[[:alnum:]_]*\n$$")) | [.Package, (.Output | rtrimstr("\n"))] | @tsv'); \
-	printf '%s\n' "$$targets" | while read -r package target; do \
-		[ -n "$$target" ] || continue; \
-		go test -run '^$$' -fuzz "^$${target}$$" -fuzztime 30s -parallel 2 "$$package"; \
-	done
+	@go run ./cmd/fuzz -fuzztime 30s
 
 ## test-integration | run integration tests (http and grpc)
 # -count=1 is needed to prevent caching of test results.

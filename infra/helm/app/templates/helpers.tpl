@@ -11,6 +11,13 @@
 {{- end -}}
 {{- end -}}
 
+{{/* Return a non-empty value only for SQLite, which owns the data volume. */}}
+{{- define "go42.usesSQLite" -}}
+{{- if eq (default "sqlite" (index .Values.env "DATABASE_ENGINE")) "sqlite" -}}
+true
+{{- end -}}
+{{- end -}}
+
 {{- define "go42.labels" -}}
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 {{ include "go42.selectorLabels" . }}
