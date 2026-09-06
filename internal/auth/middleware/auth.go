@@ -58,6 +58,11 @@ func NewAuthMiddleware(svc authServiceAccessor) func(next echo.HandlerFunc) echo
 				if err := processTokenAuth(
 					ctx, svc, ctx.Request().Header.Get(headerXApiToken),
 				); err != nil {
+					if errors.Is(err, domain.ErrAuthenticationUnavailable) {
+						return httpAPI.SendJSONError(ctx,
+							http.StatusServiceUnavailable,
+							http.StatusText(http.StatusServiceUnavailable))
+					}
 					return httpAPI.SendJSONError(ctx,
 						http.StatusUnauthorized, http.StatusText(http.StatusUnauthorized))
 				}
@@ -123,16 +128,19 @@ func processUserAuth(ctx *echo.Context, svc authServiceAccessor, token string) e
 func processTokenAuth(ctx *echo.Context, svc authServiceAccessor, token string) error {
 	apiToken, err := svc.ValidateAPIToken(ctx.Request().Context(), token)
 	if err != nil {
-		return fmt.Errorf("invalid access token: %w", err)
+		return fmt.Errorf("validate api token: %w", err)
 	}
 
 	user, err := svc.GetUserByID(ctx.Request().Context(), apiToken.UserID)
 	if err != nil {
-		return fmt.Errorf("error retrieveing user: %w", err)
+		if errors.Is(err, domain.ErrEntityNotFound) {
+			return fmt.Errorf("%w: api token owner: %w", domain.ErrInvalidToken, err)
+		}
+		return fmt.Errorf("%w: api token owner: %w", domain.ErrAuthenticationUnavailable, err)
 	}
 
 	if !user.IsActive() {
-		return errors.New("user is not allowed to authenticate")
+		return fmt.Errorf("%w: api token owner is inactive", domain.ErrInvalidToken)
 	}
 
 	authInfo := domain.ContextAuthInfo{

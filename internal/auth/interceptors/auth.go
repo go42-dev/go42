@@ -2,6 +2,7 @@ package interceptors
 
 import (
 	"context"
+	"errors"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -72,12 +73,18 @@ func authenticateRequest(ctx context.Context, authService authServiceAccessor) (
 
 	tokenInfo, err := authService.ValidateAPIToken(ctx, token)
 	if err != nil {
+		if errors.Is(err, domain.ErrAuthenticationUnavailable) {
+			return nil, status.Error(codes.Unavailable, "authentication unavailable")
+		}
 		return nil, status.Error(codes.Unauthenticated, "invalid api token")
 	}
 
 	user, err := authService.GetUserByID(ctx, tokenInfo.UserID)
 	if err != nil {
-		return nil, status.Error(codes.Internal, "error retrieving user")
+		if errors.Is(err, domain.ErrEntityNotFound) {
+			return nil, status.Error(codes.Unauthenticated, "invalid api token")
+		}
+		return nil, status.Error(codes.Unavailable, "authentication unavailable")
 	}
 
 	if !user.IsActive() {

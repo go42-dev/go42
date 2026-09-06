@@ -817,16 +817,19 @@ func (s *Service) ValidateAPIToken(ctx context.Context, token string) (*models.T
 
 func (s *Service) validateAPIToken(ctx context.Context, token string) (*models.Token, error) {
 	if err := validateAPITokenFormat(token); err != nil {
-		return nil, fmt.Errorf("invalid api token format: %w", err)
+		return nil, fmt.Errorf("%w: api token format: %w", domain.ErrInvalidToken, err)
 	}
 
 	apiToken, err := s.repository.GetToken(ctx, strToSHA256(token))
 	if err != nil {
-		return nil, fmt.Errorf("invalid api token: %w", err)
+		if errors.Is(err, domain.ErrEntityNotFound) {
+			return nil, fmt.Errorf("%w: api token lookup: %w", domain.ErrInvalidToken, err)
+		}
+		return nil, fmt.Errorf("%w: api token lookup: %w", domain.ErrAuthenticationUnavailable, err)
 	}
 
 	if apiToken.ExpiresAt.Valid && apiToken.ExpiresAt.V.Before(time.Now()) {
-		return nil, errors.New("expired api token")
+		return nil, fmt.Errorf("%w: expired api token", domain.ErrInvalidToken)
 	}
 
 	select {

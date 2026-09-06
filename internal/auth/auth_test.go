@@ -3,8 +3,10 @@ package auth_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -25,6 +27,10 @@ import (
 	"github.com/pressly/goose/v3"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/crypto/bcrypt"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"gorm.io/gorm"
 
 	oapi "github.com/go42-dev/go42/api/gen/sdk/http/v1/auth/oapi-codegen"
@@ -33,6 +39,8 @@ import (
 	"github.com/go42-dev/go42/internal/auth"
 	httpAdapter "github.com/go42-dev/go42/internal/auth/adapters/http/v1"
 	"github.com/go42-dev/go42/internal/auth/domain"
+	authInterceptors "github.com/go42-dev/go42/internal/auth/interceptors"
+	authMiddleware "github.com/go42-dev/go42/internal/auth/middleware"
 	authMocks "github.com/go42-dev/go42/internal/auth/mocks"
 	"github.com/go42-dev/go42/internal/auth/models"
 	authRepository "github.com/go42-dev/go42/internal/auth/repository"
@@ -1180,9 +1188,7 @@ func TestService_ValidateAPITokenRejectsExpiredToken(t *testing.T) {
 	h.repository.EXPECT().GetToken(gomock.Any(), sha256Hex(rawToken)).Return(apiToken, nil)
 
 	got, err := h.service.ValidateAPIToken(context.Background(), rawToken)
-	if err == nil {
-		t.Fatal("ValidateAPIToken() error = nil, want expiration error")
-	}
+	assertErrorIs(t, err, domain.ErrInvalidToken)
 	if got != nil {
 		t.Errorf("ValidateAPIToken() token = %#v, want nil", got)
 	}
@@ -1193,17 +1199,30 @@ func TestService_ValidateAPITokenRejectsExpiredToken(t *testing.T) {
 	}
 }
 
-func TestService_ValidateAPITokenPropagatesRepositoryError(t *testing.T) {
-	h := newServiceHarness(t)
-	rawToken := testAPIKey
-	repositoryError := errors.New("token not found")
-	h.repository.EXPECT().GetToken(gomock.Any(), sha256Hex(rawToken)).
-		Return(nil, repositoryError)
+func TestService_ValidateAPITokenClassifiesRepositoryErrors(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		cause error
+		want  error
+	}{
+		{name: "unknown token", cause: domain.ErrEntityNotFound, want: domain.ErrInvalidToken},
+		{
+			name: "storage unavailable", cause: errors.New("private database connection failure"),
+			want: domain.ErrAuthenticationUnavailable,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newServiceHarness(t)
+			h.repository.EXPECT().GetToken(gomock.Any(), sha256Hex(testAPIKey)).
+				Return(nil, fmt.Errorf("token lookup failed: %w", test.cause))
 
-	got, err := h.service.ValidateAPIToken(context.Background(), rawToken)
-	assertErrorIs(t, err, repositoryError)
-	if got != nil {
-		t.Errorf("ValidateAPIToken() token = %#v, want nil", got)
+			got, err := h.service.ValidateAPIToken(t.Context(), testAPIKey)
+			assertErrorIs(t, err, test.want)
+			assertErrorIs(t, err, test.cause)
+			if got != nil {
+				t.Errorf("ValidateAPIToken() token = %#v, want nil", got)
+			}
+		})
 	}
 }
 
@@ -1225,15 +1244,182 @@ func TestService_ValidateAPITokenRejectsInvalidFormat(t *testing.T) {
 			h := newServiceHarness(t)
 
 			got, err := h.service.ValidateAPIToken(context.Background(), tt.token)
-			if err == nil {
-				t.Fatal("ValidateAPIToken() error = nil, want format error")
-			}
+			assertErrorIs(t, err, domain.ErrInvalidToken)
 			if got != nil {
 				t.Errorf("ValidateAPIToken() token = %#v, want nil", got)
 			}
 		})
 	}
 }
+
+func TestAPIKeyAuthentication_ClassifiesFailures(t *testing.T) {
+	validToken := &models.Token{ID: 17, UserID: 42}
+	expiredToken := &models.Token{
+		ID: 18, UserID: 42,
+		ExpiresAt: sql.Null[time.Time]{V: time.Now().Add(-time.Minute), Valid: true},
+	}
+	storageErr := errors.New("private database connection failure")
+	notFoundErr := fmt.Errorf("record lookup: %w", domain.ErrEntityNotFound)
+
+	for _, test := range []struct {
+		name       string
+		key        string
+		token      *models.Token
+		tokenErr   error
+		owner      *models.User
+		ownerErr   error
+		httpStatus int
+		grpcCode   codes.Code
+	}{
+		{name: "missing key", httpStatus: http.StatusUnauthorized, grpcCode: codes.Unauthenticated},
+		{
+			name: "malformed key", key: "api_invalid",
+			httpStatus: http.StatusUnauthorized, grpcCode: codes.Unauthenticated,
+		},
+		{
+			name: "unknown key", key: testAPIKey, tokenErr: notFoundErr,
+			httpStatus: http.StatusUnauthorized, grpcCode: codes.Unauthenticated,
+		},
+		{
+			name: "expired key", key: testAPIKey, token: expiredToken,
+			httpStatus: http.StatusUnauthorized, grpcCode: codes.Unauthenticated,
+		},
+		{
+			name: "token storage unavailable", key: testAPIKey, tokenErr: storageErr,
+			httpStatus: http.StatusServiceUnavailable, grpcCode: codes.Unavailable,
+		},
+		{
+			name: "owner missing", key: testAPIKey, token: validToken, ownerErr: notFoundErr,
+			httpStatus: http.StatusUnauthorized, grpcCode: codes.Unauthenticated,
+		},
+		{
+			name: "owner inactive", key: testAPIKey, token: validToken,
+			owner:      &models.User{ID: validToken.UserID, Status: domain.UserStatusInactive},
+			httpStatus: http.StatusUnauthorized, grpcCode: codes.Unauthenticated,
+		},
+		{
+			name: "owner storage unavailable", key: testAPIKey, token: validToken, ownerErr: storageErr,
+			httpStatus: http.StatusServiceUnavailable, grpcCode: codes.Unavailable,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newServiceHarness(t)
+			if test.token != nil || test.tokenErr != nil {
+				h.repository.EXPECT().GetToken(gomock.Any(), sha256Hex(test.key)).
+					Return(test.token, test.tokenErr).Times(3)
+			}
+			if test.owner != nil || test.ownerErr != nil {
+				h.repository.EXPECT().GetUserByID(gomock.Any(), test.token.UserID).
+					Return(test.owner, test.ownerErr).Times(3)
+			}
+			assertAPIKeyAuthenticationFailure(t, h.service, test.key, test.httpStatus, test.grpcCode)
+		})
+	}
+}
+
+func TestAPIKeyAuthentication_DatabaseOutage(t *testing.T) {
+	for _, warmCache := range []bool{false, true} {
+		t.Run("warm cache="+strconv.FormatBool(warmCache), func(t *testing.T) {
+			h := newSessionHarness(t)
+			secret := make([]byte, 32)
+			if _, err := rand.Read(secret); err != nil {
+				t.Fatal(err)
+			}
+			key := "api_" + base64.RawURLEncoding.EncodeToString(secret)
+			token := &models.Token{
+				UUID: uuid.New(), UserID: h.user.ID, Token: sha256Hex(key), Name: "outage-test",
+			}
+			if err := h.db.Master().Create(token).Error; err != nil {
+				t.Fatal(err)
+			}
+			if warmCache {
+				if _, err := h.service.ValidateAPIToken(t.Context(), key); err != nil {
+					t.Fatalf("warm token cache: %v", err)
+				}
+			}
+			db, err := h.db.Master().DB()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Close(); err != nil {
+				t.Fatal(err)
+			}
+			assertAPIKeyAuthenticationFailure(t, h.service, key, http.StatusServiceUnavailable, codes.Unavailable)
+		})
+	}
+}
+
+func assertAPIKeyAuthenticationFailure(
+	t *testing.T, service *auth.Service, key string, wantHTTPStatus int, wantGRPCCode codes.Code,
+) {
+	t.Helper()
+	t.Run("http", func(t *testing.T) {
+		e := echo.New()
+		e.GET("/protected", func(*echo.Context) error {
+			t.Error("rejected API key reached the HTTP handler")
+			return nil
+		}, authMiddleware.NewAuthMiddleware(service))
+		request := httptest.NewRequest(http.MethodGet, "/protected", nil)
+		request.Header.Set("X-API-Key", key)
+		response := httptest.NewRecorder()
+		e.ServeHTTP(response, request)
+		if response.Code != wantHTTPStatus {
+			t.Fatalf("HTTP status = %d, want %d", response.Code, wantHTTPStatus)
+		}
+		if got := response.Header().Get(echo.HeaderContentType); got != httpAPI.MIMEApplicationProblemJSON {
+			t.Fatalf("HTTP content type = %q, want problem+json", got)
+		}
+		var problem httpAPI.Error
+		if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
+			t.Fatalf("decode HTTP problem: %v", err)
+		}
+		if problem.Status != wantHTTPStatus || problem.Title != http.StatusText(wantHTTPStatus) ||
+			problem.Detail != "" {
+			t.Fatalf("HTTP problem = %+v, want generic HTTP %d error", problem, wantHTTPStatus)
+		}
+	})
+
+	const method = "/auth.v1.AuthService/ListUsers"
+	t.Run("grpc unary", func(t *testing.T) {
+		ctx := metadata.NewIncomingContext(t.Context(), metadata.Pairs("x-api-key", key))
+		_, err := authInterceptors.NewUnaryAuthInterceptor(service)(
+			ctx, nil, &grpc.UnaryServerInfo{FullMethod: method},
+			func(context.Context, any) (any, error) {
+				t.Error("rejected API key reached the unary handler")
+				return nil, nil
+			},
+		)
+		if got := status.Code(err); got != wantGRPCCode {
+			t.Fatalf("gRPC status = %s, want %s", got, wantGRPCCode)
+		}
+		if wantGRPCCode == codes.Unavailable && status.Convert(err).Message() != "authentication unavailable" {
+			t.Fatalf("gRPC exposed storage details: %v", err)
+		}
+	})
+	t.Run("grpc stream", func(t *testing.T) {
+		ctx := metadata.NewIncomingContext(t.Context(), metadata.Pairs("x-api-key", key))
+		err := authInterceptors.NewStreamAuthInterceptor(service)(
+			nil, &authTestStream{ctx: ctx}, &grpc.StreamServerInfo{FullMethod: method},
+			func(any, grpc.ServerStream) error {
+				t.Error("rejected API key reached the streaming handler")
+				return nil
+			},
+		)
+		if got := status.Code(err); got != wantGRPCCode {
+			t.Fatalf("gRPC status = %s, want %s", got, wantGRPCCode)
+		}
+		if wantGRPCCode == codes.Unavailable && status.Convert(err).Message() != "authentication unavailable" {
+			t.Fatalf("gRPC exposed storage details: %v", err)
+		}
+	})
+}
+
+type authTestStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s *authTestStream) Context() context.Context { return s.ctx }
 
 func expectSessionCreation(h *serviceHarness) *models.Session {
 	session := new(models.Session)
