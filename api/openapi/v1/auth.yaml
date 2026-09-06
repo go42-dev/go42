@@ -446,7 +446,7 @@ components:
     apiKey:
       type: apiKey
       in: header
-      name: X-API-Key
+      name: X-Api-Key
   responses:
     RateLimited:
       description: Too many authentication attempts

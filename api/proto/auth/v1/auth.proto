@@ -5,7 +5,7 @@ package auth.v1;
 import "google/protobuf/timestamp.proto";
 import "third_party/buf/validate/validate.proto";
 
-option go_package = "github.com/go42-dev/go42/api/auth/v1";
+option go_package = "github.com/go42-dev/go42/api/gen/sdk/grpc/auth/v1";
 
 message User {
   string uuid = 2;

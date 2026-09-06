@@ -100,7 +100,7 @@ func GetRolesForJwt(operation string) []string {
 
 func (s *Server) securityApiKey(ctx context.Context, operationName OperationName, req *http.Request) (context.Context, bool, error) {
 	var t ApiKey
-	const parameterName = "X-API-Key"
+	const parameterName = "X-Api-Key"
 	value := req.Header.Get(parameterName)
 	if value == "" {
 		return ctx, false, nil
@@ -146,7 +146,7 @@ func (s *Client) securityApiKey(ctx context.Context, operationName OperationName
 	if err != nil {
 		return errors.Wrap(err, "security source \"ApiKey\"")
 	}
-	req.Header.Set("X-API-Key", t.APIKey)
+	req.Header.Set("X-Api-Key", t.APIKey)
 	return nil
 }
 func (s *Client) securityJwt(ctx context.Context, operationName OperationName, req *http.Request) error {

@@ -7,6 +7,10 @@ parser:
 
 # @see https://github.com/ogen-go/ogen/blob/main/gen/features.go
 generator:
+  # The HTTP error handler keeps the problem status equal to the HTTP status.
+  content_type_aliases:
+    application/problem+json: application/json
+
   features:
     enable:
       - 'paths/client'

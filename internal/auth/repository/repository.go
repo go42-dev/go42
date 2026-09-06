@@ -72,11 +72,11 @@ func (r *Repository) UpdateUser(ctx context.Context, user *models.User) error {
 
 func (r *Repository) DeleteUser(ctx context.Context, user *models.User) error {
 	result := r.GetTx(ctx).Delete(user)
-	if result.RowsAffected == 0 {
-		return domain.ErrEntityNotFound
-	}
 	if result.Error != nil {
 		return fmt.Errorf("error deleting user: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return domain.ErrEntityNotFound
 	}
 	return nil
 }
@@ -394,11 +394,11 @@ func (r *Repository) UpdateTokenLastUsed(ctx context.Context, tokenID int, when 
 		Where("id = ?", tokenID).
 		Update("last_used_at", when)
 
-	if r.IsNotFoundError(result.Error) || result.RowsAffected == 0 {
-		return domain.ErrEntityNotFound
-	}
 	if result.Error != nil {
 		return fmt.Errorf("error updating api token: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return domain.ErrEntityNotFound
 	}
 	return nil
 }

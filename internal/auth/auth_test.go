@@ -2049,6 +2049,176 @@ func (h *sessionHarness) assertRevoked(t *testing.T, tokens *domain.Tokens) {
 	}
 }
 
+func TestRepository_DeleteUser(t *testing.T) {
+	h := newSessionHarness(t)
+	if err := h.repo.DeleteUser(t.Context(), &models.User{ID: -1}); !errors.Is(err, domain.ErrEntityNotFound) {
+		t.Fatalf("delete missing user = %v, want not found", err)
+	}
+
+	user := *h.user
+	if err := h.repo.DeleteUser(t.Context(), &user); err != nil {
+		t.Fatalf("delete existing user: %v", err)
+	}
+	var stored models.User
+	if err := h.db.Master().Unscoped().First(&stored, user.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !stored.DeletedAt.Valid {
+		t.Fatal("successful delete did not persist the deletion timestamp")
+	}
+	if err := h.repo.DeleteUser(t.Context(), &user); !errors.Is(err, domain.ErrEntityNotFound) {
+		t.Fatalf("delete already deleted user = %v, want not found", err)
+	}
+}
+
+func TestRepository_DeleteUserRejectsFailedWrites(t *testing.T) {
+	h := newSessionHarness(t)
+	if err := h.repo.AssignRoleToUser(t.Context(), h.user.ID, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	tokens := h.login(t)
+	rejectAuthUpdates(t, h, "auth_users")
+
+	user := *h.user
+	assertAuthWriteFailure(t, h.repo.DeleteUser(t.Context(), &user))
+
+	e := echo.New()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+	client := newCredentialGRPCClient(t, h.service)
+	for _, test := range []struct {
+		name       string
+		userUUID   string
+		httpStatus int
+		grpcStatus codes.Code
+	}{
+		{"failed write", user.UUID.String(), http.StatusInternalServerError, codes.Internal},
+		{"missing user", uuid.NewString(), http.StatusNotFound, codes.NotFound},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response := sessionHTTPRequest(t, e, http.MethodDelete,
+				"/api/v1/users/"+test.userUUID, tokens.AccessToken, nil)
+			if response.Code != test.httpStatus {
+				t.Fatalf("HTTP delete = %d, want %d: %s", response.Code, test.httpStatus, response.Body.String())
+			}
+			if strings.Contains(response.Body.String(), authWriteFailureMessage) {
+				t.Fatal("HTTP response exposed the database error")
+			}
+			_, err := client.DeleteUser(t.Context(), &pb.DeleteUserRequest{Uuid: test.userUUID})
+			if status.Code(err) != test.grpcStatus {
+				t.Fatalf("gRPC delete = %v, want %s", err, test.grpcStatus)
+			}
+			if strings.Contains(status.Convert(err).Message(), authWriteFailureMessage) {
+				t.Fatal("gRPC response exposed the database error")
+			}
+		})
+	}
+	var stored models.User
+	if err := h.db.Master().Unscoped().First(&stored, user.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.DeletedAt.Valid {
+		t.Fatal("failed delete changed the stored user")
+	}
+}
+
+func TestRepository_UpdateTokenLastUsed(t *testing.T) {
+	h := newSessionHarness(t)
+	token := &models.Token{
+		UUID: uuid.New(), UserID: h.user.ID, Token: sha256Hex(uuid.NewString()), Name: "last used test",
+	}
+	if err := h.db.Master().Create(token).Error; err != nil {
+		t.Fatal(err)
+	}
+	when := time.Now().UTC().Truncate(time.Second)
+	if err := h.repo.UpdateTokenLastUsed(t.Context(), -1, when); !errors.Is(err, domain.ErrEntityNotFound) {
+		t.Fatalf("update missing token = %v, want not found", err)
+	}
+	if err := h.repo.UpdateTokenLastUsed(t.Context(), token.ID, when); err != nil {
+		t.Fatalf("update existing token: %v", err)
+	}
+	var stored models.Token
+	if err := h.db.Master().First(&stored, token.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !stored.LastUsedAt.Valid || !stored.LastUsedAt.V.Equal(when) {
+		t.Fatalf("stored last-used time = %v, want %s", stored.LastUsedAt, when)
+	}
+}
+
+func TestRepository_UpdateTokenLastUsedRejectsFailedWrites(t *testing.T) {
+	h := newSessionHarness(t)
+	token := &models.Token{
+		UUID: uuid.New(), UserID: h.user.ID, Token: sha256Hex(uuid.NewString()), Name: "last used test",
+	}
+	if err := h.db.Master().Create(token).Error; err != nil {
+		t.Fatal(err)
+	}
+	rejectAuthUpdates(t, h, "auth_api_tokens")
+	assertAuthWriteFailure(t, h.repo.UpdateTokenLastUsed(t.Context(), token.ID, time.Now().UTC()))
+
+	var stored models.Token
+	if err := h.db.Master().First(&stored, token.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.LastUsedAt.Valid {
+		t.Fatalf("failed update changed the token's last-used time: %v", stored.LastUsedAt)
+	}
+}
+
+const authWriteFailureMessage = "auth_test_rejected_write"
+
+func rejectAuthUpdates(t *testing.T, h *sessionHarness, table string) {
+	t.Helper()
+	sqlDB, err := h.db.Master().DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := authWriteFailureMessage + "_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	var setup, cleanup string
+	switch dialect := h.db.Master().Name(); dialect {
+	case "sqlite":
+		setup = fmt.Sprintf(
+			"CREATE TRIGGER %s BEFORE UPDATE ON %s BEGIN SELECT RAISE(ABORT, '%s'); END",
+			name, table, authWriteFailureMessage,
+		)
+		cleanup = "DROP TRIGGER " + name
+	case "postgres", "mysql":
+		// Restrict only this fixture's rows so existing test data stays valid.
+		condition := fmt.Sprintf("uuid <> '%s' OR deleted_at IS NULL", h.user.UUID.String())
+		if table == "auth_api_tokens" {
+			condition = fmt.Sprintf("user_id <> %d OR last_used_at IS NULL", h.user.ID)
+		}
+		setup = fmt.Sprintf("ALTER TABLE %s ADD CONSTRAINT %s CHECK (%s)", table, name, condition)
+		kind := "CONSTRAINT"
+		if dialect == "mysql" {
+			kind = "CHECK"
+		}
+		cleanup = fmt.Sprintf("ALTER TABLE %s DROP %s %s", table, kind, name)
+	default:
+		t.Fatalf("unsupported test database: %s", dialect)
+	}
+	if _, err := sqlDB.ExecContext(t.Context(), setup); err != nil {
+		t.Fatalf("reject database updates: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := sqlDB.ExecContext(ctx, cleanup); err != nil {
+			t.Errorf("remove write rejection: %v", err)
+		}
+	})
+}
+
+func assertAuthWriteFailure(t *testing.T, err error) {
+	t.Helper()
+	if err == nil || errors.Is(err, domain.ErrEntityNotFound) {
+		t.Fatalf("write error = %v, want the underlying database failure", err)
+	}
+	if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), authWriteFailureMessage) {
+		t.Fatalf("write error does not wrap the database cause: %v", err)
+	}
+}
+
 func TestSessions_RotationAndReplayRevokeTheFamily(t *testing.T) {
 	h := newSessionHarness(t)
 	initial := h.login(t)
