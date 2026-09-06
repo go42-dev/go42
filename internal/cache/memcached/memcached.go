@@ -222,15 +222,14 @@ func rateLimitExpiration(nowMicros int64, ttl time.Duration) (int32, error) {
 	// Memcached's relative clock has second precision. Retain the bucket for
 	// an extra second so clock rounding cannot restore its burst too early.
 	seconds++
-	if seconds <= 30*24*60*60 {
-		return int32(seconds), nil
+	if seconds > 30*24*60*60 {
+		// Values above 30 days are interpreted as absolute Unix timestamps.
+		seconds += nowMicros / 1_000_000
 	}
-	// Values above 30 days are interpreted as absolute Unix timestamps.
-	expiresAt := nowMicros/1_000_000 + seconds
-	if expiresAt > math.MaxInt32 {
+	if seconds < math.MinInt32 || seconds > math.MaxInt32 {
 		return 0, fmt.Errorf("rate limit window exceeds memcached expiration range")
 	}
-	return int32(expiresAt), nil
+	return int32(seconds), nil
 }
 
 func (w *Wrapper) Invalidate(_ context.Context, key string) error {
