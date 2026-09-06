@@ -38,6 +38,7 @@ jobs:
       - name: 'Run Vale prose linter'
         uses: errata-ai/vale-action@518a9136acc6e6668ce7c00d367051e0941e87ff # v3.0.0
         with:
+          version: '3.18.0' # Keep in sync with etc/mise.toml.
           fail_on_error: true
           files: '["README.md","docs/adr","docs/brd","docs/core","internal/","cmd/","pkg/","tests/"]'
           vale_flags: "--config etc/vale.ini"

@@ -112,8 +112,8 @@ jobs:
       - name: 'Run resilience tests'
         run: |-
           mkdir -p build
-          go build -race -o ./build/resilience-app ./cmd/app
-          RESILIENCE_APP_BINARY="${GITHUB_WORKSPACE}/build/resilience-app" \
+          go build -race -o ./.build/resilience-app ./cmd/app
+          RESILIENCE_APP_BINARY="${GITHUB_WORKSPACE}/.build/resilience-app" \
             go test -count=1 -v -race -tags=resilience ./tests/resilience/...
           go test -count=1 -v -tags=resilience ./tests/resilience/... -run '^TestRabbitMQ'
         env:

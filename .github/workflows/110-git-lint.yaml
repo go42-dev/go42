@@ -30,6 +30,7 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
+      pull-requests: read
     steps:
       - name: 'Checkout repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,3 +61,8 @@ jobs:
           fi
 
           echo "Branch name '$BRANCH_NAME' is valid"
+      - name: 'Validate commit messages'
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1
+        with:
+          configFile: etc/.commitlintrc.yaml

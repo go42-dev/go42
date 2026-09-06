@@ -32,48 +32,20 @@ jobs:
         with:
           persist-credentials: false
       # -----
-      - name: 'Extract Go version'
-        id: go-version
-        run: echo "version=$(grep '^go ' go.mod | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
-      - name: 'Setup Go'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: 'go.mod'
-          cache: true
-          cache-dependency-path: |
-            **/go.sum
-            **/go.mod
+      - name: 'Prepare project environment'
+        uses: ./.github/actions/prepare-env
       # -----
-      - name: 'Download Go modules'
-        run: go mod tidy && go mod download
-      # -----
-      - name: 'Cache Homebrew and formulae'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            /home/linuxbrew/.linuxbrew
-            /home/linuxbrew/.cache/Homebrew
-          key: homebrew-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
-          restore-keys: |
-            homebrew-${{ runner.os }}-${{ runner.arch }}-
-            homebrew-${{ runner.os }}-
-      # -----
-      - name: 'Setup Homebrew'
-        uses: Homebrew/actions/setup-homebrew@f8d4222eb633e65c2a0157383cf80861fc7fae7f # main
-      # -----
-      - name: 'Run setup and generate'
-        run: |
-          make setup
-          make generate
+      - name: 'Generate code'
+        run: make generate
       - name: 'Check for uncommitted changes'
         run: |-
           if [[ -n $(git status --porcelain) ]]; then
-            echo "❌ Uncommitted changes detected after running 'make generate'"
+            echo "Uncommitted changes detected after running 'make generate'"
             echo "The following files have changes:"
             git status --porcelain
             echo ""
             echo "Please run 'make setup && make generate' locally and commit the changes."
             exit 1
           else
-            echo "✅ No uncommitted changes detected"
+            echo "No uncommitted changes detected"
           fi

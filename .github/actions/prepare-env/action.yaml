@@ -1,0 +1,35 @@
+---
+
+name: prepare-env
+description: 'Prepare the shared Go development environment'
+
+runs:
+  using: composite
+  steps:
+    - name: 'Setup Go'
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+        cache-dependency-path: |
+          **/go.sum
+          **/go.mod
+    # -----
+    - name: 'Configure project tooling'
+      shell: bash
+      run: |
+        echo "MISE_DEFAULT_CONFIG_FILENAME=etc/mise.toml" >> "$GITHUB_ENV"
+        echo "MISE_DATA_DIR=$GITHUB_WORKSPACE/.tools" >> "$GITHUB_ENV"
+        echo "MISE_CACHE_DIR=$GITHUB_WORKSPACE/.tools/cache" >> "$GITHUB_ENV"
+        echo "MISE_STATE_DIR=$GITHUB_WORKSPACE/.tools/state" >> "$GITHUB_ENV"
+    # -----
+    - name: 'Install mise and pinned tools'
+      uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      with:
+        version: '2026.9.1'
+        install_args: --locked
+        cache_key_prefix: mise-tools-${{ hashFiles('go.mod') }}
+    # -----
+    - name: 'Setup project dependencies'
+      run: make setup
+      shell: bash

@@ -3,7 +3,7 @@
 # ╰─────────────────────----------------─────────╯
 #
 # Before running any commands, ensure you have the following tools are installed:
-# - brew @see https://brew.sh/
+# - mise @see https://mise.jdx.dev/
 # - go @see https://go.dev/
 # - npm @see https://www.npmjs.com/
 # - docker @see https://www.docker.com/
@@ -12,51 +12,67 @@
 #   docker login ghcr.io -u YOUR_GITHUB_USERNAME --password YOUR_GITHUB_TOKEN
 # @see https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry
 
-.PHONY: help
+# Fixes macOS GNU Make 3.81 PATH issue
+SHELL := /usr/bin/env sh
+
+export MISE_DEFAULT_CONFIG_FILENAME := etc/mise.toml
+export MISE_DATA_DIR := $(CURDIR)/.tools
+export MISE_CACHE_DIR := $(MISE_DATA_DIR)/cache
+export MISE_STATE_DIR := $(MISE_DATA_DIR)/state
+export PATH := $(MISE_DATA_DIR)/shims:$(PATH)
+
+.PHONY: help setup setup-common setup-linters setup-generators setup-mcp mise
 help: Makefile
 	@sed -n 's/^##//p' $< | awk 'BEGIN {FS = "|"}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 ## setup | install dependencies
-setup: setup-git-hooks setup-linters setup-generators
-	@go mod tidy -e && go mod download
-	@brew install -q \
-		buf sqlfluff \
-		hadolint actionlint zizmor \
-		redocly-cli markdownlint-cli2 vale \
-		gitleaks dlv jq yq k6
-	@vale --config etc/vale.ini sync
-	@go install github.com/go42-dev/go42x@latest
+setup: setup-common setup-linters setup-generators
+	@go mod download
+	@mise install --locked \
+		npm:@redocly/cli k6 \
+		go:github.com/go-delve/delve/cmd/dlv \
+		go:github.com/go42-dev/go42x
 
-## setup-git-hooks | install git hooks
-setup-git-hooks:
-	@npm install --silent -g @commitlint/cli @commitlint/config-conventional
-	@mkdir -p .git/hooks
-	@cp etc/git-hooks/commit-msg .git/hooks/commit-msg
-	@chmod +x .git/hooks/commit-msg
+## setup-common | install shared tools
+setup-common:
+	@mise install --locked \
+		node jq yq python uv
 
 ## setup-linters | install code linters
-# Extra linters provided by `setup step`: buf (proto), sqlfluff (sql)
 setup-linters:
-	@go install github.com/daixiang0/gci@latest
-	@go install github.com/segmentio/golines@latest
-	@go install github.com/google/yamlfmt/cmd/yamlfmt@latest
-	@go install github.com/caarlos0/jsonfmt@latest
-	@go install github.com/editorconfig-checker/editorconfig-checker/v3/cmd/editorconfig-checker@latest
-	@go install github.com/securego/gosec/v2/cmd/gosec@latest
-	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	@mise install --locked \
+		actionlint \
+		editorconfig-checker \
+		gitleaks \
+		golangci-lint \
+		golines \
+		hadolint \
+		markdownlint-cli2 \
+		pipx:sqlfluff \
+		vale \
+		zizmor \
+		go:github.com/daixiang0/gci \
+		go:github.com/caarlos0/jsonfmt \
+		go:github.com/google/yamlfmt/cmd/yamlfmt \
+		go:github.com/securego/gosec/v2/cmd/gosec \
+		go:golang.org/x/vuln/cmd/govulncheck
+	@vale --config etc/vale.ini sync
 
 ## setup-generators | install code generators
 setup-generators:
-	@go install go.uber.org/mock/mockgen@latest
-	@go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
-	@go install github.com/ogen-go/ogen/cmd/ogen@latest
-	@go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-	@go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+	@mise install --locked \
+		buf \
+		oapi-codegen \
+		go:go.uber.org/mock/mockgen \
+		go:github.com/ogen-go/ogen/cmd/ogen \
+		go:google.golang.org/protobuf/cmd/protoc-gen-go \
+		go:google.golang.org/grpc/cmd/protoc-gen-go-grpc
 
 ## setup-mcp | setup mcp servers
 setup-mcp:
-	@go install golang.org/x/tools/gopls@latest
-	@docker pull ghcr.io/github/github-mcp-server:latest
+	@mise install --locked \
+		go:golang.org/x/tools/gopls
+	@docker pull ghcr.io/github/github-mcp-server:v1.12.0@sha256:46cdbbd810faf6f7aed1745ea04057443f5cb9fcadc15c7308add18cf9a83e33
 
 # ╭────────────────────----------------──────────╮
 # │               General workflow               │
@@ -79,9 +95,9 @@ test-integration:
 # @note Because of the bug RabbitMQ tests are executed separately without race.
 # @see https://github.com/ThreeDotsLabs/watermill/issues/693
 test-resilience:
-	@go build -race -o ./build/resilience-app ./cmd/app
-	@RESILIENCE_APP_BINARY="$(CURDIR)/build/resilience-app" go test -count=1 -v -race -tags=resilience ./tests/resilience/...
-	@RESILIENCE_APP_BINARY="$(CURDIR)/build/resilience-app" go test -count=1 -v -tags=resilience ./tests/resilience/... -run '^TestRabbitMQ'
+	@go build -race -o ./.build/resilience-app ./cmd/app
+	@RESILIENCE_APP_BINARY="$(CURDIR)/.build/resilience-app" go test -count=1 -v -race -tags=resilience ./tests/resilience/...
+	@RESILIENCE_APP_BINARY="$(CURDIR)/.build/resilience-app" go test -count=1 -v -tags=resilience ./tests/resilience/... -run '^TestRabbitMQ'
 
 ## test-load | run load tests (http and grpc)
 test-load:
@@ -134,8 +150,8 @@ debug: check-env
 
 ## build | build development version of binary
 build:
-	@go build -gcflags="all=-N -l" -race -v -o ./build/app ./cmd/app/main.go
-	@file -h ./build/app && du -h ./build/app && sha256sum ./build/app && go tool buildid ./build/app
+	@go build -gcflags="all=-N -l" -race -v -o ./.build/app ./cmd/app/main.go
+	@file -h ./.build/app && du -h ./.build/app && sha256sum ./.build/app && go tool buildid ./.build/app
 
 ## image | build docker image
 # @see https://reproducible-builds.org/docs/source-date-epoch/
@@ -163,7 +179,7 @@ lint:
 	@vale --no-exit --config etc/vale.ini README.md docs/**/*.md internal/ cmd/ pkg/ tests/ || true
 	@actionlint -oneline --config-file etc/actionlint.yaml
 	@zizmor -q --persona regular --min-severity high --min-confidence high --offline --format plain --color never --no-progress .
-	@editorconfig-checker
+	@ec
 
 ## generate | generate code for all modules
 # Side effects of this command should to be commited.
@@ -215,4 +231,4 @@ grpcui:
 #   * go install loov.dev/lensm@main
 # Usage: FILTER={regex} make show-asm
 show-asm: build
-	@lensm -watch -text-size 22 -filter $(FILTER) build/app
+	@lensm -watch -text-size 22 -filter $(FILTER) .build/app

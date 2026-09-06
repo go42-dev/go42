@@ -6,7 +6,9 @@
 .vscode/
 
 # project
-build/
+.build/
+.tools/
 .env
 __debug*
 coverage.out
+dep-graph.svg

@@ -57,6 +57,7 @@ jobs:
     uses: ./.github/workflows/110-git-lint.yaml
     permissions:
       contents: read
+      pull-requests: read
     needs:
       - gate-start
     with:
