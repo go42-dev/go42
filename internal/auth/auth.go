@@ -240,13 +240,7 @@ func (s *Service) SignUp(ctx context.Context, email string, password string) (*m
 			AggregateType: domain.EventTypeAuthSignUp,
 		}
 		if err := s.sendEvent(txCtx, domain.TopicNameAuthEvents, event); err != nil {
-			s.logger.ErrorContext(
-				ctx, "failed to send event: %w",
-				slog.String("topic", domain.TopicNameAuthEvents),
-				slog.Any("event", event),
-				slog.Any("error", err),
-			)
-			// assuming events are non-critical, do not fail transaction
+			return fmt.Errorf("failed to send event: %w", err)
 		}
 		return nil
 	})
@@ -769,13 +763,7 @@ func (s *Service) updateUser(
 			AggregateType: domain.EventTypeUserUpdate,
 		}
 		if err := s.sendEvent(txCtx, domain.TopicNameAuthEvents, event); err != nil {
-			s.logger.ErrorContext(
-				txCtx, "failed to send event: %w",
-				slog.String("topic", domain.TopicNameAuthEvents),
-				slog.Any("event", event),
-				slog.Any("error", err),
-			)
-			// assuming events are non-critical, do not fail transaction
+			return fmt.Errorf("failed to send event: %w", err)
 		}
 
 		return nil

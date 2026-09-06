@@ -56,7 +56,10 @@ import (
 	"github.com/go42-dev/go42/internal/database/mysql"
 	"github.com/go42-dev/go42/internal/database/pgsql"
 	"github.com/go42-dev/go42/internal/database/sqlite"
+	"github.com/go42-dev/go42/internal/outbox"
 	outboxDomain "github.com/go42-dev/go42/internal/outbox/domain"
+	outboxModels "github.com/go42-dev/go42/internal/outbox/models"
+	outboxRepository "github.com/go42-dev/go42/internal/outbox/repository"
 )
 
 const (
@@ -837,19 +840,18 @@ func TestService_SignUpRepositoryFailures(t *testing.T) {
 	}
 }
 
-func TestService_SignUpIgnoresOutboxFailure(t *testing.T) {
+func TestService_SignUpReportsOutboxFailure(t *testing.T) {
 	h := newServiceHarness(t)
+	outboxError := errors.New("outbox unavailable")
 	expectTransaction(h.repository)
 	h.repository.EXPECT().CreateUser(gomock.Any(), gomock.Any()).Return(nil)
 	h.repository.EXPECT().AssignRoleToUser(gomock.Any(), 0, domain.RBACRoleUser).Return(nil)
-	expectOutboxEvent(h, 0, domain.EventTypeAuthSignUp, errors.New("outbox unavailable"))
+	expectOutboxEvent(h, 0, domain.EventTypeAuthSignUp, outboxError)
 
 	user, err := h.service.SignUp(context.Background(), testUserEmail, testPassword)
-	if err != nil {
-		t.Fatalf("SignUp() error = %v, want nil", err)
-	}
-	if user == nil {
-		t.Fatal("SignUp() user = nil")
+	assertErrorIs(t, err, outboxError)
+	if user != nil {
+		t.Errorf("SignUp() user = %#v, want nil", user)
 	}
 }
 
@@ -1140,19 +1142,19 @@ func TestService_UpdateUserFailures(t *testing.T) {
 	}
 }
 
-func TestService_UpdateUserIgnoresOutboxFailure(t *testing.T) {
+func TestService_UpdateUserReportsOutboxFailure(t *testing.T) {
 	h := newServiceHarness(t)
+	outboxError := errors.New("outbox unavailable")
 	user := newTestUser(t, domain.UserStatusActive)
 	newEmail := "new@example.com"
 	expectTransaction(h.repository)
 	h.repository.EXPECT().GetUserByUUID(gomock.Any(), user.UUID.String()).Return(user, nil)
 	h.repository.EXPECT().UpdateUser(gomock.Any(), user).Return(nil)
-	expectOutboxEvent(h, user.ID, domain.EventTypeUserUpdate, errors.New("outbox unavailable"))
-	if err := h.service.UpdateUser(context.Background(), user.UUID.String(), &domain.UpdateUserData{
+	expectOutboxEvent(h, user.ID, domain.EventTypeUserUpdate, outboxError)
+	err := h.service.UpdateUser(context.Background(), user.UUID.String(), &domain.UpdateUserData{
 		Email: &newEmail,
-	}); err != nil {
-		t.Fatalf("UpdateUser() error = %v, want nil", err)
-	}
+	})
+	assertErrorIs(t, err, outboxError)
 }
 
 func TestService_DeleteUser(t *testing.T) {
@@ -2046,6 +2048,149 @@ func (h *sessionHarness) assertRevoked(t *testing.T, tokens *domain.Tokens) {
 	}
 	if _, err := h.service.Refresh(t.Context(), tokens.RefreshToken); !errors.Is(err, domain.ErrInvalidToken) {
 		t.Errorf("refresh = %v, want revoked", err)
+	}
+}
+
+type failingAuthOutboxRepository struct {
+	*outboxRepository.Repository
+	duplicateID uuid.UUID
+	message     outboxModels.Message
+	err         error
+}
+
+func (r *failingAuthOutboxRepository) NewOutboxMessage(ctx context.Context, msg *outboxModels.Message) error {
+	// Force a real SQL insert failure inside the credential transaction on every
+	// supported database. Clearing duplicateID restores normal outbox writes.
+	if r.duplicateID != uuid.Nil {
+		msg.ID = r.duplicateID
+	}
+	r.message = *msg
+	r.err = r.Repository.NewOutboxMessage(ctx, msg)
+	return r.err
+}
+
+func failAuthOutboxInserts(t *testing.T, h *sessionHarness) *failingAuthOutboxRepository {
+	t.Helper()
+	repo := outboxRepository.New(database.NewBaseRepository(h.db))
+	existing := outboxModels.Message{
+		ID: uuid.New(), AggregateID: h.user.ID, AggregateType: "test.existing",
+		Topic: domain.TopicNameAuthEvents, Status: outboxModels.MessageStatusPending,
+		MaxRetries: outboxDomain.MaxRetries,
+	}
+	if err := repo.NewOutboxMessage(t.Context(), &existing); err != nil {
+		t.Fatal(err)
+	}
+	failing := &failingAuthOutboxRepository{Repository: repo, duplicateID: existing.ID}
+	h.service = auth.NewService(h.repo, outbox.NewService(failing), h.cache, sessionOptions()...)
+	return failing
+}
+
+func assertAuthOutboxCount(t *testing.T, h *sessionHarness, message outboxModels.Message, want int64) {
+	t.Helper()
+	var count int64
+	err := h.db.Master().Model(&outboxModels.Message{}).
+		Where("aggregate_id = ? AND aggregate_type = ?", message.AggregateID, message.AggregateType).
+		Count(&count).Error
+	if err != nil || count != want {
+		t.Fatalf("outbox events = %d, want %d; error = %v", count, want, err)
+	}
+}
+
+func TestService_SignUpRollsBackOnOutboxFailure(t *testing.T) {
+	h := newSessionHarness(t)
+	failing := failAuthOutboxInserts(t, h)
+	email := "signup-" + uuid.NewString() + "@example.com"
+	user, err := h.service.SignUp(t.Context(), email, testPassword)
+	if failing.err == nil || !errors.Is(err, failing.err) {
+		t.Errorf("signup error = %v, want original outbox insert error %v", err, failing.err)
+	}
+	if user != nil {
+		t.Error("failed signup returned a user")
+	}
+	if _, err := h.repo.GetUserByEmail(t.Context(), email); !errors.Is(err, domain.ErrEntityNotFound) {
+		t.Errorf("failed signup persisted a user: %v", err)
+	}
+	var roleCount int64
+	if err := h.db.Master().Model(&models.UserRole{}).
+		Where("user_id = ?", failing.message.AggregateID).Count(&roleCount).Error; err != nil || roleCount != 0 {
+		t.Errorf("failed signup persisted role assignments: count = %d, error = %v", roleCount, err)
+	}
+	assertAuthOutboxCount(t, h, failing.message, 0)
+
+	failing.duplicateID = uuid.Nil
+	user, err = h.service.SignUp(t.Context(), email, testPassword)
+	if err != nil || user == nil {
+		t.Fatalf("retry signup after outbox recovery: %v", err)
+	}
+	stored, err := h.repo.GetUserByEmail(t.Context(), email)
+	if err != nil || stored.ID != user.ID || stored.CredentialVersion != 1 ||
+		len(stored.Roles) != 1 || stored.Roles[0].Name != domain.RBACRoleUser {
+		t.Fatalf("successful signup did not persist its user and role: %v", err)
+	}
+	assertAuthOutboxCount(t, h, failing.message, 1)
+}
+
+func TestService_CredentialChangesRollBackOnOutboxFailure(t *testing.T) {
+	for _, method := range []string{"admin", "self"} {
+		for _, field := range []string{"email", "password"} {
+			t.Run(method+"/"+field, func(t *testing.T) {
+				h := newSessionHarness(t)
+				initial := h.login(t)
+				before := *h.user
+				failing := failAuthOutboxInserts(t, h)
+				email, password := "updated-"+h.user.Email, testPassword+"!new"
+				data := domain.UpdateUserData{}
+				if field == "email" {
+					data.Email = &email
+				} else {
+					data.Password = &password
+				}
+				update := func() error {
+					if method == "self" {
+						return h.service.UpdateSelf(t.Context(), h.user.UUID.String(), &domain.UpdateSelfData{
+							UpdateUserData: data, CurrentPassword: testPassword,
+						})
+					}
+					return h.service.UpdateUser(t.Context(), h.user.UUID.String(), &data)
+				}
+				err := update()
+				if failing.err == nil || !errors.Is(err, failing.err) {
+					t.Errorf("credential update error = %v, want original outbox insert error %v", err, failing.err)
+				}
+				stored, err := h.repo.GetUserByID(t.Context(), before.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if stored.Email != before.Email || stored.Password != before.Password ||
+					stored.CredentialVersion != before.CredentialVersion {
+					t.Error("failed credential change persisted the email, password, or credential version")
+				}
+				for purpose, token := range map[domain.JWTTokenPurpose]string{
+					domain.JWTTokenPurposeAccess: initial.AccessToken, domain.JWTTokenPurposeRefresh: initial.RefreshToken,
+				} {
+					if _, err := h.service.ValidateJWTToken(t.Context(), token, purpose); err != nil {
+						t.Errorf("failed credential change invalidated the %s token: %v", purpose, err)
+					}
+				}
+				assertAuthOutboxCount(t, h, failing.message, 0)
+
+				failing.duplicateID = uuid.Nil
+				if err := update(); err != nil {
+					t.Fatalf("retry credential change after outbox recovery: %v", err)
+				}
+				stored, err = h.repo.GetUserByID(t.Context(), before.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if stored.CredentialVersion != before.CredentialVersion+1 ||
+					(field == "email" && stored.Email != email) ||
+					(field == "password" && bcrypt.CompareHashAndPassword([]byte(stored.Password.V), []byte(password)) != nil) {
+					t.Error("successful credential change did not persist the credentials and credential version")
+				}
+				assertAuthOutboxCount(t, h, failing.message, 1)
+				h.assertRevoked(t, initial)
+			})
+		}
 	}
 }
 
