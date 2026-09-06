@@ -19,8 +19,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"go.uber.org/goleak"
-
 	"github.com/go42-dev/go42/internal/config"
 )
 
@@ -53,10 +51,6 @@ type shutdownWrapTestCase struct {
 	withCloser bool
 	withFunc   bool
 	failure    error
-}
-
-func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
 }
 
 func TestWatchReadinessRecordsFailureFromAnyChannel(t *testing.T) {

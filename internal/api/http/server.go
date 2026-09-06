@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-	"errors"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -16,7 +15,6 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	customMiddleware "github.com/go42-dev/go42/internal/api/http/middleware"
-	"github.com/go42-dev/go42/internal/metrics"
 )
 
 const (
@@ -70,6 +68,7 @@ func New(opts ...Option) *Server {
 
 	echoServer := echo.New()
 	echoServer.IPExtractor = echo.ExtractIPDirect()
+	echoServer.Validator = NewValidator()
 
 	s := &Server{
 		e:                 echoServer,
@@ -88,54 +87,7 @@ func New(opts ...Option) *Server {
 	s.e.Logger = s.l.With(slog.String("who", "echo.Logger"))
 
 	// all panics and explicit errors are handled here
-	s.e.HTTPErrorHandler = func(ctx *echo.Context, err error) {
-		var (
-			httpStatus  = http.StatusInternalServerError
-			httpMessage = "Internal HTTPServer Error"
-		)
-
-		var (
-			logMessage      = "http api error"
-			metricErrorType = "http_api_error"
-			panicStack      []byte
-		)
-
-		if panicErr := new(middleware.PanicStackError); errors.As(err, &panicErr) {
-			logMessage = "http api panic"
-			metricErrorType = "http_api_panic"
-			panicStack = panicErr.Stack
-		} else if code := echo.StatusCode(err); code != 0 {
-			httpStatus = code
-			httpMessage = http.StatusText(code)
-		}
-
-		if httpStatus >= 500 {
-			metrics.Counter("errors", map[string]interface{}{
-				"type": metricErrorType,
-			}).Inc()
-			slogAttrs := []interface{}{
-				slog.String("error", err.Error()),
-				slog.Int("status", httpStatus),
-				slog.String("method", ctx.Request().Method),
-				slog.String("uri", ctx.Request().RequestURI),
-				slog.String("who", "echo.HTTPErrorHandler"),
-			}
-			if len(panicStack) > 0 {
-				slogAttrs = append(slogAttrs, slog.String("stack", string(panicStack)))
-			}
-			s.l.ErrorContext(ctx.Request().Context(), logMessage, slogAttrs...)
-		}
-
-		if r, _ := echo.UnwrapResponse(ctx.Response()); r != nil && r.Committed {
-			return
-		}
-
-		if err := SendJSONError(ctx, httpStatus, httpMessage); err != nil {
-			s.l.ErrorContext(
-				ctx.Request().Context(),
-				"failed to send json error response", slog.Any("error", err))
-		}
-	}
+	s.e.HTTPErrorHandler = NewErrorHandler(s.l)
 
 	// panics are handled and passed to the HTTPErrorHandler
 	// this middleware should be always the first one in the chain

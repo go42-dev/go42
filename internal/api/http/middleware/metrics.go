@@ -25,14 +25,12 @@ func NewMetricsCollector() echo.MiddlewareFunc {
 
 			metrics.Counter("application_http_requests_count", labels).Inc()
 
-			resRecorder := newResponseRecorder(c.Response(), false)
-			c.SetResponse(resRecorder)
-
 			err := next(c)
 
 			duration := time.Since(start).Seconds()
 
-			labels["status"] = strconv.Itoa(resRecorder.status)
+			_, status := echo.ResolveResponseStatus(c.Response(), err)
+			labels["status"] = strconv.Itoa(status)
 			labels["is_error"] = toStringBool(err != nil)
 
 			metrics.Counter("application_http_responses_count", labels).Inc()

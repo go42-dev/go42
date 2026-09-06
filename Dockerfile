@@ -70,7 +70,8 @@ RUN readelf -h app && du -h app && sha256sum app && go tool buildid app
 # For packaging stage, we use minimal(slim) image.
 # This reduces resulting image size and potential security risks.
 # @warn dependabot will update image version automatically, but it will not update package versions.
-FROM alpine:3.24
+# @note wlays pid sha256 digest for alpine image to avoid accidental updates and potential security risks.
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
 # Install dependencies.
 #   * ca-certificates - required for https requests

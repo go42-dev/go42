@@ -378,7 +378,7 @@ func TestCredentials_TransportsRejectInvalidInputWithoutChangingCredentials(t *t
 		t.Fatal(err)
 	}
 	tokens := h.login(t)
-	e := echo.New()
+	e := newTestEcho()
 	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 	client := newCredentialGRPCClient(t, h.service)
 
@@ -460,7 +460,7 @@ func TestCredentials_AllCreationPathsCanLoginOverHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	admin := h.login(t)
-	e := echo.New()
+	e := newTestEcho()
 	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 	client := newCredentialGRPCClient(t, h.service)
 	for _, entry := range []string{"service signup", "service create", "HTTP signup", "HTTP create", "gRPC create"} {
@@ -530,7 +530,7 @@ func TestCredentials_AllUpdatePathsCanLoginOverHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	admin := h.login(t)
-	e := echo.New()
+	e := newTestEcho()
 	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 	client := newCredentialGRPCClient(t, h.service)
 	for _, entry := range []string{"service update", "service self update", "HTTP update", "HTTP self update", "gRPC update"} {
@@ -603,7 +603,7 @@ func TestCredentials_LoginAndProofDoNotRecheckPasswordStrength(t *testing.T) {
 	if err := h.service.CheckPasswordStrength(testPassword); err == nil {
 		t.Fatal("fixture password unexpectedly meets the new strength policy")
 	}
-	e := echo.New()
+	e := newTestEcho()
 	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 	credentialHTTPRequest(t, e, http.MethodPost, "/api/v1/auth/login", "", map[string]string{
 		"email": h.user.Email, "password": testPassword,
@@ -628,7 +628,7 @@ func TestCredentials_LoginAndProofRejectPasswordsBeyondByteLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := echo.New()
+	e := newTestEcho()
 	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 	credentialHTTPRequest(t, e, http.MethodPost, "/api/v1/auth/login", "", map[string]string{
 		"email": h.user.Email, "password": password + "x",
@@ -643,7 +643,7 @@ func TestCredentials_LoginAndProofRejectPasswordsBeyondByteLimit(t *testing.T) {
 
 func TestCredentials_HTTPClientsAcceptLongPasswords(t *testing.T) {
 	h := newSessionHarness(t)
-	e := echo.New()
+	e := newTestEcho()
 	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 	server := httptest.NewServer(e)
 	t.Cleanup(server.Close)
@@ -1863,7 +1863,7 @@ func assertAPIKeyAuthenticationFailure(
 ) {
 	t.Helper()
 	t.Run("http", func(t *testing.T) {
-		e := echo.New()
+		e := newTestEcho()
 		e.GET("/protected", func(*echo.Context) error {
 			t.Error("rejected API key reached the HTTP handler")
 			return nil
@@ -2227,7 +2227,7 @@ func TestRepository_DeleteUserRejectsFailedWrites(t *testing.T) {
 	user := *h.user
 	assertAuthWriteFailure(t, h.repo.DeleteUser(t.Context(), &user))
 
-	e := echo.New()
+	e := newTestEcho()
 	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 	client := newCredentialGRPCClient(t, h.service)
 	for _, test := range []struct {
@@ -2606,7 +2606,7 @@ func tokenEncodingVariants(t *testing.T, token string) []string {
 func TestSessions_RejectNoncanonicalTokensAtHTTPBoundary(t *testing.T) {
 	h := newSessionHarness(t)
 	tokens := h.login(t)
-	e := echo.New()
+	e := newTestEcho()
 	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 	for _, token := range tokenEncodingVariants(t, tokens.RefreshToken) {
 		response := sessionHTTPRequest(
@@ -2640,7 +2640,7 @@ func TestSessions_HTTPLogoutAcceptsExpiredOrOmittedAccessToken(t *testing.T) {
 		t.Run(map[bool]string{false: "omitted", true: "expired"}[includeAccess], func(t *testing.T) {
 			h := newSessionHarness(t, auth.WithJWTAccessTokenTTL(time.Nanosecond))
 			tokens := h.login(t)
-			e := echo.New()
+			e := newTestEcho()
 			httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 			body := map[string]string{"refresh_token": tokens.RefreshToken}
 			if includeAccess {
@@ -2660,7 +2660,7 @@ func TestSessions_HTTPLogoutAcceptsExpiredOrOmittedAccessToken(t *testing.T) {
 func TestSessions_HTTPUpdateRequiresCurrentPassword(t *testing.T) {
 	h := newSessionHarness(t)
 	tokens := h.login(t)
-	e := echo.New()
+	e := newTestEcho()
 	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 	body := map[string]string{"password": "N3w!correctPassword#"}
 	if response := sessionHTTPRequest(
@@ -2708,6 +2708,13 @@ func TestSessions_EnforceTokenPurposeAndSessionOwner(t *testing.T) {
 	if _, err := h.service.Refresh(t.Context(), tokens.RefreshToken); err != nil {
 		t.Errorf("wrong owner revoked the real session: %v", err)
 	}
+}
+
+func newTestEcho() *echo.Echo {
+	e := echo.New()
+	e.Validator = httpAPI.NewValidator()
+	e.HTTPErrorHandler = httpAPI.NewErrorHandler(nil)
+	return e
 }
 
 func sessionHTTPRequest(t *testing.T, e *echo.Echo, method, path, bearer string, data any) *httptest.ResponseRecorder {
@@ -2773,7 +2780,7 @@ func TestSessions_FailedWritesDoNotIssueTokensOrReportLogoutSuccess(t *testing.T
 func TestSessions_HTTPDatabaseOutageFailsClosed(t *testing.T) {
 	h := newSessionHarness(t)
 	tokens := h.login(t)
-	e := echo.New()
+	e := newTestEcho()
 	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 	sqlDB, err := h.db.Master().DB()
 	if err != nil {
@@ -2814,7 +2821,7 @@ func TestSessions_AuthenticationReadsThePrimaryDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := echo.New()
+	e := newTestEcho()
 	httpAdapter.New(service).Register(e.Group("/api/v1"))
 	response := sessionHTTPRequest(t, e, http.MethodGet, "/api/v1/users/me", tokens.AccessToken, nil)
 	if response.Code != http.StatusOK {
@@ -2991,7 +2998,7 @@ func TestAuthRateLimits_ReauthenticationSharesAccountBudget(t *testing.T) {
 
 func TestAuthRateLimits_DefaultIPLimitsRunBeforeRequestValidation(t *testing.T) {
 	h := newSessionHarness(t, auth.WithRateLimiterEnabled(true))
-	e := echo.New()
+	e := newTestEcho()
 	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 	for _, test := range []struct {
 		path  string
@@ -3029,7 +3036,7 @@ func TestAuthRateLimits_RefreshBudgetFollowsSessionAcrossRotation(t *testing.T) 
 			t.Fatal(err)
 		}
 	}
-	e := echo.New()
+	e := newTestEcho()
 	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 	response := sessionHTTPRequest(
 		t,
@@ -3103,7 +3110,7 @@ func TestAuthRateLimits_HTTPFailureAndDenial(t *testing.T) {
 			h.cache.EXPECT().
 				AllowRateLimit(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(false, test.err)
-			e := echo.New()
+			e := newTestEcho()
 			httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 			response := sessionHTTPRequest(t, e, http.MethodPost, "/api/v1/auth/login", "", nil)
 			if response.Code != test.status || response.Header().Get("Retry-After") != "" {
@@ -3170,7 +3177,7 @@ func TestAuthHTTPClientsDecodeLoginErrors(t *testing.T) {
 			if test.configure != nil {
 				test.configure(h)
 			}
-			e := echo.New()
+			e := newTestEcho()
 			httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 			server := httptest.NewServer(e)
 			t.Cleanup(server.Close)
@@ -3244,7 +3251,7 @@ func TestAuthHTTPClientsDecodeLoginErrors(t *testing.T) {
 
 func TestAuthHTTPClientsDecodeInvalidRefresh(t *testing.T) {
 	h := newServiceHarness(t)
-	e := echo.New()
+	e := newTestEcho()
 	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 	server := httptest.NewServer(e)
 	t.Cleanup(server.Close)

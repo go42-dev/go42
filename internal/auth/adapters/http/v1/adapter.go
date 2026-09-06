@@ -13,7 +13,6 @@ import (
 	"github.com/go42-dev/go42/internal/auth/domain"
 	authMiddleware "github.com/go42-dev/go42/internal/auth/middleware"
 	"github.com/go42-dev/go42/internal/auth/models"
-	"github.com/go42-dev/go42/internal/tools"
 )
 
 //go:generate mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
@@ -91,17 +90,8 @@ func (a *Adapter) signup(ctx *echo.Context) error {
 	}
 	req := new(SignupRequest)
 
-	if err := ctx.Bind(req); err != nil {
-		return httpAPI.SendJSONError(ctx,
-			http.StatusBadRequest, http.StatusText(http.StatusBadRequest))
-	}
-
-	vErrs := tools.ValidateStruct(req)
-	if vErrs != nil {
-		return httpAPI.SendJSONError(
-			ctx, http.StatusBadRequest, http.StatusText(http.StatusBadRequest),
-			httpAPI.WithValidationErrors(vErrs...),
-		)
+	if err := httpAPI.BindAndValidate(ctx, req); err != nil {
+		return err
 	}
 
 	user, err := a.service.SignUp(ctx.Request().Context(), req.Email, req.Password)
@@ -127,17 +117,8 @@ func (a *Adapter) login(ctx *echo.Context) error {
 	}
 	req := new(LoginRequest)
 
-	if err := ctx.Bind(req); err != nil {
-		return httpAPI.SendJSONError(ctx,
-			http.StatusBadRequest, http.StatusText(http.StatusBadRequest))
-	}
-
-	vErrs := tools.ValidateStruct(req)
-	if vErrs != nil {
-		return httpAPI.SendJSONError(
-			ctx, http.StatusBadRequest, http.StatusText(http.StatusBadRequest),
-			httpAPI.WithValidationErrors(vErrs...),
-		)
+	if err := httpAPI.BindAndValidate(ctx, req); err != nil {
+		return err
 	}
 
 	tokens, err := a.service.Login(ctx.Request().Context(), req.Email, req.Password)
@@ -155,17 +136,8 @@ type RefreshTokenRequest struct {
 func (a *Adapter) refresh(ctx *echo.Context) error {
 	req := new(RefreshTokenRequest)
 
-	if err := ctx.Bind(req); err != nil {
-		return httpAPI.SendJSONError(ctx,
-			http.StatusBadRequest, http.StatusText(http.StatusBadRequest))
-	}
-
-	vErrs := tools.ValidateStruct(req)
-	if vErrs != nil {
-		return httpAPI.SendJSONError(
-			ctx, http.StatusBadRequest, http.StatusText(http.StatusBadRequest),
-			httpAPI.WithValidationErrors(vErrs...),
-		)
+	if err := httpAPI.BindAndValidate(ctx, req); err != nil {
+		return err
 	}
 
 	tokens, err := a.service.Refresh(ctx.Request().Context(), req.Token)
@@ -184,17 +156,8 @@ type LogoutTokenRequest struct {
 func (a *Adapter) logout(ctx *echo.Context) error {
 	req := new(LogoutTokenRequest)
 
-	if err := ctx.Bind(req); err != nil {
-		return httpAPI.SendJSONError(ctx,
-			http.StatusBadRequest, http.StatusText(http.StatusBadRequest))
-	}
-
-	vErrs := tools.ValidateStruct(req)
-	if vErrs != nil {
-		return httpAPI.SendJSONError(
-			ctx, http.StatusBadRequest, http.StatusText(http.StatusBadRequest),
-			httpAPI.WithValidationErrors(vErrs...),
-		)
+	if err := httpAPI.BindAndValidate(ctx, req); err != nil {
+		return err
 	}
 
 	err := a.service.Logout(ctx.Request().Context(), req.RefreshToken)
@@ -244,21 +207,12 @@ func (a *Adapter) updateSelf(ctx *echo.Context) error {
 
 	req := new(UpdateSelfRequest)
 
-	if err := ctx.Bind(req); err != nil {
-		return httpAPI.SendJSONError(ctx,
-			http.StatusBadRequest, http.StatusText(http.StatusBadRequest))
-	}
-
-	vErrs := tools.ValidateStruct(req)
-	if vErrs != nil {
-		return httpAPI.SendJSONError(
-			ctx, http.StatusBadRequest, http.StatusText(http.StatusBadRequest),
-			httpAPI.WithValidationErrors(vErrs...),
-		)
+	if err := httpAPI.BindAndValidate(ctx, req); err != nil {
+		return err
 	}
 
 	updateData := &domain.UpdateSelfData{
-		UpdateUserData:  domain.UpdateUserData{Email: req.Email, Password: req.Password},
+		Email: req.Email, Password: req.Password,
 		CurrentPassword: req.CurrentPassword,
 	}
 
@@ -327,17 +281,8 @@ type CreateUserRequest struct {
 func (a *Adapter) createUser(ctx *echo.Context) error {
 	req := new(CreateUserRequest)
 
-	if err := ctx.Bind(req); err != nil {
-		return httpAPI.SendJSONError(ctx,
-			http.StatusBadRequest, http.StatusText(http.StatusBadRequest))
-	}
-
-	vErrs := tools.ValidateStruct(req)
-	if vErrs != nil {
-		return httpAPI.SendJSONError(
-			ctx, http.StatusBadRequest, http.StatusText(http.StatusBadRequest),
-			httpAPI.WithValidationErrors(vErrs...),
-		)
+	if err := httpAPI.BindAndValidate(ctx, req); err != nil {
+		return err
 	}
 
 	data := new(domain.CreateUserData)
@@ -367,17 +312,8 @@ func (a *Adapter) updateUser(ctx *echo.Context) error {
 
 	req := new(UpdateUserRequest)
 
-	if err := ctx.Bind(req); err != nil {
-		return httpAPI.SendJSONError(ctx,
-			http.StatusBadRequest, http.StatusText(http.StatusBadRequest))
-	}
-
-	vErrs := tools.ValidateStruct(req)
-	if vErrs != nil {
-		return httpAPI.SendJSONError(
-			ctx, http.StatusBadRequest, http.StatusText(http.StatusBadRequest),
-			httpAPI.WithValidationErrors(vErrs...),
-		)
+	if err := httpAPI.BindAndValidate(ctx, req); err != nil {
+		return err
 	}
 
 	data := &domain.UpdateUserData{Email: req.Email, Password: req.Password}
