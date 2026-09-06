@@ -215,7 +215,18 @@ jobs:
     permissions:
       contents: read
     needs:
-      - unit-tests
+      - git-lint
+      - golangci-lint
+      - docker-lint
+      - helm-lint
+      - proto-lint
+      - openapi-lint
+      - markdown-lint
+      - writing-lint
+      - action-lint
+      - sql-lint
+      - project-lint
+      - editorconfig-lint
     with:
       runs_on: ubuntu-latest
       fuzz_time: 30s
@@ -232,6 +243,7 @@ jobs:
       pull-requests: write
     needs:
       - unit-tests
+      - fuzz-tests
     steps:
       - name: 'Generate coverage report'
         id: coverage_report

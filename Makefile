@@ -87,12 +87,15 @@ setup-mcp:
 test-unit:
 	@go test -count=1 -v -race $(shell go list ./... | grep -v './tests')
 
-## test-fuzz | fuzz core invariants (30 seconds per target)
-# Keep these targets in sync with .github/workflows/125-fuzz-tests.yaml.
+## test-fuzz | run all fuzz targets (30 seconds per target)
 test-fuzz:
-	@go test -run '^$$' -fuzz '^FuzzCanonicalJWT$$' -fuzztime 30s -parallel 2 ./internal/auth
-	@go test -run '^$$' -fuzz '^FuzzRateLimitTTL$$' -fuzztime 30s -parallel 2 ./internal/tools
-	@go test -run '^$$' -fuzz '^FuzzRateLimitExpiration$$' -fuzztime 30s -parallel 2 ./internal/cache/memcached
+	@set -eu; \
+	tests=$$(go test -json -list '^Fuzz' ./...) || { printf '%s\n' "$$tests"; exit 1; }; \
+	targets=$$(printf '%s\n' "$$tests" | jq -r 'select(.Action == "output") | select(.Output | test("^Fuzz[[:alnum:]_]*\n$$")) | [.Package, (.Output | rtrimstr("\n"))] | @tsv'); \
+	printf '%s\n' "$$targets" | while read -r package target; do \
+		[ -n "$$target" ] || continue; \
+		go test -run '^$$' -fuzz "^$${target}$$" -fuzztime 30s -parallel 2 "$$package"; \
+	done
 
 ## test-integration | run integration tests (http and grpc)
 # -count=1 is needed to prevent caching of test results.
