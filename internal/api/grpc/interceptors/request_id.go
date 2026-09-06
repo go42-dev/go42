@@ -64,7 +64,7 @@ func extractOrGenerateRequestID(ctx context.Context) context.Context {
 
 func getRequestID(ctx context.Context) string {
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
-		if ids := md.Get(headerNameRequestID); len(ids) > 0 {
+		if ids := md.Get(headerNameRequestID); len(ids) > 0 && len(ids[0]) > 0 {
 			return ids[0]
 		}
 	}

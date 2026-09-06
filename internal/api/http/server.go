@@ -106,12 +106,7 @@ func New(opts ...Option) *Server {
 		)))
 	}
 
-	s.e.Use(customMiddleware.NewRateLimiter(s.rateLimiter))
-
-	s.e.Use(middleware.BodyLimitWithConfig(middleware.BodyLimitConfig{
-		Skipper:    customMiddleware.DefaultSkipper,
-		LimitBytes: s.bodyLimit,
-	}))
+	s.e.Use(customMiddleware.NewRequestID())
 
 	s.e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
 		Skipper:      customMiddleware.DefaultSkipper,
@@ -137,7 +132,11 @@ func New(opts ...Option) *Server {
 	}))
 
 	s.e.Use(customMiddleware.NewMetricsCollector())
-	s.e.Use(customMiddleware.NewRequestID())
+	s.e.Use(customMiddleware.NewRateLimiter(s.rateLimiter))
+	s.e.Use(middleware.BodyLimitWithConfig(middleware.BodyLimitConfig{
+		Skipper:    customMiddleware.DefaultSkipper,
+		LimitBytes: s.bodyLimit,
+	}))
 
 	s.e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
 		Skipper:            customMiddleware.DefaultSkipper,

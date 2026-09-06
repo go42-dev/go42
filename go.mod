@@ -12,7 +12,6 @@ require (
 	github.com/ThreeDotsLabs/watermill-kafka/v3 v3.1.4
 	github.com/ThreeDotsLabs/watermill-nats/v2 v2.2.0
 	github.com/VictoriaMetrics/metrics v1.44.0
-	github.com/agiledragon/gomonkey/v2 v2.14.2
 	github.com/avast/retry-go/v4 v4.7.0
 	github.com/bradfitz/gomemcache v0.0.0-20250403215159-8d39553ac7cf
 	github.com/caarlos0/env/v11 v11.4.1

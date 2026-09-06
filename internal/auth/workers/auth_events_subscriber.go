@@ -13,6 +13,7 @@ import (
 	"github.com/go42-dev/go42/internal/events"
 	"github.com/go42-dev/go42/internal/metrics"
 	outboxDomain "github.com/go42-dev/go42/internal/outbox/domain"
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 type AuthEventSubscriber struct {
@@ -55,12 +56,13 @@ func (s *AuthEventSubscriber) handleEvent(ctx context.Context, eventData []byte)
 		return err
 	}
 
-	eventLogAttrs := []any{
+	ctx = tools.WithLogAttrs(ctx,
 		slog.String("event_id", event.ID.String()),
 		slog.Int("aggregate_id", event.AggregateID),
 		slog.String("aggregate_type", event.AggregateType),
-	}
-	s.logger.DebugContext(ctx, "received event", eventLogAttrs...)
+	)
+
+	s.logger.DebugContext(ctx, "received event")
 
 	return s.repository.WithTransaction(ctx, func(txCtx context.Context) error {
 		eventLog := &models.UserHistoryRecord{
@@ -69,17 +71,16 @@ func (s *AuthEventSubscriber) handleEvent(ctx context.Context, eventData []byte)
 			UserID:     event.AggregateID,
 			EventType:  event.AggregateType,
 			Data:       event.Payload,
-			Metadata:   event.Metadata,
 		}
 		err := s.repository.SaveUserHistoryRecord(txCtx, eventLog)
 		if err != nil {
-			s.logger.Error("failed to save event", slog.Any("error", err))
+			s.logger.ErrorContext(txCtx, "failed to save event", slog.Any("error", err))
 			metrics.Counter("application_errors", map[string]interface{}{
 				"type": "auth_event_subscriber_error",
 			}).Inc()
 			return fmt.Errorf("failed to save log: %w", err)
 		}
-		s.logger.DebugContext(ctx, "event saved", eventLogAttrs...)
+		s.logger.DebugContext(txCtx, "event saved")
 		metrics.Counter("application_auth_event_subscriber_processed", nil).Inc()
 		return nil
 	})

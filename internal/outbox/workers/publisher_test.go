@@ -8,12 +8,63 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/mock/gomock"
 
+	"github.com/go42-dev/go42/internal/events"
 	"github.com/go42-dev/go42/internal/outbox/domain"
 	"github.com/go42-dev/go42/internal/outbox/models"
 	"github.com/go42-dev/go42/internal/outbox/workers/mocks"
+	"github.com/go42-dev/go42/internal/tools"
 )
+
+type outboxWorkerContextKey struct{}
+
+func TestOutboxPublisherRestoresContextFromMetadata(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	repository := mocks.NewMockrepository(ctrl)
+	publisher := mocks.NewMockpublisher(ctrl)
+	worker := NewOutboxMessagePublisher(repository, publisher)
+	first, second := newOutboxTestMessage(), newOutboxTestMessage()
+	firstSpan := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID{1}, SpanID: trace.SpanID{2}})
+	secondSpan := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID{3}, SpanID: trace.SpanID{4}})
+	firstCtx := tools.SetRequestIDToContext(trace.ContextWithSpanContext(t.Context(), firstSpan), "first-request")
+	secondCtx := tools.SetRequestIDToContext(trace.ContextWithSpanContext(t.Context(), secondSpan), "second-request")
+	first.Metadata = events.PropagationFromContext(firstCtx)
+	second.Metadata = events.PropagationFromContext(secondCtx)
+	workerCtx := context.WithValue(t.Context(), outboxWorkerContextKey{}, "transaction")
+	workerCtx, cancel := context.WithCancel(workerCtx)
+	defer cancel()
+	expectOutboxTransaction(repository)
+	repository.EXPECT().GetUnprocessedMessages(gomock.Any(), 10).Return([]models.Message{first, second}, nil)
+	var contexts []context.Context
+	publisher.EXPECT().Publish(gomock.Any(), first.Topic, gomock.Any()).Times(2).
+		DoAndReturn(func(ctx context.Context, _ string, payload []byte) error {
+			var event domain.Event
+			require.NoError(t, json.Unmarshal(payload, &event))
+			assert.Equal(t, "transaction", ctx.Value(outboxWorkerContextKey{}))
+			assert.NoError(t, ctx.Err())
+			if event.ID == first.ID {
+				assert.Equal(t, "first-request", tools.GetRequestIDFromContext(ctx))
+				assert.Equal(t, firstSpan.TraceID(), trace.SpanContextFromContext(ctx).TraceID())
+			} else {
+				assert.Equal(t, second.ID, event.ID)
+				assert.Equal(t, "second-request", tools.GetRequestIDFromContext(ctx))
+				assert.Equal(t, secondSpan.TraceID(), trace.SpanContextFromContext(ctx).TraceID())
+			}
+			contexts = append(contexts, ctx)
+			return nil
+		})
+	repository.EXPECT().SaveProcessedMessages(gomock.Any(), gomock.Any()).Return(nil)
+	require.NoError(t, worker.run(workerCtx, 10))
+	assert.Empty(t, tools.GetRequestIDFromContext(workerCtx))
+	cancel()
+	for _, ctx := range contexts {
+		assert.ErrorIs(t, ctx.Err(), context.Canceled)
+	}
+}
 
 func TestOutboxPublisherMarksPublishedMessageProcessed(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -24,8 +75,8 @@ func TestOutboxPublisherMarksPublishedMessageProcessed(t *testing.T) {
 	expectOutboxTransaction(repository)
 	repository.EXPECT().GetUnprocessedMessages(gomock.Any(), 10).
 		Return([]models.Message{message}, nil)
-	publisher.EXPECT().Publish(message.Topic, gomock.Any()).
-		DoAndReturn(func(_ string, payload []byte) error {
+	publisher.EXPECT().Publish(gomock.Any(), message.Topic, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, payload []byte) error {
 			var event domain.Event
 			if err := json.Unmarshal(payload, &event); err != nil {
 				t.Fatalf("published event is invalid: %v", err)
@@ -84,12 +135,13 @@ func assertOutboxPublishFailure(
 	worker := NewOutboxMessagePublisher(repository, publisher)
 	message := newOutboxTestMessage()
 	message.RetryCount = retryCount
+	message.Metadata = map[string]string{"request_id": "request-42"}
 	publishErr := errors.New("broker unavailable")
 
 	expectOutboxTransaction(repository)
 	repository.EXPECT().GetUnprocessedMessages(gomock.Any(), 10).
 		Return([]models.Message{message}, nil)
-	publisher.EXPECT().Publish(message.Topic, gomock.Any()).Return(publishErr)
+	publisher.EXPECT().Publish(gomock.Any(), message.Topic, gomock.Any()).Return(publishErr)
 	repository.EXPECT().SaveFailedMessages(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, messages []models.Message) error {
 			if len(messages) != 1 {
@@ -105,6 +157,7 @@ func assertOutboxPublishFailure(
 			if stored.LastError != publishErr.Error() {
 				t.Errorf("stored last error = %q, want %q", stored.LastError, publishErr)
 			}
+			assert.Equal(t, message.Metadata, stored.Metadata)
 			return nil
 		})
 
@@ -130,6 +183,5 @@ func newOutboxTestMessage() models.Message {
 		CreatedAt:     time.Now().Add(-time.Second),
 		Status:        models.MessageStatusPending,
 		MaxRetries:    domain.MaxRetries,
-		Metadata:      "metadata",
 	}
 }

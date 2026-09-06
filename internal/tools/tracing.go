@@ -18,9 +18,6 @@ func TraceReturnT[T any](
 		return fn(ctx)
 	}
 	tracerCtx, span := tracer.Start(ctx, spanName)
-	if span == nil || !span.IsRecording() {
-		return fn(ctx)
-	}
 	defer span.End()
 	result := fn(tracerCtx)
 	span.SetStatus(codes.Ok, "success")
@@ -38,9 +35,6 @@ func TraceReturnTWithErr[T any](
 		return fn(ctx)
 	}
 	tracerCtx, span := tracer.Start(ctx, spanName)
-	if span == nil || !span.IsRecording() {
-		return fn(ctx)
-	}
 	defer span.End()
 	result, err := fn(tracerCtx)
 	if err != nil {
@@ -63,9 +57,6 @@ func TraceReturnErr(
 		return fn(ctx)
 	}
 	tracerCtx, span := tracer.Start(ctx, spanName)
-	if span == nil || !span.IsRecording() {
-		return fn(ctx)
-	}
 	defer span.End()
 	err := fn(tracerCtx)
 	if err != nil {
@@ -89,10 +80,6 @@ func TraceNoReturn(
 		return
 	}
 	tracerCtx, span := tracer.Start(ctx, spanName)
-	if span == nil || !span.IsRecording() {
-		fn(ctx)
-		return
-	}
 	defer span.End()
 	fn(tracerCtx)
 }

@@ -84,19 +84,18 @@ func New(opts ...Option) *Server {
 
 	unaryPriorityQueue := tools.NewPriorityQueue[grpc.UnaryServerInterceptor]()
 	unaryPriorityQueue.Enqueue(
+		InterceptorPriorityPreprocess, interceptors.UnaryRequestIDInterceptor())
+	unaryPriorityQueue.Enqueue(
 		InterceptorPriorityPreprocess,
-		recovery.UnaryServerInterceptor(recovery.WithRecoveryHandler(s.handlePanic)))
+		logging.UnaryServerInterceptor(interceptorLogger(s.logger)))
+	unaryPriorityQueue.Enqueue(
+		InterceptorPriorityPreprocess,
+		recovery.UnaryServerInterceptor(recovery.WithRecoveryHandlerContext(s.handlePanic)))
 	unaryPriorityQueue.Enqueue(
 		InterceptorPriorityPreprocess, interceptors.UnaryServerRateLimiterInterceptor(s.rateLimiter))
 	unaryPriorityQueue.Enqueue(
 		InterceptorPriorityObservability,
-		logging.UnaryServerInterceptor(interceptorLogger(s.logger)))
-	unaryPriorityQueue.Enqueue(
-		InterceptorPriorityObservability,
 		interceptors.UnaryMetricsInterceptor())
-	unaryPriorityQueue.Enqueue(
-		InterceptorPriorityObservability,
-		interceptors.UnaryRequestIDInterceptor())
 	unaryPriorityQueue.Enqueue(
 		InterceptorPriorityBusinessLogic,
 		protovalidateInterceptor.UnaryServerInterceptor(protovalidate.GlobalValidator))
@@ -104,19 +103,19 @@ func New(opts ...Option) *Server {
 	streamPriorityQueue := tools.NewPriorityQueue[grpc.StreamServerInterceptor]()
 	streamPriorityQueue.Enqueue(
 		InterceptorPriorityPreprocess,
-		recovery.StreamServerInterceptor(recovery.WithRecoveryHandler(s.handlePanic)))
+		interceptors.StreamRequestIDInterceptor())
+	streamPriorityQueue.Enqueue(
+		InterceptorPriorityPreprocess,
+		logging.StreamServerInterceptor(interceptorLogger(s.logger)))
+	streamPriorityQueue.Enqueue(
+		InterceptorPriorityPreprocess,
+		recovery.StreamServerInterceptor(recovery.WithRecoveryHandlerContext(s.handlePanic)))
 	streamPriorityQueue.Enqueue(
 		InterceptorPriorityPreprocess,
 		interceptors.StreamServerRateLimiterInterceptor(s.rateLimiter))
 	streamPriorityQueue.Enqueue(
 		InterceptorPriorityObservability,
-		logging.StreamServerInterceptor(interceptorLogger(s.logger)))
-	streamPriorityQueue.Enqueue(
-		InterceptorPriorityObservability,
 		interceptors.StreamMetricsInterceptor())
-	streamPriorityQueue.Enqueue(
-		InterceptorPriorityObservability,
-		interceptors.StreamRequestIDInterceptor())
 	streamPriorityQueue.Enqueue(
 		InterceptorPriorityBusinessLogic,
 		protovalidateInterceptor.StreamServerInterceptor(protovalidate.GlobalValidator))
@@ -162,11 +161,11 @@ func New(opts ...Option) *Server {
 	return s
 }
 
-func (s *Server) handlePanic(p any) error {
+func (s *Server) handlePanic(ctx context.Context, p any) error {
 	metrics.Counter("application_errors", map[string]interface{}{
 		"type": "grpc_panic",
 	}).Inc()
-	s.logger.Error("grpc panic",
+	s.logger.ErrorContext(ctx, "grpc panic",
 		slog.Any("panic", p),
 		slog.Any("stack", debug.Stack()),
 	)
@@ -265,7 +264,6 @@ func (s *Server) Register(adapters ...adapterAccessor) {
 
 func interceptorLogger(l *slog.Logger) logging.Logger {
 	return logging.LoggerFunc(func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
-		l.With(slog.String("request_id", tools.GetRequestIDFromContext(ctx))).
-			Log(ctx, slog.Level(lvl), msg, fields...)
+		l.Log(ctx, slog.Level(lvl), msg, fields...)
 	})
 }

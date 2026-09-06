@@ -11,9 +11,56 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go42-dev/go42/internal/tools"
 )
+
+type traceHelperTest struct {
+	name string
+	run  func(context.Context, func(context.Context))
+}
+
+func TestTraceHelpersPropagateUnsampledSpans(t *testing.T) {
+	previousProvider := otel.GetTracerProvider()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSampler(sdktrace.NeverSample()))
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previousProvider)
+		require.NoError(t, provider.Shutdown(context.Background()))
+	})
+	tests := []traceHelperTest{
+		{name: "value", run: func(ctx context.Context, fn func(context.Context)) {
+			tools.TraceReturnT(ctx, "test", "operation", func(ctx context.Context) int { fn(ctx); return 42 })
+		}},
+		{name: "value and error", run: func(ctx context.Context, fn func(context.Context)) {
+			_, _ = tools.TraceReturnTWithErr(ctx, "test", "operation", func(ctx context.Context) (int, error) {
+				fn(ctx)
+				return 42, nil
+			})
+		}},
+		{name: "error", run: func(ctx context.Context, fn func(context.Context)) {
+			_ = tools.TraceReturnErr(ctx, "test", "operation", func(ctx context.Context) error { fn(ctx); return nil })
+		}},
+		{name: "no return", run: func(ctx context.Context, fn func(context.Context)) {
+			tools.TraceNoReturn(ctx, "test", "operation", fn)
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			called := false
+			ctx := tools.SetRequestIDToContext(t.Context(), "request-42")
+			test.run(ctx, func(ctx context.Context) {
+				called = true
+				span := trace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				assert.False(t, span.IsRecording())
+				assert.Equal(t, "request-42", tools.GetRequestIDFromContext(ctx))
+			})
+			assert.True(t, called)
+		})
+	}
+}
 
 func TestTraceReturnTWithErrSetsSpanStatus(t *testing.T) {
 	recorder := installSpanRecorder(t)

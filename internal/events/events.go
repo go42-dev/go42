@@ -7,7 +7,7 @@ import (
 )
 
 type Publisher interface {
-	Publish(topic string, event []byte) error
+	Publish(ctx context.Context, topic string, event []byte) error
 }
 
 type Subscriber interface {

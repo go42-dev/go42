@@ -24,14 +24,14 @@ var ctxKeyTx ctxKey = "transaction"
 
 func (r *BaseRepository) GetTx(ctx context.Context) *gorm.DB {
 	if tx, ok := ctx.Value(ctxKeyTx).(*gorm.DB); ok {
-		return tx
+		return tx.WithContext(ctx)
 	}
 	return r.db.Master().WithContext(ctx)
 }
 
 func (r *BaseRepository) GetReadDB(ctx context.Context) *gorm.DB {
 	if tx, ok := ctx.Value(ctxKeyTx).(*gorm.DB); ok {
-		return tx
+		return tx.WithContext(ctx)
 	}
 	return r.db.Slave().WithContext(ctx)
 }
@@ -87,7 +87,7 @@ func (r *BaseRepository) WithTransaction(ctx context.Context, fn func(txCtx cont
 			if rbErr := r.Rollback(txCtx); rbErr != nil {
 				slog.Default().
 					With(slog.String("component", "db-repository")).
-					Error("panic: rollback failed", slog.Any("err", rbErr))
+					ErrorContext(txCtx, "panic: rollback failed", slog.Any("error", rbErr))
 			}
 			// we handled panic only to roll back the transaction
 			// actual handling of panic should be done by the caller

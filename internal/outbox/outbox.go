@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/go42-dev/go42/internal/events"
 	"github.com/go42-dev/go42/internal/outbox/domain"
 	"github.com/go42-dev/go42/internal/outbox/models"
 	"github.com/go42-dev/go42/internal/tools"
@@ -53,7 +54,7 @@ func (s *Service) NewOutboxMessage(ctx context.Context, topic string, msg *domai
 	outboxMsg.Payload = msg.Payload
 	outboxMsg.Status = models.MessageStatusPending
 	outboxMsg.MaxRetries = domain.MaxRetries
-	outboxMsg.Metadata = msg.Metadata
+	outboxMsg.Metadata = events.PropagationFromContext(ctx)
 
 	return s.repository.NewOutboxMessage(ctx, &outboxMsg)
 }

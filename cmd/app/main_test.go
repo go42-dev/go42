@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -19,7 +21,14 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/getsentry/sentry-go"
+	sentryattribute "github.com/getsentry/sentry-go/attribute"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/go42-dev/go42/internal/config"
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 const (
@@ -51,6 +60,87 @@ type shutdownWrapTestCase struct {
 	withCloser bool
 	withFunc   bool
 	failure    error
+}
+
+func TestInitLoggingEnrichesConsoleAndSentry(t *testing.T) {
+	entries := make(chan *sentry.Log, 1)
+	client, err := sentry.NewClient(sentry.ClientOptions{
+		BeforeSendLog: func(entry *sentry.Log) *sentry.Log {
+			entries <- entry
+			return nil
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(client.Close)
+	rootCtx := sentry.SetHubOnContext(t.Context(), sentry.NewHub(client, sentry.NewScope()))
+	reader, writer, err := os.Pipe()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, reader.Close())
+		require.NoError(t, writer.Close())
+	})
+	require.NoError(t, reader.SetReadDeadline(time.Now().Add(appTestTimeout)))
+	cfg := &config.Config{}
+	cfg.Core.ServiceName = "test-service"
+	cfg.Core.Environment = "test"
+	cfg.Logger.LogOutput = "stdout"
+	cfg.Logger.LogFormat = "json"
+	cfg.Logger.LogLevel = "info"
+	cfg.Sentry.Enabled = true
+	previousLogger := slog.Default()
+	previousOutput := log.Writer()
+	previousFlags := log.Flags()
+	previousLevel := slog.SetLogLoggerLevel(slog.LevelError)
+	previousStdout := os.Stdout
+	previousClient := sentry.CurrentHub().Client()
+	t.Cleanup(func() {
+		slog.SetDefault(previousLogger)
+		slog.SetLogLoggerLevel(previousLevel)
+		log.SetOutput(previousOutput)
+		log.SetFlags(previousFlags)
+		os.Stdout = previousStdout
+		sentry.CurrentHub().BindClient(previousClient)
+	})
+	os.Stdout = writer
+	loggerFactory := initLogging(rootCtx, cfg)
+	os.Stdout = previousStdout
+	decoder := json.NewDecoder(reader)
+	var startup map[string]any
+	require.NoError(t, decoder.Decode(&startup))
+	assert.Equal(t, "logging initialized", startup["msg"])
+	assert.Equal(t, "test-service", startup["service"])
+	assert.Equal(t, "test", startup["environment"])
+	sentryCloser := initSentry(rootCtx, cfg, loggerFactory)
+	require.NotNil(t, sentryCloser)
+	t.Cleanup(func() { require.NoError(t, sentryCloser.Shutdown(context.Background())) })
+	require.NoError(t, decoder.Decode(&startup))
+	assert.Equal(t, "sentry initialized", startup["msg"])
+	logger := slog.Default().With(slog.String("component", "test-component"))
+	span := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID{1}, SpanID: trace.SpanID{2}})
+	ctx := trace.ContextWithSpanContext(t.Context(), span)
+	ctx = tools.SetRequestIDToContext(ctx, "request-42")
+	ctx = tools.WithLogAttrs(ctx, slog.String("event_id", "event-42"))
+	logger.ErrorContext(ctx, "failed")
+
+	var rawEntry json.RawMessage
+	require.NoError(t, decoder.Decode(&rawEntry))
+	var console map[string]any
+	require.NoError(t, json.Unmarshal(rawEntry, &console))
+	var entry *sentry.Log
+	select {
+	case entry = <-entries:
+	case <-time.After(appTestTimeout):
+		t.Fatal("Sentry did not receive the log")
+	}
+	for key, value := range map[string]string{
+		"service": "test-service", "environment": "test", "component": "test-component",
+		"request_id": "request-42", "event_id": "event-42",
+		"trace_id": span.TraceID().String(), "span_id": span.SpanID().String(),
+	} {
+		assert.Equal(t, value, console[key], key)
+		assert.Equal(t, sentryattribute.StringValue(value), entry.Attributes[key], key)
+		assert.Equal(t, 1, bytes.Count(rawEntry, []byte(`"`+key+`":`)), key)
+	}
 }
 
 func TestWatchReadinessRecordsFailureFromAnyChannel(t *testing.T) {

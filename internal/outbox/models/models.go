@@ -25,7 +25,7 @@ type Message struct {
 	RetryCount    int
 	MaxRetries    int
 	LastError     string
-	Metadata      string
+	Metadata      map[string]string `gorm:"serializer:json"`
 }
 
 func (m *Message) TableName() string {

@@ -35,7 +35,6 @@ func (p *deadLetterPublisher) Publish(topic string, messages ...*message.Message
 			msg.Context(),
 			"event moved to dead-letter topic",
 			slog.String("dead_letter_topic", topic),
-			slog.String("message_uuid", msg.UUID),
 			slog.String("source_topic", msg.Metadata.Get(middleware.PoisonedTopicKey)),
 			slog.String("reason", msg.Metadata.Get(middleware.ReasonForPoisonedKey)),
 		)

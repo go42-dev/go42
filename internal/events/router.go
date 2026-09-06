@@ -11,8 +11,13 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go42-dev/go42/internal/metrics"
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 type permanentError struct {
@@ -92,12 +97,24 @@ func NewRouter(backend Backend, policy DeliveryPolicy, opts ...Option) (*Router,
 	return r, nil
 }
 
-func (r *Router) Publish(topic string, event []byte) error {
-	msg := message.NewMessage(watermill.NewUUID(), event)
-	err := r.backend.Publisher().Publish(topic, msg)
+func (r *Router) Publish(ctx context.Context, topic string, event []byte) error {
+	ctx, span := otel.Tracer("events").Start(ctx, "publish "+topic,
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(attribute.String("messaging.destination.name", topic)),
+	)
+	defer span.End()
+
+	msg := message.NewMessageWithContext(ctx, watermill.NewUUID(), event)
+	msg.Metadata = PropagationFromContext(ctx)
+	err := ctx.Err()
+	if err == nil {
+		err = r.backend.Publisher().Publish(topic, msg)
+	}
 	result := "success"
 	if err != nil {
 		result = "error"
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 	}
 	metrics.Counter("application_event_publish_total", map[string]any{
 		"result": result,
@@ -156,8 +173,14 @@ func (r *Router) Subscribe(
 		},
 	)
 
-	// `PoisonQueue` must wrap `Retry` so it sees only the final error.
-	watermillHandler.AddMiddleware(poisonQueue, retryWithMetrics(topic, retry))
+	// Restore correlation before `Retry` captures its baseline context.
+	// `PoisonQueue` wraps the processing span so exhausted retries still record an error.
+	watermillHandler.AddMiddleware(
+		restoreMessageContext(topic),
+		poisonQueue,
+		traceMessage(topic),
+		retryWithMetrics(topic, retry),
+	)
 
 	return nil
 }
@@ -169,8 +192,16 @@ func retryWithMetrics(topic string, retry middleware.Retry) message.HandlerMiddl
 
 	return func(next message.HandlerFunc) message.HandlerFunc {
 		return func(msg *message.Message) ([]*message.Message, error) {
+			messageRetry := retry
+			if messageRetry.Logger != nil {
+				fields := watermill.LogFields{}
+				for _, attr := range tools.LogAttrsFromContext(msg.Context()) {
+					fields[attr.Key] = attr.Value.Resolve().Any()
+				}
+				messageRetry.Logger = messageRetry.Logger.With(fields)
+			}
 			attempt := 0
-			retryHandler := retry.Middleware(func(msg *message.Message) ([]*message.Message, error) {
+			retryHandler := messageRetry.Middleware(func(msg *message.Message) ([]*message.Message, error) {
 				if attempt > 0 {
 					retryCounter.Inc()
 				}

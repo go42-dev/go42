@@ -42,7 +42,7 @@ func TestRouterRetriesTransientFailure(t *testing.T) {
 	}
 	startRouter(t, router, ctx)
 
-	if err := router.Publish("transient", []byte("event")); err != nil {
+	if err := router.Publish(ctx, "transient", []byte("event")); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 	waitForRouterSignal(t, processed)
@@ -161,7 +161,7 @@ func assertDeadLetterDelivery(t *testing.T, maxRetries int, permanent bool, want
 	startRouter(t, router, ctx)
 
 	payload := []byte("event")
-	if err := router.Publish(topic, payload); err != nil {
+	if err := router.Publish(ctx, topic, payload); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 	deadLetter := waitForRouterMessage(t, deadLetters)

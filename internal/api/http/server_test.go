@@ -1,8 +1,11 @@
 package http
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	nethttp "net/http"
@@ -11,13 +14,94 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	oapi "github.com/go42-dev/go42/api/gen/sdk/http/v1/auth/oapi-codegen"
 	ogen "github.com/go42-dev/go42/api/gen/sdk/http/v1/auth/ogen"
 	"github.com/go42-dev/go42/internal/api/http/mocks"
+	"github.com/go42-dev/go42/internal/tools"
 )
+
+type httpRequestLoggingTest struct {
+	name         string
+	requestID    string
+	body         string
+	limited      bool
+	limiterError error
+	panic        bool
+	status       int
+}
+
+func TestHTTPLogsRequestIDsBeforeRejections(t *testing.T) {
+	for _, test := range []httpRequestLoggingTest{
+		{name: "provided ID", requestID: "request-42", status: nethttp.StatusNoContent},
+		{name: "generated ID", status: nethttp.StatusNoContent},
+		{name: "body limit", requestID: "request-42", body: strings.Repeat("x", 2048), status: 413},
+		{name: "rate limit", requestID: "request-42", limited: true, status: 429},
+		{name: "limiter error", requestID: "request-42", limiterError: errors.New("unavailable"), status: 500},
+		{name: "panic", requestID: "request-42", panic: true, status: 500},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			logger := slog.New(tools.SlogContextWrapper(slog.NewJSONHandler(&output, &slog.HandlerOptions{
+				Level: slog.LevelDebug,
+			})))
+			opts := []Option{WithBodyLimit(1024), WithLogger(logger)}
+			if test.limited || test.limiterError != nil {
+				limiter := mocks.NewMockrateLimiterAccessor(gomock.NewController(t))
+				limiter.EXPECT().Limit(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, _ string) (bool, error) {
+						logger.InfoContext(ctx, "limiter")
+						return !test.limited, test.limiterError
+					})
+				opts = append(opts, func(s *Server) { s.rateLimiter = limiter })
+			}
+			server := newTestServer(t, opts...)
+			server.root.POST("/context", func(c *echo.Context) error {
+				logger.InfoContext(c.Request().Context(), "handler")
+				if test.panic {
+					panic("handler failure")
+				}
+				return c.NoContent(nethttp.StatusNoContent)
+			})
+			output.Reset()
+			request := httptest.NewRequestWithContext(
+				t.Context(),
+				nethttp.MethodPost,
+				"/context",
+				strings.NewReader(test.body),
+			)
+			request.Header.Set("x-request-id", test.requestID)
+			response := httptest.NewRecorder()
+			server.e.ServeHTTP(response, request)
+			assert.Equal(t, test.status, response.Code)
+			requestID := response.Header().Get("x-request-id")
+			if len(test.requestID) > 0 {
+				assert.Equal(t, test.requestID, requestID)
+			} else {
+				_, err := uuid.Parse(requestID)
+				require.NoError(t, err)
+			}
+			decoder := json.NewDecoder(&output)
+			logged := false
+			for {
+				var entry map[string]any
+				err := decoder.Decode(&entry)
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				require.NoError(t, err)
+				assert.Equal(t, requestID, entry["request_id"], entry["msg"])
+				logged = true
+			}
+			assert.True(t, logged)
+		})
+	}
+}
 
 func TestReadyReturnsDependencyStatus(t *testing.T) {
 	tests := []struct {

@@ -94,11 +94,11 @@ func main() {
 	}
 
 	// core systems
-	initLogging(ctx, cfg)
+	loggerFactory := initLogging(ctx, cfg)
 	initVault(ctx, cfg)
 	etcdCloser := initEtcd(ctx, cfg)
 	initLimits(ctx, cfg)
-	sentryCloser := initSentry(ctx, cfg)
+	sentryCloser := initSentry(ctx, cfg, loggerFactory)
 	pprofCloser := initProfiling(ctx, cfg)
 	metricsHandler := initMetrics(ctx, cfg)
 	tracingCloser := initTracing(ctx, cfg)
@@ -669,7 +669,7 @@ func main() {
 	)
 }
 
-func initLogging(_ context.Context, cfg *config.Config) {
+func initLogging(_ context.Context, cfg *config.Config) func(...slog.Handler) *slog.Logger {
 	var slogOutput io.Writer
 	switch cfg.Logger.LogOutput {
 	case "none":
@@ -713,23 +713,28 @@ func initLogging(_ context.Context, cfg *config.Config) {
 
 	hostname, _ := os.Hostname()
 
-	logger := slog.New(tools.SlogContextWrapper(slogHandler))
-	enrichedLogger := logger.With(
-		slog.String("service", cfg.Core.ServiceName),
-		slog.String("environment", cfg.Core.Environment),
-		slog.String("hostname", hostname),
-		slog.String("build_tag", xBuildTag),
-		slog.String("build_commit", xBuildCommit),
-	)
+	loggerFactory := func(handlers ...slog.Handler) *slog.Logger {
+		handlers = append([]slog.Handler{slogHandler}, handlers...)
+		return slog.New(
+			tools.SlogContextWrapper(
+				slogmulti.Fanout(handlers...))).With(
+			slog.String("service", cfg.Core.ServiceName),
+			slog.String("environment", cfg.Core.Environment),
+			slog.String("hostname", hostname),
+			slog.String("build_tag", xBuildTag),
+			slog.String("build_commit", xBuildCommit),
+		)
+	}
 
 	// Any call to log.* will be redirected to slog.Error.
 	// Because of that, we need to agree to use `log` package only for errors.
 	slog.SetLogLoggerLevel(slog.LevelError)
 	// for both 'log' and 'slog'
-	slog.SetDefault(enrichedLogger)
+	slog.SetDefault(loggerFactory())
 
-	// any log calls before this point will be non-structured
 	slog.Info("logging initialized", slog.String("log_level", cfg.Logger.Level().String()))
+
+	return loggerFactory
 }
 
 func initVault(ctx context.Context, cfg *config.Config) {
@@ -847,7 +852,9 @@ func initLimits(_ context.Context, cfg *config.Config) {
 	}
 }
 
-func initSentry(ctx context.Context, cfg *config.Config) ShutMeDown {
+func initSentry(
+	ctx context.Context, cfg *config.Config, loggerFactory func(...slog.Handler) *slog.Logger,
+) ShutMeDown {
 	if !cfg.Sentry.Enabled {
 		slog.Warn("sentry is disabled")
 		return nil
@@ -881,14 +888,7 @@ func initSentry(ctx context.Context, cfg *config.Config) ShutMeDown {
 		AddSource: cfg.Sentry.AddSource,
 	}.NewSentryHandler(ctx)
 
-	multiLogger := slog.New(
-		slogmulti.Fanout(
-			slog.Default().Handler(),
-			sentryHandler,
-		),
-	)
-
-	slog.SetDefault(multiLogger)
+	slog.SetDefault(loggerFactory(sentryHandler))
 	slog.Info("sentry initialized")
 
 	return &ShutMeDownWrap{

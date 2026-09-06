@@ -7,9 +7,11 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/go42-dev/go42/internal/events"
 	"github.com/go42-dev/go42/internal/metrics"
 	"github.com/go42-dev/go42/internal/outbox/domain"
 	"github.com/go42-dev/go42/internal/outbox/models"
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 //go:generate mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
@@ -22,7 +24,7 @@ type repository interface {
 }
 
 type publisher interface {
-	Publish(topic string, event []byte) error
+	Publish(ctx context.Context, topic string, event []byte) error
 }
 
 type OutboxMessagePublisher struct {
@@ -76,7 +78,7 @@ func (p *OutboxMessagePublisher) Run(
 
 func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
 	err := p.repository.WithTransaction(ctx, func(txCtx context.Context) error {
-		p.logger.Debug("running outbox publisher job")
+		p.logger.DebugContext(txCtx, "running outbox publisher job")
 
 		messages, err := p.repository.GetUnprocessedMessages(txCtx, batchSize)
 		if err != nil {
@@ -89,19 +91,23 @@ func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
 		)
 
 		for _, message := range messages {
+			messageCtx := tools.WithLogAttrs(
+				events.ContextWithPropagation(txCtx, message.Metadata),
+				slog.String("event_id", message.ID.String()),
+				slog.String("topic", message.Topic),
+			)
 			event := domain.Event{
 				ID:            message.ID,
 				CreatedAt:     message.CreatedAt,
 				AggregateID:   message.AggregateID,
 				AggregateType: message.AggregateType,
 				Payload:       message.Payload,
-				Metadata:      message.Metadata,
 			}
 			jsonBytes, err := json.Marshal(event)
 			if err != nil {
 				return fmt.Errorf("failed to marshal event: %w", err)
 			}
-			err = p.publisher.Publish(message.Topic, jsonBytes)
+			err = p.publisher.Publish(messageCtx, message.Topic, jsonBytes)
 			if err != nil {
 				message.RetryCount++
 				message.LastError = err.Error()
@@ -112,7 +118,7 @@ func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
 				}
 				observeDelivery(message.CreatedAt, result)
 				failed = append(failed, message)
-				p.logger.Error("failed to publish message", slog.Any("error", err))
+				p.logger.ErrorContext(messageCtx, "failed to publish message", slog.Any("error", err))
 				metrics.Counter("application_errors", map[string]interface{}{
 					"type": "outbox_publisher_error",
 				}).Inc()
@@ -120,7 +126,7 @@ func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
 			}
 			observeDelivery(message.CreatedAt, "processed")
 			processed = append(processed, message)
-			p.logger.Debug("published message", slog.Any("message", message))
+			p.logger.DebugContext(messageCtx, "published message")
 		}
 
 		if len(processed) > 0 {
