@@ -3,9 +3,8 @@
 # ╰─────────────────────----------------─────────╯
 #
 # Before running any commands, ensure you have the following tools are installed:
-# - mise @see https://mise.jdx.dev/
 # - go @see https://go.dev/
-# - npm @see https://www.npmjs.com/
+# - mise @see https://mise.jdx.dev/
 # - docker @see https://www.docker.com/
 #
 # Also, ensure you have logged in to GitHub Container Registry:
