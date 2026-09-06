@@ -36,6 +36,10 @@ paths:
           description: Invalid request
         '409':
           description: User already exists
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/AuthenticationUnavailable'
         default:
           $ref: '#/components/responses/UnexpectedResponse'
       security: []
@@ -62,6 +66,10 @@ paths:
           description: Invalid request
         '403':
           description: User inactive
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/AuthenticationUnavailable'
         default:
           $ref: '#/components/responses/UnexpectedResponse'
       security: []
@@ -69,7 +77,9 @@ paths:
     post:
       tags:
         - auth
-      summary: Refresh user token
+      summary: Rotate the session refresh token
+      description: >-
+        Refresh tokens are single-use. Reusing one ends that session, including successor tokens.
       operationId: refresh
       requestBody:
         required: true
@@ -86,8 +96,12 @@ paths:
                 $ref: '#/components/schemas/Tokens'
         '400':
           description: Invalid request
-        '403':
-          description: User inactive
+        '401':
+          description: Invalid, expired, reused or inactive session
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/AuthenticationUnavailable'
         default:
           $ref: '#/components/responses/UnexpectedResponse'
       security: []
@@ -95,7 +109,9 @@ paths:
     post:
       tags:
         - auth
-      summary: Invalidate user tokens
+      summary: End the session
+      description: >-
+        The refresh token identifies the session. Repeated logout succeeds, including after access-token expiry.
       operationId: logout
       requestBody:
         required: true
@@ -108,6 +124,10 @@ paths:
           description: Tokens invalidated successfully
         '400':
           description: Invalid request
+        '401':
+          description: Invalid refresh token
+        '503':
+          $ref: '#/components/responses/AuthenticationUnavailable'
         default:
           $ref: '#/components/responses/UnexpectedResponse'
       security: []
@@ -136,7 +156,9 @@ paths:
     put:
       tags:
         - users
-      summary: Update current user
+      summary: Update current user credentials
+      description: >-
+        Requires the current password. Changing email or password ends all existing JWT sessions.
       operationId: users.me.update
       x-required-permissions:
         - users:update_self
@@ -156,6 +178,10 @@ paths:
           description: Invalid request
         '401':
           description: Unauthorized
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/AuthenticationUnavailable'
         default:
           $ref: '#/components/responses/UnexpectedResponse'
   /users:
@@ -351,6 +377,18 @@ components:
       in: header
       name: X-API-Key
   responses:
+    RateLimited:
+      description: Too many authentication attempts
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    AuthenticationUnavailable:
+      description: Authentication storage or rate limiter is unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     UnexpectedResponse:
       description: Unexpected response
       content:
@@ -455,10 +493,10 @@ components:
     LogoutRequest:
       type: object
       required:
-        - access_token
         - refresh_token
       properties:
         access_token:
+          description: Optional; logout uses the refresh token to identify the session.
           type: string
           default: ''
         refresh_token:
@@ -487,7 +525,11 @@ components:
           default: 12#$abCD%$
     UpdateSelfRequest:
       type: object
+      description: current_password is required when email or password is supplied.
       properties:
+        current_password:
+          type: string
+          writeOnly: true
         email:
           type: string
           default: user@example.com
