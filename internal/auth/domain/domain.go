@@ -69,6 +69,7 @@ var (
 	ErrEntityNotFound            = errors.New("entity not found")
 	ErrUserAlreadyExists         = errors.New("user already exists")
 	ErrInvalidCredentials        = errors.New("invalid credentials")
+	ErrInvalidEmail              = errors.New("invalid email address")
 	ErrInvalidToken              = errors.New("invalid token")
 	ErrAuthenticationUnavailable = errors.New("authentication unavailable")
 	ErrPasswordWeak              = errors.New("password is too weak")

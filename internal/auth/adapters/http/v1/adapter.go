@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -78,8 +77,8 @@ func (a *Adapter) Register(g *echo.Group) {
 }
 
 type SignupRequest struct {
-	Email    string `json:"email"    v:"required,email"`
-	Password string `json:"password" v:"required,min=8,max=24"`
+	Email    string `json:"email"    v:"required"`
+	Password string `json:"password" v:"required"`
 }
 
 func (a *Adapter) signup(ctx *echo.Context) error {
@@ -105,7 +104,6 @@ func (a *Adapter) signup(ctx *echo.Context) error {
 		)
 	}
 
-	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	user, err := a.service.SignUp(ctx.Request().Context(), req.Email, req.Password)
 	if err != nil {
 		return a.processError(ctx, err)
@@ -115,8 +113,8 @@ func (a *Adapter) signup(ctx *echo.Context) error {
 }
 
 type LoginRequest struct {
-	Email    string `json:"email"    v:"required,email"`
-	Password string `json:"password" v:"required,min=8,max=24"`
+	Email    string `json:"email"    v:"required"`
+	Password string `json:"password" v:"required"`
 }
 
 func (a *Adapter) login(ctx *echo.Context) error {
@@ -225,9 +223,9 @@ func (a *Adapter) readSelf(ctx *echo.Context) error {
 }
 
 type UpdateSelfRequest struct {
-	Email           string `json:"email"            v:"omitempty,email"`
-	Password        string `json:"password"         v:"omitempty,min=8,max=24"`
-	CurrentPassword string `json:"current_password" v:"required_with=Email Password"`
+	Email           *string `json:"email"`
+	Password        *string `json:"password"`
+	CurrentPassword string  `json:"current_password" v:"required_with=Email Password"`
 }
 
 func (a *Adapter) updateSelf(ctx *echo.Context) error {
@@ -259,15 +257,9 @@ func (a *Adapter) updateSelf(ctx *echo.Context) error {
 		)
 	}
 
-	updateData := &domain.UpdateSelfData{CurrentPassword: req.CurrentPassword}
-
-	if req.Email != "" {
-		email := strings.ToLower(strings.TrimSpace(req.Email))
-		updateData.Email = &email
-	}
-	if req.Password != "" {
-		password := req.Password
-		updateData.Password = &password
+	updateData := &domain.UpdateSelfData{
+		UpdateUserData:  domain.UpdateUserData{Email: req.Email, Password: req.Password},
+		CurrentPassword: req.CurrentPassword,
 	}
 
 	err := a.service.UpdateSelf(ctx.Request().Context(), authInfo.UUID, updateData)
@@ -328,8 +320,8 @@ func (a *Adapter) userByUUID(ctx *echo.Context) error {
 }
 
 type CreateUserRequest struct {
-	Email    string `json:"email"    v:"required,email"`
-	Password string `json:"password" v:"required,min=8,max=24"`
+	Email    string `json:"email"    v:"required"`
+	Password string `json:"password" v:"required"`
 }
 
 func (a *Adapter) createUser(ctx *echo.Context) error {
@@ -350,7 +342,7 @@ func (a *Adapter) createUser(ctx *echo.Context) error {
 
 	data := new(domain.CreateUserData)
 
-	data.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	data.Email = req.Email
 	data.Password = req.Password
 
 	user, err := a.service.CreateUser(ctx.Request().Context(), data)
@@ -362,8 +354,8 @@ func (a *Adapter) createUser(ctx *echo.Context) error {
 }
 
 type UpdateUserRequest struct {
-	Email    string `json:"email"    v:"omitempty,email"`
-	Password string `json:"password" v:"omitempty,min=8,max=24"`
+	Email    *string `json:"email"`
+	Password *string `json:"password"`
 }
 
 func (a *Adapter) updateUser(ctx *echo.Context) error {
@@ -388,16 +380,7 @@ func (a *Adapter) updateUser(ctx *echo.Context) error {
 		)
 	}
 
-	data := new(domain.UpdateUserData)
-
-	if req.Email != "" {
-		email := strings.ToLower(strings.TrimSpace(req.Email))
-		data.Email = &email
-	}
-	if req.Password != "" {
-		password := req.Password
-		data.Password = &password
-	}
+	data := &domain.UpdateUserData{Email: req.Email, Password: req.Password}
 
 	err := a.service.UpdateUser(ctx.Request().Context(), userUUID, data)
 	if err != nil {

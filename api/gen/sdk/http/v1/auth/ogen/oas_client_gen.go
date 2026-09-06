@@ -150,6 +150,15 @@ func (c *Client) Login(ctx context.Context, request *LoginRequest) (LoginRes, er
 }
 
 func (c *Client) sendLogin(ctx context.Context, request *LoginRequest) (res LoginRes, err error) {
+	// Validate request before sending.
+	if err := func() error {
+		if err := request.Validate(); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return res, errors.Wrap(err, "validate")
+	}
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("login"),
 		semconv.HTTPRequestMethodKey.String("POST"),
@@ -400,6 +409,15 @@ func (c *Client) Signup(ctx context.Context, request *SignUpRequest) (SignupRes,
 }
 
 func (c *Client) sendSignup(ctx context.Context, request *SignUpRequest) (res SignupRes, err error) {
+	// Validate request before sending.
+	if err := func() error {
+		if err := request.Validate(); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return res, errors.Wrap(err, "validate")
+	}
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("signup"),
 		semconv.HTTPRequestMethodKey.String("POST"),
@@ -483,6 +501,15 @@ func (c *Client) UsersCreate(ctx context.Context, request *CreateUserRequest) (U
 }
 
 func (c *Client) sendUsersCreate(ctx context.Context, request *CreateUserRequest) (res UsersCreateRes, err error) {
+	// Validate request before sending.
+	if err := func() error {
+		if err := request.Validate(); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return res, errors.Wrap(err, "validate")
+	}
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("users.create"),
 		semconv.HTTPRequestMethodKey.String("POST"),
@@ -1185,6 +1212,15 @@ func (c *Client) UsersMeUpdate(ctx context.Context, request *UpdateSelfRequest) 
 }
 
 func (c *Client) sendUsersMeUpdate(ctx context.Context, request *UpdateSelfRequest) (res UsersMeUpdateRes, err error) {
+	// Validate request before sending.
+	if err := func() error {
+		if err := request.Validate(); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return res, errors.Wrap(err, "validate")
+	}
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("users.me.update"),
 		semconv.HTTPRequestMethodKey.String("PUT"),
@@ -1313,6 +1349,15 @@ func (c *Client) UsersUpdate(ctx context.Context, request *UpdateUserRequest, pa
 }
 
 func (c *Client) sendUsersUpdate(ctx context.Context, request *UpdateUserRequest, params UsersUpdateParams) (res UsersUpdateRes, err error) {
+	// Validate request before sending.
+	if err := func() error {
+		if err := request.Validate(); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return res, errors.Wrap(err, "validate")
+	}
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("users.update"),
 		semconv.HTTPRequestMethodKey.String("PUT"),

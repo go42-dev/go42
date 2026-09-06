@@ -47,14 +47,13 @@ message GetUserByUUIDResponse {
 }
 
 message CreateUserRequest {
-  string email = 1 [
-    (buf.validate.field).required = true,
-    (buf.validate.field).string.email = true
-  ];
+  // The service trims surrounding whitespace, lowercases, then validates the email.
+  string email = 1 [(buf.validate.field).required = true];
+  // At least 8 Unicode characters and at most 72 UTF-8 bytes; strength is checked by the service.
   string password = 2 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 8,
-    (buf.validate.field).string.max_len = 24
+    (buf.validate.field).string.max_bytes = 72
   ];
 }
 
@@ -67,10 +66,10 @@ message UpdateUserRequest {
     (buf.validate.field).required = true,
     (buf.validate.field).string.uuid = true
   ];
-  optional string email = 2 [(buf.validate.field).string.email = true];
+  optional string email = 2;
   optional string password = 3 [
     (buf.validate.field).string.min_len = 8,
-    (buf.validate.field).string.max_len = 24
+    (buf.validate.field).string.max_bytes = 72
   ];
 }
 

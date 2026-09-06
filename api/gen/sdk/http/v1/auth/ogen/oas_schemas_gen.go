@@ -37,7 +37,10 @@ func (s *ApiKey) SetRoles(val []string) {
 
 // Ref: #/components/schemas/CreateUserRequest
 type CreateUserRequest struct {
-	Email    string `json:"email"`
+	// Trimmed, lowercased, then validated as an email address by the service.
+	Email string `json:"email"`
+	// At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including
+	// whitespace. New passwords must also meet the configured strength requirement.
 	Password string `json:"password"`
 }
 
@@ -176,7 +179,10 @@ func (*LoginForbidden) loginRes() {}
 
 // Ref: #/components/schemas/LoginRequest
 type LoginRequest struct {
-	Email    string `json:"email"`
+	// Trimmed, lowercased, then validated as an email address by the service.
+	Email string `json:"email"`
+	// At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including
+	// whitespace.
 	Password string `json:"password"`
 }
 
@@ -377,7 +383,10 @@ func (*RefreshUnauthorized) refreshRes() {}
 
 // Ref: #/components/schemas/SignUpRequest
 type SignUpRequest struct {
-	Email    string `json:"email"`
+	// Trimmed, lowercased, then validated as an email address by the service.
+	Email string `json:"email"`
+	// At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including
+	// whitespace. New passwords must also meet the configured strength requirement.
 	Password string `json:"password"`
 }
 
@@ -486,9 +495,13 @@ func (s *UnexpectedResponseStatusCode) SetResponse(val Error) {
 // Current_password is required when email or password is supplied.
 // Ref: #/components/schemas/UpdateSelfRequest
 type UpdateSelfRequest struct {
+	// Existing password, used exactly as supplied; at most 72 UTF-8 bytes.
 	CurrentPassword OptString `json:"current_password"`
-	Email           OptString `json:"email"`
-	Password        OptString `json:"password"`
+	// Trimmed, lowercased, then validated as an email address by the service.
+	Email OptString `json:"email"`
+	// At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including
+	// whitespace. New passwords must also meet the configured strength requirement.
+	Password OptString `json:"password"`
 }
 
 // GetCurrentPassword returns the value of CurrentPassword.
@@ -523,7 +536,10 @@ func (s *UpdateSelfRequest) SetPassword(val OptString) {
 
 // Ref: #/components/schemas/UpdateUserRequest
 type UpdateUserRequest struct {
-	Email    OptString `json:"email"`
+	// Trimmed, lowercased, then validated as an email address by the service.
+	Email OptString `json:"email"`
+	// At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including
+	// whitespace. New passwords must also meet the configured strength requirement.
 	Password OptString `json:"password"`
 }
 

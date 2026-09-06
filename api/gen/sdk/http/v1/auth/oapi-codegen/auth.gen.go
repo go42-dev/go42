@@ -23,7 +23,10 @@ import (
 
 // CreateUserRequest defines model for CreateUserRequest.
 type CreateUserRequest struct {
-	Email    string `json:"email"`
+	// Email Trimmed, lowercased, then validated as an email address by the service.
+	Email string `json:"email"`
+
+	// Password At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including whitespace. New passwords must also meet the configured strength requirement.
 	Password string `json:"password"`
 }
 
@@ -50,7 +53,10 @@ type Error struct {
 
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
-	Email    string `json:"email"`
+	// Email Trimmed, lowercased, then validated as an email address by the service.
+	Email string `json:"email"`
+
+	// Password At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including whitespace.
 	Password string `json:"password"`
 }
 
@@ -68,7 +74,10 @@ type RefreshRequest struct {
 
 // SignUpRequest defines model for SignUpRequest.
 type SignUpRequest struct {
-	Email    string `json:"email"`
+	// Email Trimmed, lowercased, then validated as an email address by the service.
+	Email string `json:"email"`
+
+	// Password At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including whitespace. New passwords must also meet the configured strength requirement.
 	Password string `json:"password"`
 }
 
@@ -81,14 +90,22 @@ type Tokens struct {
 
 // UpdateSelfRequest current_password is required when email or password is supplied.
 type UpdateSelfRequest struct {
+	// CurrentPassword Existing password, used exactly as supplied; at most 72 UTF-8 bytes.
 	CurrentPassword *string `json:"current_password,omitempty"`
-	Email           *string `json:"email,omitempty"`
-	Password        *string `json:"password,omitempty"`
+
+	// Email Trimmed, lowercased, then validated as an email address by the service.
+	Email *string `json:"email,omitempty"`
+
+	// Password At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including whitespace. New passwords must also meet the configured strength requirement.
+	Password *string `json:"password,omitempty"`
 }
 
 // UpdateUserRequest defines model for UpdateUserRequest.
 type UpdateUserRequest struct {
-	Email    *string `json:"email,omitempty"`
+	// Email Trimmed, lowercased, then validated as an email address by the service.
+	Email *string `json:"email,omitempty"`
+
+	// Password At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including whitespace. New passwords must also meet the configured strength requirement.
 	Password *string `json:"password,omitempty"`
 }
 
@@ -2843,36 +2860,40 @@ func ParseUsersUpdateResponse(rsp *http.Response) (*UsersUpdateResponse, error) 
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"AA==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

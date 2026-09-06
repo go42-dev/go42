@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -28,9 +29,11 @@ import (
 )
 
 const (
-	maxJWTTokenBytes    = 8192
-	apiTokenPrefix      = "api_"
-	apiTokenSecretBytes = 32
+	maxJWTTokenBytes      = 8192
+	apiTokenPrefix        = "api_"
+	apiTokenSecretBytes   = 32
+	minPasswordCharacters = 8
+	maxPasswordBytes      = 72
 )
 
 //go:generate mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
@@ -190,9 +193,10 @@ func (s *Service) SignUp(ctx context.Context, email string, password string) (*m
 		}).Update(time.Since(startTime).Seconds())
 	}()
 
-	var (
-		err error
-	)
+	email, err := normalizeAndValidateEmail(email)
+	if err != nil {
+		return nil, err
+	}
 	err = tools.TraceReturnErr(
 		ctx, "auth.service", "signup.checkpwd",
 		func(ctx context.Context) error {
@@ -207,7 +211,7 @@ func (s *Service) SignUp(ctx context.Context, email string, password string) (*m
 
 	user := &models.User{
 		UUID:              uuid.New(),
-		Email:             normalizeEmail(email),
+		Email:             email,
 		Status:            domain.UserStatusActive,
 		CredentialVersion: 1,
 	}
@@ -275,7 +279,10 @@ func (s *Service) Login(ctx context.Context, email string, password string) (*do
 		}).Update(time.Since(startTime).Seconds())
 	}()
 
-	email = normalizeEmail(email)
+	email, err := normalizeAndValidateEmail(email)
+	if err != nil || !validPasswordLength(password) {
+		return nil, domain.ErrInvalidCredentials
+	}
 	if err := s.limitAuthentication(ctx, "account", email, s.loginAccountRequests, s.loginWindow); err != nil {
 		return nil, err
 	}
@@ -640,13 +647,17 @@ func (s *Service) signJWT(
 }
 
 func (s *Service) CreateUser(ctx context.Context, data *domain.CreateUserData) (*models.User, error) {
+	email, err := normalizeAndValidateEmail(data.Email)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.CheckPasswordStrength(data.Password); err != nil {
 		return nil, domain.ErrPasswordWeak
 	}
 
 	user := &models.User{
 		UUID:              uuid.New(),
-		Email:             normalizeEmail(data.Email),
+		Email:             email,
 		Status:            domain.UserStatusActive,
 		CredentialVersion: 1,
 	}
@@ -655,7 +666,7 @@ func (s *Service) CreateUser(ctx context.Context, data *domain.CreateUserData) (
 		return nil, fmt.Errorf("failed to set password: %w", err)
 	}
 
-	err := s.repository.WithTransaction(ctx, func(txCtx context.Context) error {
+	err = s.repository.WithTransaction(ctx, func(txCtx context.Context) error {
 		err := s.repository.CreateUser(txCtx, user)
 		if err != nil {
 			return fmt.Errorf("failed to create user: %w", err)
@@ -697,6 +708,20 @@ func (s *Service) updateUser(
 	data *domain.UpdateUserData,
 	currentPassword *string,
 ) error {
+	var email string
+	if data.Email != nil {
+		var err error
+		email, err = normalizeAndValidateEmail(*data.Email)
+		if err != nil {
+			return err
+		}
+	}
+	if data.Password != nil {
+		if err := s.CheckPasswordStrength(*data.Password); err != nil {
+			return domain.ErrPasswordWeak
+		}
+	}
+
 	err := s.repository.WithTransaction(ctx, func(txCtx context.Context) error {
 		user, err := s.repository.GetUserByUUID(txCtx, uuid)
 		if err != nil {
@@ -712,7 +737,7 @@ func (s *Service) updateUser(
 			); err != nil {
 				return err
 			}
-			if !user.IsActive() || *currentPassword == "" ||
+			if !user.IsActive() || !validPasswordLength(*currentPassword) ||
 				bcrypt.CompareHashAndPassword([]byte(user.Password.V), []byte(*currentPassword)) != nil {
 				return domain.ErrInvalidCredentials
 			}
@@ -720,17 +745,12 @@ func (s *Service) updateUser(
 
 		var doUpdate bool
 
-		if data.Email != nil {
-			if normalizeEmail(*data.Email) != user.Email {
-				doUpdate = true
-				user.Email = normalizeEmail(*data.Email)
-			}
+		if data.Email != nil && email != user.Email {
+			doUpdate = true
+			user.Email = email
 		}
 		if data.Password != nil {
 			doUpdate = true
-			if err := s.CheckPasswordStrength(*data.Password); err != nil {
-				return domain.ErrPasswordWeak
-			}
 			if err := user.SetPassword(*data.Password); err != nil {
 				return fmt.Errorf("failed to set password: %w", err)
 			}
@@ -867,10 +887,31 @@ func (s *Service) sendEvent(ctx context.Context, topic string, outboxMessage out
 }
 
 func (s *Service) CheckPasswordStrength(password string) error {
-	if len(password) > 72 {
+	if !validPasswordLength(password) {
 		return domain.ErrPasswordWeak
 	}
 	return passwordvalidator.Validate(password, float64(s.minPasswordEntropyBits))
+}
+
+// Passwords are never trimmed or normalized. The maximum is measured in bytes
+// because bcrypt cannot hash more than 72 bytes.
+func validPasswordLength(password string) bool {
+	return len(password) <= maxPasswordBytes && utf8.ValidString(password) &&
+		utf8.RuneCountInString(password) >= minPasswordCharacters
+}
+
+func normalizeAndValidateEmail(email string) (string, error) {
+	if !utf8.ValidString(email) {
+		return "", domain.ErrInvalidEmail
+	}
+	email = normalizeEmail(email)
+	data := struct {
+		Email string `json:"email" v:"required,email"`
+	}{Email: email}
+	if err := tools.ValidateStructCompact(data); err != nil {
+		return "", fmt.Errorf("%w: %w", domain.ErrInvalidEmail, err)
+	}
+	return email, nil
 }
 
 func normalizeEmail(email string) string { return strings.ToLower(strings.TrimSpace(email)) }

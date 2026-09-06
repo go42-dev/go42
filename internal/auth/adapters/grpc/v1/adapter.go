@@ -2,7 +2,6 @@ package adapter
 
 import (
 	"context"
-	"strings"
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -96,7 +95,7 @@ func (a *Adapter) GetUserByUUID(
 
 func (a *Adapter) CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.CreateUserResponse, error) {
 	data := &domain.CreateUserData{
-		Email:    strings.ToLower(strings.TrimSpace(req.Email)),
+		Email:    req.Email,
 		Password: req.Password,
 	}
 
@@ -111,16 +110,7 @@ func (a *Adapter) CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*p
 }
 
 func (a *Adapter) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) (*pb.UpdateUserResponse, error) {
-	data := &domain.UpdateUserData{}
-
-	if req.Email != nil {
-		email := strings.ToLower(strings.TrimSpace(*req.Email))
-		data.Email = &email
-	}
-	if req.Password != nil {
-		password := *req.Password
-		data.Password = &password
-	}
+	data := &domain.UpdateUserData{Email: req.Email, Password: req.Password}
 
 	err := a.service.UpdateUser(ctx, req.Uuid, data)
 	if err != nil {

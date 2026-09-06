@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -21,22 +22,28 @@ import (
 	"testing"
 	"time"
 
+	"buf.build/go/protovalidate"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	protovalidateInterceptor "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/protovalidate"
 	"github.com/labstack/echo/v5"
 	"github.com/pressly/goose/v3"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/test/bufconn"
 	"gorm.io/gorm"
 
+	pb "github.com/go42-dev/go42/api/gen/sdk/grpc/auth/v1"
 	oapi "github.com/go42-dev/go42/api/gen/sdk/http/v1/auth/oapi-codegen"
 	ogen "github.com/go42-dev/go42/api/gen/sdk/http/v1/auth/ogen"
 	httpAPI "github.com/go42-dev/go42/internal/api/http"
 	"github.com/go42-dev/go42/internal/auth"
+	grpcAdapter "github.com/go42-dev/go42/internal/auth/adapters/grpc/v1"
 	httpAdapter "github.com/go42-dev/go42/internal/auth/adapters/http/v1"
 	"github.com/go42-dev/go42/internal/auth/domain"
 	authInterceptors "github.com/go42-dev/go42/internal/auth/interceptors"
@@ -240,6 +247,509 @@ func TestService_CheckPasswordStrength(t *testing.T) {
 		})
 	}
 }
+func TestCredentials_PasswordLength(t *testing.T) {
+	h := newServiceHarness(t, auth.WithMinPasswordEntropyBits(0))
+	for _, test := range []struct {
+		name     string
+		password string
+		valid    bool
+	}{
+		{name: "eight ASCII characters", password: "Ab1!cdE2", valid: true},
+		{name: "eight Unicode characters", password: strings.Repeat("界", 8), valid: true},
+		{name: "72 ASCII bytes", password: strings.Repeat("Ab1!cdE2", 9), valid: true},
+		{name: "72 Unicode bytes", password: strings.Repeat("界", 24), valid: true},
+		{name: "empty"},
+		{name: "seven ASCII characters", password: "Ab1!cdE"},
+		{name: "seven Unicode characters", password: strings.Repeat("界", 7)},
+		{name: "73 ASCII bytes", password: strings.Repeat("Ab1!cdE2", 9) + "x"},
+		{name: "73 Unicode bytes", password: strings.Repeat("界", 24) + "x"},
+		{name: "invalid UTF-8", password: "Ab1!cdE2\xff"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := h.service.CheckPasswordStrength(test.password)
+			if test.valid {
+				if err != nil {
+					t.Fatalf("valid password rejected: %v", err)
+				}
+			} else {
+				assertErrorIs(t, err, domain.ErrPasswordWeak)
+			}
+		})
+	}
+}
+
+type invalidCredentialTestCase struct {
+	name     string
+	email    string
+	password string
+	want     error
+}
+
+func invalidCredentialTestCases() []invalidCredentialTestCase {
+	return []invalidCredentialTestCase{
+		{name: "empty email", password: testPassword, want: domain.ErrInvalidEmail},
+		{name: "blank email", email: " \t ", password: testPassword, want: domain.ErrInvalidEmail},
+		{name: "malformed email", email: "not-an-email", password: testPassword, want: domain.ErrInvalidEmail},
+		{
+			name:     "display name",
+			email:    "Alice <alice@example.com>",
+			password: testPassword,
+			want:     domain.ErrInvalidEmail,
+		},
+		{
+			name:     "space in email",
+			email:    "alice smith@example.com",
+			password: testPassword,
+			want:     domain.ErrInvalidEmail,
+		},
+		{name: "empty password", email: testUserEmail, want: domain.ErrPasswordWeak},
+		{name: "short password", email: testUserEmail, password: "Ab1!cdE", want: domain.ErrPasswordWeak},
+		{
+			name:     "short Unicode password",
+			email:    testUserEmail,
+			password: strings.Repeat("界", 7),
+			want:     domain.ErrPasswordWeak,
+		},
+		{
+			name:     "73 ASCII bytes",
+			email:    testUserEmail,
+			password: strings.Repeat("Ab1!cdE2", 9) + "x",
+			want:     domain.ErrPasswordWeak,
+		},
+		{
+			name:     "73 Unicode bytes",
+			email:    testUserEmail,
+			password: strings.Repeat("界", 24) + "x",
+			want:     domain.ErrPasswordWeak,
+		},
+		{name: "weak password", email: testUserEmail, password: "password", want: domain.ErrPasswordWeak},
+	}
+}
+
+func TestCredentials_ServiceRejectsInvalidInputBeforePersistence(t *testing.T) {
+	tests := append(
+		invalidCredentialTestCases(),
+		invalidCredentialTestCase{
+			name:     "invalid UTF-8 email",
+			email:    "alice\xff@example.com",
+			password: testPassword,
+			want:     domain.ErrInvalidEmail,
+		},
+		invalidCredentialTestCase{
+			name:     "invalid UTF-8 password",
+			email:    testUserEmail,
+			password: testPassword + "\xff",
+			want:     domain.ErrPasswordWeak,
+		},
+	)
+	for _, test := range tests {
+		for _, entry := range []string{"signup", "create", "update", "update self"} {
+			t.Run(test.name+"/"+entry, func(t *testing.T) {
+				h := newServiceHarness(t)
+				data := domain.UpdateUserData{Email: &test.email, Password: &test.password}
+				var err error
+				switch entry {
+				case "signup":
+					_, err = h.service.SignUp(t.Context(), test.email, test.password)
+				case "create":
+					_, err = h.service.CreateUser(
+						t.Context(),
+						&domain.CreateUserData{Email: test.email, Password: test.password},
+					)
+				case "update":
+					err = h.service.UpdateUser(t.Context(), uuid.NewString(), &data)
+				case "update self":
+					err = h.service.UpdateSelf(t.Context(), uuid.NewString(), &domain.UpdateSelfData{
+						UpdateUserData: data, CurrentPassword: testPassword,
+					})
+				}
+				assertErrorIs(t, err, test.want)
+			})
+		}
+	}
+}
+
+func TestCredentials_TransportsRejectInvalidInputWithoutChangingCredentials(t *testing.T) {
+	h := newSessionHarness(t)
+	if err := h.repo.AssignRoleToUser(t.Context(), h.user.ID, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	tokens := h.login(t)
+	e := echo.New()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+	client := newCredentialGRPCClient(t, h.service)
+
+	for _, test := range invalidCredentialTestCases() {
+		t.Run(test.name, func(t *testing.T) {
+			body := map[string]string{"email": test.email, "password": test.password, "current_password": testPassword}
+			for _, endpoint := range []struct{ method, path string }{
+				{http.MethodPost, "/api/v1/auth/signup"},
+				{http.MethodPost, "/api/v1/users"},
+				{http.MethodPut, "/api/v1/users/me"},
+				{http.MethodPut, "/api/v1/users/" + h.user.UUID.String()},
+			} {
+				t.Run(endpoint.method+" "+endpoint.path, func(t *testing.T) {
+					credentialHTTPRequest(
+						t,
+						e,
+						endpoint.method,
+						endpoint.path,
+						tokens.AccessToken,
+						body,
+						http.StatusBadRequest,
+					)
+				})
+			}
+			_, err := client.CreateUser(t.Context(), &pb.CreateUserRequest{Email: test.email, Password: test.password})
+			if status.Code(err) != codes.InvalidArgument {
+				t.Errorf("gRPC create = %v, want InvalidArgument", err)
+			}
+			_, err = client.UpdateUser(t.Context(), &pb.UpdateUserRequest{
+				Uuid: h.user.UUID.String(), Email: &test.email, Password: &test.password,
+			})
+			if status.Code(err) != codes.InvalidArgument {
+				t.Errorf("gRPC update = %v, want InvalidArgument", err)
+			}
+		})
+	}
+
+	// Omitting fields and supplying the same normalized email are both no-ops.
+	credentialHTTPRequest(
+		t,
+		e,
+		http.MethodPut,
+		"/api/v1/users/me",
+		tokens.AccessToken,
+		map[string]string{},
+		http.StatusOK,
+	)
+	credentialHTTPRequest(
+		t,
+		e,
+		http.MethodPut,
+		"/api/v1/users/"+h.user.UUID.String(),
+		tokens.AccessToken,
+		map[string]string{},
+		http.StatusOK,
+	)
+	credentialHTTPRequest(t, e, http.MethodPut, "/api/v1/users/me", tokens.AccessToken, map[string]string{
+		"email": "  " + strings.ToUpper(h.user.Email) + "  ", "current_password": testPassword,
+	}, http.StatusOK)
+	if _, err := client.UpdateUser(t.Context(), &pb.UpdateUserRequest{Uuid: h.user.UUID.String()}); err != nil {
+		t.Fatalf("gRPC update without fields: %v", err)
+	}
+	stored, err := h.repo.GetUserByUUID(t.Context(), h.user.UUID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Email != h.user.Email || stored.Password != h.user.Password ||
+		stored.CredentialVersion != h.user.CredentialVersion {
+		t.Fatal("rejected or omitted credentials changed the stored user")
+	}
+	if _, err := h.service.ValidateJWTToken(t.Context(), tokens.AccessToken, domain.JWTTokenPurposeAccess); err != nil {
+		t.Fatalf("rejected or omitted credentials invalidated the session: %v", err)
+	}
+}
+
+func TestCredentials_AllCreationPathsCanLoginOverHTTP(t *testing.T) {
+	h := newSessionHarness(t, auth.WithMinPasswordEntropyBits(0))
+	if err := h.repo.AssignRoleToUser(t.Context(), h.user.ID, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	admin := h.login(t)
+	e := echo.New()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+	client := newCredentialGRPCClient(t, h.service)
+	for _, entry := range []string{"service signup", "service create", "HTTP signup", "HTTP create", "gRPC create"} {
+		for _, test := range []struct{ name, password string }{
+			{"eight Unicode characters", strings.Repeat("界", 8)},
+			{"long ASCII password", testPassword},
+			{"72 UTF-8 bytes", strings.Repeat("界", 22) + "Ab3!z9"},
+			{"surrounding password spaces", "  long password with spaces  "},
+		} {
+			t.Run(entry+"/"+test.name, func(t *testing.T) {
+				email := " \tCREDENTIALS-" + uuid.NewString() + "@EXAMPLE.COM \n"
+				body := map[string]string{"email": email, "password": test.password}
+				var err error
+				switch entry {
+				case "service signup":
+					_, err = h.service.SignUp(t.Context(), email, test.password)
+				case "service create":
+					_, err = h.service.CreateUser(
+						t.Context(),
+						&domain.CreateUserData{Email: email, Password: test.password},
+					)
+				case "HTTP signup":
+					credentialHTTPRequest(t, e, http.MethodPost, "/api/v1/auth/signup", "", body, http.StatusCreated)
+				case "HTTP create":
+					credentialHTTPRequest(
+						t,
+						e,
+						http.MethodPost,
+						"/api/v1/users",
+						admin.AccessToken,
+						body,
+						http.StatusCreated,
+					)
+				case "gRPC create":
+					_, err = client.CreateUser(
+						t.Context(),
+						&pb.CreateUserRequest{Email: email, Password: test.password},
+					)
+				}
+				if err != nil {
+					t.Fatalf("create: %v", err)
+				}
+				stored, err := h.repo.GetUserByEmail(t.Context(), strings.ToLower(strings.TrimSpace(email)))
+				if err != nil || stored == nil {
+					t.Fatalf("lookup normalized email: %v", err)
+				}
+				response := credentialHTTPRequest(t, e, http.MethodPost, "/api/v1/auth/login", "", body, http.StatusOK)
+				var tokens domain.Tokens
+				if err := json.Unmarshal(response.Body.Bytes(), &tokens); err != nil {
+					t.Fatal(err)
+				}
+				if tokens.AccessToken == "" || tokens.RefreshToken == "" {
+					t.Fatal("HTTP login returned empty tokens")
+				}
+				if trimmed := strings.TrimSpace(test.password); trimmed != test.password {
+					body["password"] = trimmed
+					credentialHTTPRequest(t, e, http.MethodPost, "/api/v1/auth/login", "", body, http.StatusBadRequest)
+				}
+			})
+		}
+	}
+}
+
+func TestCredentials_AllUpdatePathsCanLoginOverHTTP(t *testing.T) {
+	h := newSessionHarness(t)
+	if err := h.repo.AssignRoleToUser(t.Context(), h.user.ID, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	admin := h.login(t)
+	e := echo.New()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+	client := newCredentialGRPCClient(t, h.service)
+	for _, entry := range []string{"service update", "service self update", "HTTP update", "HTTP self update", "gRPC update"} {
+		t.Run(entry, func(t *testing.T) {
+			user, err := h.service.CreateUser(t.Context(), &domain.CreateUserData{
+				Email: "target-" + uuid.NewString() + "@example.com", Password: testPassword,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			oldTokens, err := h.service.Login(t.Context(), user.Email, testPassword)
+			if err != nil {
+				t.Fatal(err)
+			}
+			email, password := " \tUPDATED-"+user.Email+" \n", strings.Repeat("界", 22)+"Ab3!z9"
+			data := domain.UpdateUserData{Email: &email, Password: &password}
+			body := map[string]string{"email": email, "password": password, "current_password": testPassword}
+			switch entry {
+			case "service update":
+				err = h.service.UpdateUser(t.Context(), user.UUID.String(), &data)
+			case "service self update":
+				err = h.service.UpdateSelf(t.Context(), user.UUID.String(), &domain.UpdateSelfData{
+					UpdateUserData: data, CurrentPassword: testPassword,
+				})
+			case "HTTP update":
+				credentialHTTPRequest(
+					t,
+					e,
+					http.MethodPut,
+					"/api/v1/users/"+user.UUID.String(),
+					admin.AccessToken,
+					body,
+					http.StatusOK,
+				)
+			case "HTTP self update":
+				credentialHTTPRequest(
+					t,
+					e,
+					http.MethodPut,
+					"/api/v1/users/me",
+					oldTokens.AccessToken,
+					body,
+					http.StatusOK,
+				)
+			case "gRPC update":
+				_, err = client.UpdateUser(t.Context(), &pb.UpdateUserRequest{
+					Uuid: user.UUID.String(), Email: &email, Password: &password,
+				})
+			}
+			if err != nil {
+				t.Fatalf("update: %v", err)
+			}
+			if _, err := h.service.ValidateJWTToken(
+				t.Context(),
+				oldTokens.AccessToken,
+				domain.JWTTokenPurposeAccess,
+			); !errors.Is(
+				err,
+				domain.ErrInvalidToken,
+			) {
+				t.Fatalf("updated credentials left old session valid: %v", err)
+			}
+			credentialHTTPRequest(t, e, http.MethodPost, "/api/v1/auth/login", "", body, http.StatusOK)
+		})
+	}
+}
+
+func TestCredentials_LoginAndProofDoNotRecheckPasswordStrength(t *testing.T) {
+	h := newSessionHarness(t, auth.WithMinPasswordEntropyBits(1000))
+	if err := h.service.CheckPasswordStrength(testPassword); err == nil {
+		t.Fatal("fixture password unexpectedly meets the new strength policy")
+	}
+	e := echo.New()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+	credentialHTTPRequest(t, e, http.MethodPost, "/api/v1/auth/login", "", map[string]string{
+		"email": h.user.Email, "password": testPassword,
+	}, http.StatusOK)
+	tokens := h.login(t)
+	credentialHTTPRequest(t, e, http.MethodPut, "/api/v1/users/me", tokens.AccessToken, map[string]string{
+		"email": "changed-" + h.user.Email, "current_password": testPassword,
+	}, http.StatusOK)
+}
+
+func TestCredentials_LoginAndProofRejectPasswordsBeyondByteLimit(t *testing.T) {
+	h := newSessionHarness(t)
+	password := strings.Repeat("Ab1!cdE2", 9)
+	if err := h.service.UpdateUser(
+		t.Context(),
+		h.user.UUID.String(),
+		&domain.UpdateUserData{Password: &password},
+	); err != nil {
+		t.Fatal(err)
+	}
+	tokens, err := h.service.Login(t.Context(), h.user.Email, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := echo.New()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+	credentialHTTPRequest(t, e, http.MethodPost, "/api/v1/auth/login", "", map[string]string{
+		"email": h.user.Email, "password": password + "x",
+	}, http.StatusBadRequest)
+	credentialHTTPRequest(t, e, http.MethodPut, "/api/v1/users/me", tokens.AccessToken, map[string]string{
+		"email": "changed-" + h.user.Email, "current_password": password + "x",
+	}, http.StatusBadRequest)
+	if _, err := h.service.ValidateJWTToken(t.Context(), tokens.AccessToken, domain.JWTTokenPurposeAccess); err != nil {
+		t.Fatalf("rejected proof invalidated the session: %v", err)
+	}
+}
+
+func TestCredentials_HTTPClientsAcceptLongPasswords(t *testing.T) {
+	h := newSessionHarness(t)
+	e := echo.New()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+	server := httptest.NewServer(e)
+	t.Cleanup(server.Close)
+	ogenClient, err := ogen.NewClient(server.URL+"/api/v1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oapiClient, err := oapi.NewClientWithResponses(server.URL + "/api/v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct{ name, password string }{
+		{"28 characters", testPassword},
+		{"72 ASCII bytes", strings.Repeat("Ab1!cdE2", 9)},
+		{"72 Unicode bytes", strings.Repeat("界", 22) + "Ab3!z9"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			email := " \tSDK-" + uuid.NewString() + "@EXAMPLE.COM \n"
+			if _, err := h.service.SignUp(t.Context(), email, test.password); err != nil {
+				t.Fatal(err)
+			}
+			response, err := ogenClient.Login(t.Context(), &ogen.LoginRequest{Email: email, Password: test.password})
+			if err != nil {
+				t.Fatalf("ogen login: %v", err)
+			}
+			if tokens, ok := response.(*ogen.Tokens); !ok || tokens.AccessToken.Value == "" {
+				t.Fatalf("ogen login response = %T, want tokens", response)
+			}
+			oapiResponse, err := oapiClient.LoginWithResponse(
+				t.Context(),
+				oapi.LoginJSONRequestBody{Email: email, Password: test.password},
+			)
+			if err != nil {
+				t.Fatalf("oapi-codegen login: %v", err)
+			}
+			if oapiResponse.StatusCode() != http.StatusOK || oapiResponse.JSON200 == nil {
+				t.Fatalf("oapi-codegen login status = %d, want tokens", oapiResponse.StatusCode())
+			}
+		})
+	}
+	// OpenAPI maxLength counts characters; the server must still enforce bytes.
+	overlong := strings.Repeat("界", 24) + "x"
+	response, err := ogenClient.Login(t.Context(), &ogen.LoginRequest{Email: h.user.Email, Password: overlong})
+	if err != nil {
+		t.Fatalf("ogen byte-limit response: %v", err)
+	}
+	if _, ok := response.(*ogen.LoginBadRequest); !ok {
+		t.Fatalf("ogen byte-limit response = %T, want BadRequest", response)
+	}
+	oapiResponse, err := oapiClient.LoginWithResponse(
+		t.Context(),
+		oapi.LoginJSONRequestBody{Email: h.user.Email, Password: overlong},
+	)
+	if err != nil {
+		t.Fatalf("oapi-codegen byte-limit response: %v", err)
+	}
+	if oapiResponse.StatusCode() != http.StatusBadRequest || oapiResponse.ApplicationproblemJSON400 == nil {
+		t.Fatalf("oapi-codegen byte-limit status = %d, want BadRequest", oapiResponse.StatusCode())
+	}
+}
+
+func credentialHTTPRequest(
+	t *testing.T,
+	e *echo.Echo,
+	method, path, bearer string,
+	data any,
+	want int,
+) *httptest.ResponseRecorder {
+	t.Helper()
+	response := sessionHTTPRequest(t, e, method, path, bearer, data)
+	if response.Code != want {
+		t.Fatalf("%s %s = %d, want %d: %s", method, path, response.Code, want, response.Body.String())
+	}
+	return response
+}
+
+func newCredentialGRPCClient(t *testing.T, service *auth.Service) pb.AuthServiceClient {
+	t.Helper()
+	server := grpc.NewServer(grpc.UnaryInterceptor(
+		protovalidateInterceptor.UnaryServerInterceptor(protovalidate.GlobalValidator),
+	))
+	grpcAdapter.New(service).Register(server)
+	listener := bufconn.Listen(1024 * 1024)
+	result := make(chan error, 1)
+	go func() { result <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		server.Stop()
+		if err := <-result; err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			t.Errorf("stop gRPC test server: %v", err)
+		}
+	})
+	connection, err := grpc.NewClient(
+		"passthrough:///credentials",
+		grpc.WithContextDialer(
+			func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) },
+		),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := connection.Close(); err != nil {
+			t.Errorf("close gRPC test client: %v", err)
+		}
+	})
+	return pb.NewAuthServiceClient(connection)
+}
+
 func TestService_SignUp(t *testing.T) {
 	h := newServiceHarness(t)
 	expectTransaction(h.repository)
@@ -584,9 +1094,6 @@ func TestService_UpdateUserRejectsWeakPassword(t *testing.T) {
 	h := newServiceHarness(t)
 	user := newTestUser(t, domain.UserStatusActive)
 	weakPassword := "password"
-	expectTransaction(h.repository)
-	h.repository.EXPECT().GetUserByUUID(gomock.Any(), user.UUID.String()).Return(user, nil)
-
 	err := h.service.UpdateUser(context.Background(), user.UUID.String(), &domain.UpdateUserData{
 		Password: &weakPassword,
 	})

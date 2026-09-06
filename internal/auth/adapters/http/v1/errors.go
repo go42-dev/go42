@@ -21,6 +21,9 @@ func (a *Adapter) processError(ctx *echo.Context, err error) error {
 	case errors.Is(err, domain.ErrInvalidCredentials):
 		return httpAPI.SendJSONError(ctx,
 			http.StatusBadRequest, http.StatusText(http.StatusBadRequest))
+	case errors.Is(err, domain.ErrInvalidEmail):
+		return httpAPI.SendJSONError(ctx,
+			http.StatusBadRequest, http.StatusText(http.StatusBadRequest))
 	case errors.Is(err, domain.ErrPasswordWeak):
 		return httpAPI.SendJSONError(ctx,
 			http.StatusBadRequest, http.StatusText(http.StatusBadRequest))
