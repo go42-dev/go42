@@ -474,8 +474,11 @@ type GRPCRateLimiter struct {
 // ╰──────────────────────────────╯
 
 type Outbox struct {
-	WorkerRunInterval time.Duration `env:"OUTBOX_WORKER_INTERVAL"   default:"5s"`
-	WorkerBatchSize   int           `env:"OUTBOX_WORKER_BATCH_SIZE" default:"1000"`
+	WorkerRunInterval time.Duration `env:"OUTBOX_WORKER_INTERVAL"    default:"5s"`
+	WorkerBatchSize   int           `env:"OUTBOX_WORKER_BATCH_SIZE"  default:"1000"`
+	CleanupInterval   time.Duration `env:"OUTBOX_CLEANUP_INTERVAL"   default:"1h"   v:"gt=0"`
+	CleanupBatchSize  int           `env:"OUTBOX_CLEANUP_BATCH_SIZE" default:"1000" v:"gt=0"`
+	CleanupRetention  time.Duration `env:"OUTBOX_CLEANUP_RETENTION"  default:"168h" v:"gt=0"`
 }
 
 // ╭──────────────────────────────╮

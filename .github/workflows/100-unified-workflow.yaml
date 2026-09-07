@@ -76,8 +76,8 @@ jobs:
       continue_on_error: false
       timeout_minutes: 10
 
-  nilaway:
-    uses: ./.github/workflows/110-nilaway.yaml
+  nilaway-lint:
+    uses: ./.github/workflows/110-nilaway-lint.yaml
     permissions:
       contents: read
     needs:
@@ -206,6 +206,7 @@ jobs:
     needs:
       - git-lint
       - golangci-lint
+      - nilaway-lint
       - docker-lint
       - helm-lint
       - proto-lint
@@ -468,7 +469,6 @@ jobs:
     timeout-minutes: 5
     needs:
       - gate-start
-      - nilaway
       - security
       - integration-tests
       - resilience-tests
@@ -476,26 +476,19 @@ jobs:
       - cleanup
       - load-tests-report
     steps:
-      # Cleanup, load reporting, and the NilAway trial are advisory; wait for them before finishing the workflow.
       - name: Require blocking jobs to succeed
         env:
           GATE_START_RESULT: ${{ needs.gate-start.result }}
-          NILAWAY_RESULT: ${{ needs.nilaway.result }}
           SECURITY_RESULT: ${{ needs.security.result }}
           INTEGRATION_RESULT: ${{ needs.integration-tests.result }}
           RESILIENCE_RESULT: ${{ needs.resilience-tests.result }}
           FUZZ_RESULT: ${{ needs.fuzz-tests.result }}
-          CLEANUP_RESULT: ${{ needs.cleanup.result }}
-          LOAD_TESTS_REPORT_RESULT: ${{ needs.load-tests-report.result }}
         run: |-
           echo "gate-start: $GATE_START_RESULT"
-          echo "nilaway (advisory): $NILAWAY_RESULT"
           echo "security: $SECURITY_RESULT"
           echo "integration-tests: $INTEGRATION_RESULT"
           echo "resilience-tests: $RESILIENCE_RESULT"
           echo "fuzz-tests: $FUZZ_RESULT"
-          echo "cleanup (advisory): $CLEANUP_RESULT"
-          echo "load-tests-report (advisory): $LOAD_TESTS_REPORT_RESULT"
 
           if [[ "$GATE_START_RESULT" != 'success' ]]; then
             echo "::error::Full CI did not start successfully."

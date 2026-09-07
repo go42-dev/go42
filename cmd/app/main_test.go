@@ -571,6 +571,9 @@ func TestShutdownGracePeriodBoundsUnresponsiveComponent(t *testing.T) {
 	signalTestShutdown(t, syscall.SIGTERM, started)
 	waitForTestSignal(t, entered, "component cleanup")
 	waitForTestSignal(t, done, "overall shutdown deadline")
+	if cleanupCtx == nil {
+		t.Fatal("component cleanup context was not set")
+	}
 	if !errors.Is(cleanupCtx.Err(), context.DeadlineExceeded) {
 		t.Errorf("component context = %v, want overall deadline exceeded", cleanupCtx.Err())
 	}

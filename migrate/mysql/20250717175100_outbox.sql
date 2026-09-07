@@ -12,7 +12,8 @@ create table if not exists transactional_outbox (
     max_retries int not null,
     last_error text not null,
     metadata text null,
-    key transactional_outbox_publisher (status)
+    key transactional_outbox_publisher (status),
+    key transactional_outbox_cleanup (status, processed_at, id)
 );
 
 -- +goose Down

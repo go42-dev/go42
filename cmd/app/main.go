@@ -468,6 +468,13 @@ func main() {
 				slog.Default().With(slog.String("component", "outbox-publisher")),
 			),
 		)
+		outboxCleaner := outboxWorkers.NewOutboxMessageCleaner(
+			outboxRepository,
+			outboxWorkers.OutboxMessageCleanerWithLogger(
+				slog.Default().With(slog.String("component", "outbox-cleaner")),
+			),
+		)
+		go outboxCleaner.Run(ctx, cfg.Outbox.CleanupInterval, cfg.Outbox.CleanupRetention, cfg.Outbox.CleanupBatchSize)
 
 		// auth domain
 		authLogger := slog.Default().With(slog.String("component", "auth-service"))
@@ -523,18 +530,18 @@ func main() {
 			log.Fatalf("failed to subscribe to events: %v\n", err)
 		}
 
-		// no more subscriber registrations after this point
+		// No more subscriber registrations after this point.
 
 		if err := eventsEngine.Start(ctx); err != nil {
 			log.Fatalf("failed to start event router: %v\n", err)
 		}
 
-		// register publishers
+		// Start publisher workers after the router initializes subscriptions.
 
 		go outboxPublisher.Run(ctx, cfg.Outbox.WorkerRunInterval, cfg.Outbox.WorkerBatchSize)
 	}
 
-	// readinessCancel used to dynamically detect failures and disable probe
+	// readinessCancel used to dynamically detect failures and disable probe.
 	readinessCtx, readinessCancel := context.WithCancelCause(ctx)
 	readinessCheck := func(ctx context.Context) error {
 		if err := context.Cause(readinessCtx); err != nil {

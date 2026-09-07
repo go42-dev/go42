@@ -14,19 +14,6 @@ import (
 	"github.com/go42-dev/go42/internal/tools"
 )
 
-//go:generate mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
-
-type repository interface {
-	WithTransaction(ctx context.Context, fn func(txCtx context.Context) error) error
-	GetUnprocessedMessages(ctx context.Context, limit int) ([]models.Message, error)
-	SaveProcessedMessages(ctx context.Context, messages []models.Message) error
-	SaveFailedMessages(ctx context.Context, messages []models.Message) error
-}
-
-type publisher interface {
-	Publish(ctx context.Context, topic string, event []byte) error
-}
-
 type OutboxMessagePublisher struct {
 	logger     *slog.Logger
 	repository repository

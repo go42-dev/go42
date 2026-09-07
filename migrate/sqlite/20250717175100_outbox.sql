@@ -18,5 +18,9 @@ create index if not exists transactional_outbox_publisher on transactional_outbo
     status
 );
 
+create index if not exists transactional_outbox_cleanup on transactional_outbox (
+    status, processed_at, id
+);
+
 -- +goose Down
 drop table if exists transactional_outbox;

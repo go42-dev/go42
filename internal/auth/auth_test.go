@@ -2419,6 +2419,9 @@ func TestSessions_ConcurrentRefreshHasOneWinnerAndRevokesOnReuse(t *testing.T) {
 	if winners != 1 {
 		t.Fatalf("successful refreshes = %d, want 1", winners)
 	}
+	if winner == nil {
+		t.Fatal("successful refresh returned no tokens")
+	}
 	h.assertRevoked(t, winner)
 }
 

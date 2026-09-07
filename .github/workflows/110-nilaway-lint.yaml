@@ -1,6 +1,6 @@
 ---
 
-name: nilaway
+name: nilaway-lint
 
 # Detect potential nil panics with the standalone NilAway checker.
 # @see https://github.com/uber-go/nilaway
@@ -22,8 +22,8 @@ on:
 permissions: {}
 
 jobs:
-  nilaway:
-    name: nilaway
+  nilaway-lint:
+    name: nilaway-lint
     runs-on: ${{ inputs.runs_on }}
     continue-on-error: ${{ inputs.continue_on_error }}
     timeout-minutes: ${{ inputs.timeout_minutes }}

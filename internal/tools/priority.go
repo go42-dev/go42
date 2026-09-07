@@ -30,6 +30,9 @@ func (pq *PriorityQueue[T]) Dequeue() (T, bool) {
 	}
 	priority := pq.priorities[0]
 	queue := pq.queues[priority]
+	if len(queue) == 0 {
+		return zero, false
+	}
 	value := queue[0]
 	if len(queue) == 1 {
 		delete(pq.queues, priority)

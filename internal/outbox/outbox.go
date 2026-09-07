@@ -1,6 +1,6 @@
-// Package outbox implements transactional outbox pattern.
-// It consists of service which is used to enquiry messages and a worker
-// which reads data from database and publishes them to message broker.
+// Package outbox implements the transactional outbox pattern. Its service queues
+// messages, a publisher sends them to the message broker, and a cleaner removes
+// successfully processed messages after the configured retention period.
 package outbox
 
 import (
