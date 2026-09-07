@@ -244,6 +244,29 @@ jobs:
       runs_on: ubuntu-latest
       fuzz_time: 30s
 
+  resilience-tests:
+    uses: ./.github/workflows/150-resilience-tests.yaml
+    permissions:
+      contents: read
+    needs:
+      - git-lint
+      - golangci-lint
+      - nilaway-lint
+      - docker-lint
+      - helm-lint
+      - proto-lint
+      - openapi-lint
+      - markdown-lint
+      - writing-lint
+      - action-lint
+      - sql-lint
+      - project-lint
+      - editorconfig-lint
+    with:
+      runs_on: ubuntu-latest
+      continue_on_error: false
+      timeout_minutes: 15
+
   coverage-report:
     name: coverage-report
     if: github.event_name == 'pull_request'
@@ -417,28 +440,6 @@ jobs:
     with:
       runs_on: ubuntu-latest
       timeout_minutes: 10
-
-  resilience-tests:
-    uses: ./.github/workflows/150-resilience-tests.yaml
-    permissions:
-      contents: read
-    needs:
-      - git-lint
-      - golangci-lint
-      - docker-lint
-      - helm-lint
-      - proto-lint
-      - openapi-lint
-      - markdown-lint
-      - writing-lint
-      - action-lint
-      - sql-lint
-      - project-lint
-      - editorconfig-lint
-    with:
-      runs_on: ubuntu-latest
-      continue_on_error: false
-      timeout_minutes: 15
 
   # stage 7: cleanup
 
