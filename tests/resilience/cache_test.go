@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -40,7 +41,11 @@ func TestCacheEngineContract(t *testing.T) {
 			assertCacheReadWriteContract(t, engine)
 			assertCacheExpirationContract(t, engine)
 			assertCacheSetIfAbsentContract(t, engine)
+			assertCacheLongTTLContract(t, engine)
 			assertCacheRateLimitContract(t, engine)
+			if factory.name == "memcached" {
+				assertMemcachedExpirationRange(t, engine)
+			}
 		})
 	}
 }
@@ -195,19 +200,89 @@ func assertCacheSetIfAbsentContract(t *testing.T, engine cache.Engine) {
 	assertCachedValue(t, engine, key, winningValues[0])
 }
 
+func assertCacheLongTTLContract(t *testing.T, engine cache.Engine) {
+	t.Helper()
+	for _, ttl := range []time.Duration{
+		time.Hour,
+		30 * 24 * time.Hour,
+		30*24*time.Hour + time.Nanosecond,
+		31 * 24 * time.Hour,
+	} {
+		t.Run("ttl/"+ttl.String(), func(t *testing.T) {
+			setKey := uniqueCacheKey("long-ttl-set")
+			addKey := uniqueCacheKey("long-ttl-add")
+			t.Cleanup(func() {
+				for _, key := range []string{setKey, addKey} {
+					if err := engine.Invalidate(context.Background(), key); err != nil {
+						t.Errorf("Invalidate() error = %v", err)
+					}
+				}
+			})
+
+			if err := engine.Set(t.Context(), setKey, "value", ttl); err != nil {
+				t.Fatalf("Set() error = %v", err)
+			}
+			assertCachedValue(t, engine, setKey, "value")
+			stored, err := engine.SetIfAbsent(t.Context(), addKey, "first", ttl)
+			if err != nil || !stored {
+				t.Fatalf("SetIfAbsent(missing) = (%t, %v), want (true, nil)", stored, err)
+			}
+			stored, err = engine.SetIfAbsent(t.Context(), addKey, "replacement", ttl)
+			if err != nil || stored {
+				t.Fatalf("SetIfAbsent(existing) = (%t, %v), want (false, nil)", stored, err)
+			}
+			assertCachedValue(t, engine, addKey, "first")
+		})
+	}
+}
+
+func assertMemcachedExpirationRange(t *testing.T, engine cache.Engine) {
+	t.Helper()
+	const ttl = time.Duration(math.MaxInt64)
+	setKey := uniqueCacheKey("overflow-set")
+	addKey := uniqueCacheKey("overflow-add")
+	t.Cleanup(func() {
+		for _, key := range []string{setKey, addKey} {
+			if err := engine.Invalidate(context.Background(), key); err != nil {
+				t.Errorf("Invalidate() error = %v", err)
+			}
+		}
+	})
+	if err := engine.Set(t.Context(), setKey, "original", cache.NoCache); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	if err := engine.Set(t.Context(), setKey, "replacement", ttl); err == nil {
+		t.Error("Set(overflowing TTL) succeeded, want an error")
+	}
+	assertCachedValue(t, engine, setKey, "original")
+	stored, err := engine.SetIfAbsent(t.Context(), addKey, "value", ttl)
+	if err == nil || stored {
+		t.Errorf("SetIfAbsent(overflowing TTL) = (%t, %v), want (false, error)", stored, err)
+	}
+	assertCacheMiss(t, engine, addKey)
+}
+
 func assertCacheRateLimitContract(t *testing.T, engine cache.Engine) {
 	t.Helper()
-	key := uniqueCacheKey("rate-limit")
-
-	for request := range 3 {
-		allowed, err := engine.AllowRateLimit(t.Context(), key, time.Second, 2, 5*time.Second)
-		if err != nil {
-			t.Fatalf("AllowRateLimit(%d) error = %v", request, err)
-		}
-		wantAllowed := request < 2
-		if allowed != wantAllowed {
-			t.Errorf("AllowRateLimit(%d) = %t, want %t", request, allowed, wantAllowed)
-		}
+	for _, ttl := range []time.Duration{5 * time.Second, 30 * 24 * time.Hour, 31 * 24 * time.Hour} {
+		t.Run("rate-limit/"+ttl.String(), func(t *testing.T) {
+			key := uniqueCacheKey("rate-limit")
+			t.Cleanup(func() {
+				if err := engine.Invalidate(context.Background(), key); err != nil {
+					t.Errorf("Invalidate() error = %v", err)
+				}
+			})
+			for request := range 3 {
+				allowed, err := engine.AllowRateLimit(t.Context(), key, time.Second, 2, ttl)
+				if err != nil {
+					t.Fatalf("AllowRateLimit(%d) error = %v", request, err)
+				}
+				wantAllowed := request < 2
+				if allowed != wantAllowed {
+					t.Errorf("AllowRateLimit(%d) = %t, want %t", request, allowed, wantAllowed)
+				}
+			}
+		})
 	}
 }
 

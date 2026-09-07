@@ -48,7 +48,7 @@ func UnaryServerRateLimiterInterceptor(limiter rateLimiterAcessor) grpc.UnarySer
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (interface{}, error) {
-		if limiter == nil {
+		if limiter == nil || DefaultSkipper(info.FullMethod) {
 			return handler(ctx, req)
 		}
 		allowed, err := limiter.Limit(ctx, extractRateLimitKeyFromCtx(ctx))
@@ -69,7 +69,7 @@ func StreamServerRateLimiterInterceptor(limiter rateLimiterAcessor) grpc.StreamS
 		info *grpc.StreamServerInfo,
 		handler grpc.StreamHandler,
 	) error {
-		if limiter == nil {
+		if limiter == nil || DefaultSkipper(info.FullMethod) {
 			return handler(srv, stream)
 		}
 		allowed, err := limiter.Limit(stream.Context(), extractRateLimitKeyFromCtx(stream.Context()))

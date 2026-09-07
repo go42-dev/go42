@@ -126,7 +126,11 @@ func (w *Wrapper) Get(_ context.Context, key string) (string, bool, error) {
 }
 
 func (w *Wrapper) Set(_ context.Context, key string, value string, ttl time.Duration) error {
-	return w.client.Set(newItem(key, value, ttl))
+	item, err := newItem(key, value, ttl)
+	if err != nil {
+		return err
+	}
+	return w.client.Set(item)
 }
 
 func (w *Wrapper) SetIfAbsent(
@@ -135,7 +139,11 @@ func (w *Wrapper) SetIfAbsent(
 	value string,
 	ttl time.Duration,
 ) (bool, error) {
-	err := w.client.Add(newItem(key, value, ttl))
+	item, err := newItem(key, value, ttl)
+	if err != nil {
+		return false, err
+	}
+	err = w.client.Add(item)
 	if err == nil {
 		return true, nil
 	}
@@ -173,8 +181,9 @@ func (w *Wrapper) AllowRateLimit(
 		}
 		item, err := w.client.Get(key)
 		if errors.Is(err, memcache.ErrCacheMiss) {
-			item = newItem(key, strconv.FormatInt(now+intervalMicros, 10), ttl)
-			item.Expiration = expiration
+			item = &memcache.Item{
+				Key: key, Value: []byte(strconv.FormatInt(now+intervalMicros, 10)), Expiration: expiration,
+			}
 			err = w.client.Add(item)
 			if err == nil {
 				return true, nil
@@ -215,21 +224,9 @@ func (w *Wrapper) AllowRateLimit(
 }
 
 func rateLimitExpiration(nowMicros int64, ttl time.Duration) (int32, error) {
-	seconds := int64(ttl / time.Second)
-	if ttl%time.Second != 0 {
-		seconds++
-	}
 	// Memcached's relative clock has second precision. Retain the bucket for
 	// an extra second so clock rounding cannot restore its burst too early.
-	seconds++
-	if seconds > 30*24*60*60 {
-		// Values above 30 days are interpreted as absolute Unix timestamps.
-		seconds += nowMicros / 1_000_000
-	}
-	if seconds < math.MinInt32 || seconds > math.MaxInt32 {
-		return 0, fmt.Errorf("rate limit window exceeds memcached expiration range")
-	}
-	return int32(seconds), nil
+	return expirationSeconds(nowMicros, ttl, 1)
 }
 
 func (w *Wrapper) Invalidate(_ context.Context, key string) error {
@@ -240,26 +237,30 @@ func (w *Wrapper) Invalidate(_ context.Context, key string) error {
 	return err
 }
 
-func newItem(key string, value string, ttl time.Duration) *memcache.Item {
+func newItem(key string, value string, ttl time.Duration) (*memcache.Item, error) {
 	item := &memcache.Item{Key: key, Value: []byte(value)}
 	if ttl > 0 {
-		item.Expiration = expirationSeconds(ttl)
+		expiration, err := expirationSeconds(time.Now().UnixMicro(), ttl, 0)
+		if err != nil {
+			return nil, err
+		}
+		item.Expiration = expiration
 	}
-	return item
+	return item, nil
 }
 
-func expirationSeconds(ttl time.Duration) int32 {
-	if ttl <= 0 {
-		return 0
-	}
-
-	seconds := ttl / time.Second
+func expirationSeconds(nowMicros int64, ttl time.Duration, paddingSeconds int64) (int32, error) {
+	seconds := int64(ttl / time.Second)
 	if ttl%time.Second != 0 {
 		seconds++
 	}
-	if seconds > time.Duration(1<<31-1) {
-		return 1<<31 - 1
+	seconds += paddingSeconds
+	if seconds > 30*24*60*60 {
+		// Values above 30 days are interpreted as absolute Unix timestamps.
+		seconds += nowMicros / 1_000_000
 	}
-
-	return int32(seconds)
+	if seconds < math.MinInt32 || seconds > math.MaxInt32 {
+		return 0, fmt.Errorf("TTL exceeds memcached expiration range")
+	}
+	return int32(seconds), nil
 }

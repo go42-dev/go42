@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func FuzzRateLimitExpiration(f *testing.F) {
+func FuzzExpirationSeconds(f *testing.F) {
 	const nowMicros int64 = 1_700_000_000_000_000
 	for _, ttl := range []time.Duration{
 		time.Nanosecond,
@@ -15,6 +15,7 @@ func FuzzRateLimitExpiration(f *testing.F) {
 		30*24*time.Hour - time.Second,
 		30*24*time.Hour - time.Second + time.Nanosecond,
 		30 * 24 * time.Hour,
+		30*24*time.Hour + time.Nanosecond,
 		time.Duration(math.MaxInt32-1_700_000_000-1) * time.Second,
 		time.Duration(math.MaxInt32-1_700_000_000) * time.Second,
 		time.Duration(math.MaxInt64),
@@ -30,27 +31,30 @@ func FuzzRateLimitExpiration(f *testing.F) {
 			t.Skip()
 		}
 		ttl := time.Duration(ttlNanos)
-		expiration, err := rateLimitExpiration(nowMicros, ttl)
+		for _, paddingSeconds := range []int64{0, 1} {
+			expiration, err := expirationSeconds(nowMicros, ttl, paddingSeconds)
 
-		// Decode the protocol value into a time window. time.Time arithmetic
-		// keeps the oracle independent of duration and int32 overflow checks.
-		anchor := time.Unix(0, 0)
-		if ttl > 30*24*time.Hour-time.Second {
-			anchor = time.Unix(nowMicros/1_000_000, 0)
-		}
-		earliest := anchor.Add(ttl).Add(time.Second)
-		latest := earliest.Add(time.Second)
-		outOfRange := earliest.After(time.Unix(math.MaxInt32, 0)) ||
-			!latest.After(time.Unix(math.MinInt32, 0))
-		if (err != nil) != outOfRange {
-			t.Fatalf("expiration error = %v, unrepresentable time window = %v", err, outOfRange)
-		}
-		if err != nil {
-			return
-		}
-		decoded := time.Unix(int64(expiration), 0)
-		if decoded.Before(earliest) || !decoded.Before(latest) {
-			t.Fatalf("expiration %v outside retention window [%v, %v)", decoded, earliest, latest)
+			// Decode the protocol value into a time window. time.Time arithmetic
+			// keeps the oracle independent of duration and int32 overflow checks.
+			padding := time.Duration(paddingSeconds) * time.Second
+			anchor := time.Unix(0, 0)
+			if ttl > 30*24*time.Hour-padding {
+				anchor = time.Unix(nowMicros/1_000_000, 0)
+			}
+			earliest := anchor.Add(ttl).Add(padding)
+			latest := earliest.Add(time.Second)
+			outOfRange := earliest.After(time.Unix(math.MaxInt32, 0)) ||
+				!latest.After(time.Unix(math.MinInt32, 0))
+			if (err != nil) != outOfRange {
+				t.Fatalf("expiration error = %v, unrepresentable time window = %v", err, outOfRange)
+			}
+			if err != nil {
+				continue
+			}
+			decoded := time.Unix(int64(expiration), 0)
+			if decoded.Before(earliest) || !decoded.Before(latest) {
+				t.Fatalf("expiration %v outside retention window [%v, %v)", decoded, earliest, latest)
+			}
 		}
 	})
 }

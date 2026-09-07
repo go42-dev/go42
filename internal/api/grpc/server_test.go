@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	testpb "google.golang.org/grpc/interop/grpc_testing"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
@@ -40,6 +41,21 @@ type grpcContextTestLimiter func(context.Context, string) (bool, error)
 
 func (fn grpcContextTestLimiter) Limit(ctx context.Context, key string) (bool, error) {
 	return fn(ctx, key)
+}
+
+type grpcTestService struct {
+	testpb.UnimplementedTestServiceServer
+}
+
+func (grpcTestService) EmptyCall(context.Context, *testpb.Empty) (*testpb.Empty, error) {
+	return &testpb.Empty{}, nil
+}
+
+func (grpcTestService) StreamingOutputCall(
+	_ *testpb.StreamingOutputCallRequest,
+	stream grpcpkg.ServerStreamingServer[testpb.StreamingOutputCallResponse],
+) error {
+	return stream.Send(&testpb.StreamingOutputCallResponse{})
 }
 
 func TestGRPCLogsRequestIDsForUnaryAndStreamCalls(t *testing.T) {
@@ -86,6 +102,7 @@ func TestGRPCLogsRequestIDsForUnaryAndStreamCalls(t *testing.T) {
 					},
 				),
 			)
+			testpb.RegisterTestServiceServer(server.grpcServer, grpcTestService{})
 			listener := bufconn.Listen(1024 * 1024)
 			served := make(chan error, 1)
 			go func() { served <- server.grpcServer.Serve(listener) }()
@@ -101,15 +118,15 @@ func TestGRPCLogsRequestIDsForUnaryAndStreamCalls(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 			defer cancel()
 			ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("x-request-id", test.requestID))
-			client := healthpb.NewHealthClient(conn)
+			client := testpb.NewTestServiceClient(conn)
 			if test.streaming {
-				stream, streamErr := client.Watch(ctx, &healthpb.HealthCheckRequest{})
+				stream, streamErr := client.StreamingOutputCall(ctx, &testpb.StreamingOutputCallRequest{})
 				if streamErr == nil {
 					_, streamErr = stream.Recv()
 				}
 				assert.Equal(t, test.code, status.Code(streamErr))
 			} else {
-				_, err = client.Check(ctx, &healthpb.HealthCheckRequest{})
+				_, err = client.EmptyCall(ctx, &testpb.Empty{})
 				assert.Equal(t, test.code, status.Code(err))
 			}
 			cancel()
