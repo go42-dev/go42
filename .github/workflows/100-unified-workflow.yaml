@@ -229,6 +229,7 @@ jobs:
     needs:
       - git-lint
       - golangci-lint
+      - nilaway-lint
       - docker-lint
       - helm-lint
       - proto-lint
