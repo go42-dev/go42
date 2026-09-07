@@ -154,10 +154,12 @@ func New(opts ...Option) *Server {
 	}
 
 	s.healthServer = health.NewServer()
+
 	initialStatus := healthpb.HealthCheckResponse_SERVING
 	if s.readyCheck != nil {
 		initialStatus = healthpb.HealthCheckResponse_NOT_SERVING
 	}
+
 	s.healthServer.SetServingStatus("", initialStatus)
 	healthpb.RegisterHealthServer(s.grpcServer, s.healthServer)
 	s.startHealthMonitor()
@@ -218,6 +220,7 @@ func (s *Server) startHealthMonitor() {
 	if parent == nil {
 		parent = context.Background()
 	}
+
 	ctx, cancel := context.WithCancel(parent)
 	s.healthMonitorCancel = cancel
 
