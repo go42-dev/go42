@@ -485,8 +485,8 @@ type GRPCRateLimiter struct {
 // ╰──────────────────────────────╯
 
 type Outbox struct {
-	WorkerRunInterval time.Duration `env:"OUTBOX_WORKER_INTERVAL"    default:"5s"`
-	WorkerBatchSize   int           `env:"OUTBOX_WORKER_BATCH_SIZE"  default:"1000"`
+	WorkerRunInterval time.Duration `env:"OUTBOX_WORKER_INTERVAL"    default:"5s"   v:"gt=0"`
+	WorkerBatchSize   int           `env:"OUTBOX_WORKER_BATCH_SIZE"  default:"1000" v:"gt=0"`
 	PublishTimeout    time.Duration `env:"OUTBOX_PUBLISH_TIMEOUT"    default:"10s"  v:"gt=0"`
 	CleanupInterval   time.Duration `env:"OUTBOX_CLEANUP_INTERVAL"   default:"1h"   v:"gt=0"`
 	CleanupBatchSize  int           `env:"OUTBOX_CLEANUP_BATCH_SIZE" default:"1000" v:"gt=0"`
@@ -499,7 +499,7 @@ type Outbox struct {
 
 type Auth struct {
 	RateLimiter            AuthRateLimiter
-	TokenUpdaterInterval   time.Duration `env:"AUTH_TOKEN_UPDATER_INTERVAL"    default:"5m"`
+	TokenUpdaterInterval   time.Duration `env:"AUTH_TOKEN_UPDATER_INTERVAL"    default:"5m" v:"gt=0"`
 	SessionCleanupInterval time.Duration `env:"AUTH_SESSION_CLEANUP_INTERVAL"  default:"1h" v:"gt=0"`
 	MinPasswordEntropyBits int           `env:"AUTH_MIN_PASSWORD_ENTROPY_BITS" default:"50"`
 	Cache                  struct {
