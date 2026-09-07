@@ -76,6 +76,17 @@ jobs:
       continue_on_error: false
       timeout_minutes: 10
 
+  nilaway:
+    uses: ./.github/workflows/110-nilaway.yaml
+    permissions:
+      contents: read
+    needs:
+      - gate-start
+    with:
+      runs_on: ubuntu-latest
+      continue_on_error: true
+      timeout_minutes: 10
+
   docker-lint:
     uses: ./.github/workflows/110-docker-lint.yaml
     permissions:
@@ -457,6 +468,7 @@ jobs:
     timeout-minutes: 5
     needs:
       - gate-start
+      - nilaway
       - security
       - integration-tests
       - resilience-tests
@@ -464,10 +476,11 @@ jobs:
       - cleanup
       - load-tests-report
     steps:
-      # Cleanup and load reporting are advisory, but waiting for them makes this the terminal workflow gate.
+      # Cleanup, load reporting, and the NilAway trial are advisory; wait for them before finishing the workflow.
       - name: Require blocking jobs to succeed
         env:
           GATE_START_RESULT: ${{ needs.gate-start.result }}
+          NILAWAY_RESULT: ${{ needs.nilaway.result }}
           SECURITY_RESULT: ${{ needs.security.result }}
           INTEGRATION_RESULT: ${{ needs.integration-tests.result }}
           RESILIENCE_RESULT: ${{ needs.resilience-tests.result }}
@@ -476,6 +489,7 @@ jobs:
           LOAD_TESTS_REPORT_RESULT: ${{ needs.load-tests-report.result }}
         run: |-
           echo "gate-start: $GATE_START_RESULT"
+          echo "nilaway (advisory): $NILAWAY_RESULT"
           echo "security: $SECURITY_RESULT"
           echo "integration-tests: $INTEGRATION_RESULT"
           echo "resilience-tests: $RESILIENCE_RESULT"

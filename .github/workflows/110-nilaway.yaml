@@ -1,0 +1,50 @@
+---
+
+name: nilaway
+
+# Detect potential nil panics with the standalone NilAway checker.
+# @see https://github.com/uber-go/nilaway
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        required: true
+        type: string
+      continue_on_error:
+        required: true
+        type: boolean
+      timeout_minutes:
+        required: false
+        type: number
+        default: 10
+
+permissions: {}
+
+jobs:
+  nilaway:
+    name: nilaway
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 'Setup Go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+      - name: 'Install NilAway'
+        run: go install go.uber.org/nilaway/cmd/nilaway@v0.0.0-20260808063849-8649a03c818a
+      - name: 'Run NilAway'
+        run: |-
+          nilaway \
+          -include-pkgs=github.com/go42-dev/go42 \
+          -exclude-file-docstrings='Code generated' \
+          -pretty-print=false \
+          -print-full-file-path=true \
+          ./...
