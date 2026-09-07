@@ -464,6 +464,7 @@ func main() {
 		outboxPublisher := outboxWorkers.NewOutboxMessagePublisher(
 			outboxRepository,
 			eventsEngine,
+			outboxWorkers.OutboxMessagePublisherWithPublishTimeout(cfg.Outbox.PublishTimeout),
 			outboxWorkers.OutboxMessagePublisherWithLogger(
 				slog.Default().With(slog.String("component", "outbox-publisher")),
 			),

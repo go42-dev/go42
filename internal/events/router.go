@@ -110,16 +110,20 @@ func (r *Router) Publish(ctx context.Context, topic string, event []byte) error 
 	if err == nil {
 		err = r.backend.Publisher().Publish(topic, msg)
 	}
+
 	result := "success"
+
 	if err != nil {
 		result = "error"
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
+
 	metrics.Counter("application_event_publish_total", map[string]any{
 		"result": result,
 		"topic":  topic,
 	}).Inc()
+
 	return err
 }
 

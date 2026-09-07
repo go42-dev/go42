@@ -12,6 +12,39 @@ import (
 	"github.com/go42-dev/go42/internal/tools"
 )
 
+func TestOutboxPublishTimeoutConfiguration(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value string
+		want  time.Duration
+		valid bool
+	}{
+		{name: "default", want: 10 * time.Second, valid: true},
+		{name: "override", value: "250ms", want: 250 * time.Millisecond, valid: true},
+		{name: "zero", value: "0s"},
+		{name: "negative", value: "-1s"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			environment := map[string]string{}
+			if test.value != "" {
+				environment["OUTBOX_PUBLISH_TIMEOUT"] = test.value
+			}
+			var cfg config.Outbox
+			require.NoError(t, env.ParseWithOptions(&cfg, env.Options{
+				TagName: config.TagNameEnvVarName, DefaultValueTagName: config.TagNameDefaultValue,
+				Environment: environment,
+			}))
+			err := tools.ValidateStructCompact(cfg)
+			if !test.valid {
+				require.ErrorContains(t, err, "must be greater than 0")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, test.want, cfg.PublishTimeout)
+		})
+	}
+}
+
 func TestOutboxCleanupDefaults(t *testing.T) {
 	var cfg config.Outbox
 	require.NoError(t, env.ParseWithOptions(&cfg, env.Options{

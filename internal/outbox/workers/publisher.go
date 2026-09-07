@@ -3,6 +3,7 @@ package workers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -14,10 +15,14 @@ import (
 	"github.com/go42-dev/go42/internal/tools"
 )
 
+const defaultPublishTimeout = 10 * time.Second
+
 type OutboxMessagePublisher struct {
-	logger     *slog.Logger
-	repository repository
-	publisher  publisher
+	logger         *slog.Logger
+	repository     repository
+	publisher      publisher
+	publishTimeout time.Duration
+	publishSlot    chan struct{}
 }
 
 func NewOutboxMessagePublisher(
@@ -26,8 +31,10 @@ func NewOutboxMessagePublisher(
 	opts ...OutboxMessagePublisherOption,
 ) *OutboxMessagePublisher {
 	pub := &OutboxMessagePublisher{
-		repository: repository,
-		publisher:  publisher,
+		repository:     repository,
+		publisher:      publisher,
+		publishTimeout: defaultPublishTimeout,
+		publishSlot:    make(chan struct{}, 1),
 	}
 	for _, opt := range opts {
 		opt(pub)
@@ -49,9 +56,6 @@ func (p *OutboxMessagePublisher) Run(
 			return
 		case <-ticker.C:
 			err := p.run(ctx, batchSize)
-			if ctx.Err() != nil {
-				return
-			}
 			result := "success"
 			if err != nil {
 				result = "error"
@@ -83,6 +87,7 @@ func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
 				slog.String("event_id", message.ID.String()),
 				slog.String("topic", message.Topic),
 			)
+
 			event := domain.Event{
 				ID:            message.ID,
 				CreatedAt:     message.CreatedAt,
@@ -90,29 +95,51 @@ func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
 				AggregateType: message.AggregateType,
 				Payload:       message.Payload,
 			}
+
 			jsonBytes, err := json.Marshal(event)
 			if err != nil {
 				return fmt.Errorf("failed to marshal event: %w", err)
 			}
-			err = p.publisher.Publish(messageCtx, message.Topic, jsonBytes)
+
+			publishCtx, publishCtxCancel := context.WithTimeout(messageCtx, p.publishTimeout)
+			err = p.publish(publishCtx, message.Topic, jsonBytes)
+
+			publishCtxCancel()
+
+			// if parent context is canceled we should stop immediately,
+			// this can happen due to transaction timeout or shutdown signal
+			if err := txCtx.Err(); err != nil {
+				return err
+			}
+
 			if err != nil {
 				message.RetryCount++
 				message.LastError = err.Error()
 				result := "retry"
+
 				if message.RetryCount >= message.MaxRetries {
 					message.Status = models.MessageStatusFailed
 					result = "permanently_failed"
 				}
+
 				observeDelivery(message.CreatedAt, result)
 				failed = append(failed, message)
+
 				p.logger.ErrorContext(messageCtx, "failed to publish message", slog.Any("error", err))
 				metrics.Counter("application_errors", map[string]interface{}{
 					"type": "outbox_publisher_error",
 				}).Inc()
+
+				if errors.Is(err, context.DeadlineExceeded) {
+					// Commit earlier successes and this failed attempt using the active transaction context.
+					break
+				}
+
 				continue
 			}
-			observeDelivery(message.CreatedAt, "processed")
+
 			processed = append(processed, message)
+			observeDelivery(message.CreatedAt, "processed")
 			p.logger.DebugContext(messageCtx, "published message")
 		}
 
@@ -132,6 +159,7 @@ func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
 
 		return nil
 	})
+
 	if err != nil {
 		p.logger.ErrorContext(ctx,
 			"failed to run outbox publisher job", slog.Any("error", err))
@@ -139,7 +167,30 @@ func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
 			"type": "outbox_publisher_error",
 		}).Inc()
 	}
+
 	return err
+}
+
+func (p *OutboxMessagePublisher) publish(ctx context.Context, topic string, event []byte) error {
+	select {
+	case p.publishSlot <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	result := make(chan error, 1)
+	go func() {
+		// Keep the slot occupied until the broker returns, even if the caller times out.
+		defer func() { <-p.publishSlot }()
+		result <- p.publisher.Publish(ctx, topic, event)
+	}()
+
+	select {
+	case err := <-result:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func observeDelivery(createdAt time.Time, result string) {
@@ -161,5 +212,11 @@ type OutboxMessagePublisherOption func(*OutboxMessagePublisher)
 func OutboxMessagePublisherWithLogger(logger *slog.Logger) OutboxMessagePublisherOption {
 	return func(o *OutboxMessagePublisher) {
 		o.logger = logger
+	}
+}
+
+func OutboxMessagePublisherWithPublishTimeout(timeout time.Duration) OutboxMessagePublisherOption {
+	return func(o *OutboxMessagePublisher) {
+		o.publishTimeout = timeout
 	}
 }
