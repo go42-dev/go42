@@ -109,13 +109,18 @@ jobs:
           go-version-file: 'go.mod'
       - name: 'Download Go modules'
         run: go mod download
-      - name: 'Run resilience tests'
-        run: |-
-          mkdir -p build
-          go build -race -o ./.build/resilience-app ./cmd/app
-          RESILIENCE_APP_BINARY="${GITHUB_WORKSPACE}/.build/resilience-app" \
-            go test -count=1 -v -race -tags=resilience ./tests/resilience/...
-          go test -count=1 -v -tags=resilience ./tests/resilience/... -run '^TestRabbitMQ'
+      - name: 'Run resilience tests with coverage'
+        run: make test-resilience
         env:
           CGO_ENABLED: 1 # needed for -race
           RESILIENCE_RABBITMQ_ADDRESS: amqp://user:qwerty@127.0.0.1:15673/
+      - name: 'Upload coverage reports'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: resilience-coverage
+          path: |-
+            .build/coverage-resilience.out
+            .build/coverage-resilience.html
+          include-hidden-files: true
+          if-no-files-found: error

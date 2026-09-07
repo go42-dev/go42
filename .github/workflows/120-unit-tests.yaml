@@ -40,16 +40,17 @@ jobs:
           go-version-file: 'go.mod'
       - name: 'Download Go modules'
         run: go mod download
-      - name: 'Run unit tests with race detector'
-        run: |-
-          go list ./... | grep -v '/tests/' | \
-            xargs go test -count=1 -v -race -covermode=atomic -coverprofile=coverage.out
+      - name: 'Run unit tests with coverage and race detector'
+        run: make test-unit
         env:
           CGO_ENABLED: 1 # needed for -race
-      - name: 'Upload coverage profile'
+      - name: 'Upload coverage reports'
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: code-coverage
-          path: coverage.out
+          path: |-
+            .build/coverage.out
+            .build/coverage.html
+          include-hidden-files: true
           if-no-files-found: error

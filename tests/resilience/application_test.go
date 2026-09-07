@@ -20,7 +20,10 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
-const resilienceAppBinaryEnv = "RESILIENCE_APP_BINARY"
+const (
+	resilienceAppBinaryEnv   = "RESILIENCE_APP_BINARY"
+	resilienceAppCoverDirEnv = "RESILIENCE_APP_COVERDIR"
+)
 
 type testApplication struct {
 	command *exec.Cmd
@@ -129,6 +132,10 @@ func startTestApplication(t *testing.T, httpAddress string, grpcAddress string) 
 		"SERVER_HTTP_STATIC_ROOT=" + filepath.Join(repositoryRoot, "static"),
 		"SERVER_HTTP_SWAGGER_ROOT=" + filepath.Join(repositoryRoot, "api", "openapi"),
 		"SERVER_GRPC_LISTEN=" + grpcAddress,
+	}
+	// Keep app counters separate from the directory managed by go test.
+	if coverDir := os.Getenv(resilienceAppCoverDirEnv); len(coverDir) > 0 {
+		command.Env = append(command.Env, "GOCOVERDIR="+coverDir)
 	}
 	if err := command.Start(); err != nil {
 		_ = logFile.Close()

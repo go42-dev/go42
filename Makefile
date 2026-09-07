@@ -12,7 +12,7 @@
 # @see https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry
 
 # Fixes macOS GNU Make 3.81 PATH issue
-SHELL := /usr/bin/env sh
+SHELL := /usr/bin/env bash
 
 export MISE_DEFAULT_CONFIG_FILENAME := etc/mise.toml
 export MISE_DATA_DIR := $(CURDIR)/.tools
@@ -82,10 +82,25 @@ setup-mcp:
 # │               General workflow               │
 # ╰─────────────────────----------------─────────╯
 
-## test-unit | run unit tests
+COVERAGE_EXCLUDE_DIRS := \
+	api/gen \
+	mocks \
+	tests
+
+## test-unit | run unit tests with coverage
 # -count=1 is needed to prevent caching of test results.
 test-unit:
-	@go test -count=1 -v -race $(shell go list ./... | grep -v './tests')
+	@mkdir -p .build
+	@set -eo pipefail; \
+	unit_packages=$$(go list ./...); \
+	unit_exclude_pattern=$$(printf '%s\n' $(COVERAGE_EXCLUDE_DIRS) | paste -sd '|' -); \
+	unit_packages=$$(printf '%s\n' "$$unit_packages" | grep -vE "/($$unit_exclude_pattern)(/|$$)"); \
+	go test -count=1 -v -race -skip '^Fuzz' -covermode=atomic \
+		-coverpkg="$$(printf '%s\n' "$$unit_packages" | paste -sd, -)" \
+		-coverprofile=.build/coverage.out $$unit_packages \
+		| sed -E 's/(coverage: [0-9.]+% of statements) in .*/\1/'
+	@go tool cover -html=.build/coverage.out -o=.build/coverage.html
+	@go tool cover -func=.build/coverage.out | grep '^total:'
 
 ## test-fuzz | run all fuzz targets (30 seconds per target)
 test-fuzz:
@@ -96,15 +111,32 @@ test-fuzz:
 test-integration:
 	@go test -count=1 -v -race ./tests/integration/...
 
-## test-resilience | verify dependency recovery after network interruptions
+## test-resilience | verify dependency recovery with coverage
 # Resilience tests are build-tagged and excluded from all other test targets.
 # @note Requires `toxiproxy pgsql mysql redis memcached nats kafka rabbitmq`
-# @note Because of the bug RabbitMQ tests are executed separately without race.
-# @see https://github.com/ThreeDotsLabs/watermill/issues/693
 test-resilience:
-	@go build -race -o ./.build/resilience-app ./cmd/app
-	@RESILIENCE_APP_BINARY="$(CURDIR)/.build/resilience-app" go test -count=1 -v -race -tags=resilience ./tests/resilience/...
-	@RESILIENCE_APP_BINARY="$(CURDIR)/.build/resilience-app" go test -count=1 -v -tags=resilience ./tests/resilience/... -run '^TestRabbitMQ'
+	@rm -rf .build/coverage-resilience{.out,.out.tmp,.html,-tests,-app}
+	@mkdir -p .build/coverage-resilience-{tests,app}
+	@set -eo pipefail; \
+	coverage_exclude_pattern=$$(printf '%s\n' $(COVERAGE_EXCLUDE_DIRS) | paste -sd '|' -); \
+	app_packages=$$(go list -deps -f '{{if .Module}}{{if .Module.Main}}{{.ImportPath}}{{end}}{{end}}' ./cmd/app); \
+	app_packages=$$(printf '%s\n' "$$app_packages" | grep -vE "/($$coverage_exclude_pattern)(/|$$)" | paste -sd, -); \
+	resilience_packages=$$(go list -deps -test -tags=resilience -f '{{if .Module}}{{if .Module.Main}}{{.ImportPath}}{{end}}{{end}}' ./tests/resilience/...); \
+	resilience_packages=$$(printf '%s\n' "$$resilience_packages" | grep -vE "/($$coverage_exclude_pattern)(/|$$)" | paste -sd, -); \
+	go build -race -cover -covermode=atomic -coverpkg="$$app_packages" -o .build/resilience-app ./cmd/app; \
+	export RESILIENCE_APP_BINARY="$(CURDIR)/.build/resilience-app"; \
+	export RESILIENCE_APP_COVERDIR="$(CURDIR)/.build/coverage-resilience-app"; \
+	go test -count=1 -v -tags=resilience -cover -covermode=atomic \
+		-coverpkg="$$resilience_packages" ./tests/resilience/... \
+		-args -test.gocoverdir="$(CURDIR)/.build/coverage-resilience-tests" \
+		| sed -E 's/(coverage: [0-9.]+% of statements) in .*/\1/'
+	@ls .build/coverage-resilience-{tests,app}/cov{meta,counters}.* > /dev/null
+	@go tool covdata textfmt \
+		-i=.build/coverage-resilience-tests,.build/coverage-resilience-app \
+		-o=.build/coverage-resilience.out.tmp
+	@mv .build/coverage-resilience.out.tmp .build/coverage-resilience.out
+	@go tool cover -html=.build/coverage-resilience.out -o=.build/coverage-resilience.html
+	@go tool cover -func=.build/coverage-resilience.out | grep '^total:'
 
 ## test-load | run load tests (http and grpc)
 test-load:
