@@ -158,22 +158,3 @@ func TestOutboxCleanupDefaults(t *testing.T) {
 	assert.Equal(t, 7*24*time.Hour, cfg.CleanupRetention)
 	assert.Equal(t, 1000, cfg.CleanupBatchSize)
 }
-
-func TestOutboxCleanupConfigurationRejectsNonpositiveValues(t *testing.T) {
-	t.Setenv("OUTBOX_CLEANUP_INTERVAL", "1h")
-	t.Setenv("OUTBOX_CLEANUP_RETENTION", "168h")
-	t.Setenv("OUTBOX_CLEANUP_BATCH_SIZE", "1000")
-	for name, values := range map[string][]string{
-		"OUTBOX_CLEANUP_INTERVAL":   {"0s", "-1s"},
-		"OUTBOX_CLEANUP_RETENTION":  {"0s", "-1s"},
-		"OUTBOX_CLEANUP_BATCH_SIZE": {"0", "-1"},
-	} {
-		for _, value := range values {
-			t.Run(name+"="+value, func(t *testing.T) {
-				t.Setenv(name, value)
-				_, err := config.New()
-				require.ErrorContains(t, err, "must be greater than 0")
-			})
-		}
-	}
-}

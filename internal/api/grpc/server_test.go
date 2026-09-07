@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/google/uuid"
@@ -171,6 +172,76 @@ func TestGRPCLogsRequestIDsForUnaryAndStreamCalls(t *testing.T) {
 			assert.Equal(t, wantStarted, started)
 			assert.Equal(t, 1, finished)
 			assert.Equal(t, records, strings.Count(raw, `"request_id":`))
+		})
+	}
+}
+
+func TestHealthMonitorOptionsAndCancellation(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		withContext bool
+		nilContext  bool
+		withCheck   bool
+	}{
+		{name: "neither option"},
+		{name: "context only", withContext: true},
+		{name: "readiness only", withCheck: true},
+		{name: "both options", withContext: true, withCheck: true},
+		{name: "explicit nil context", nilContext: true},
+		{name: "readiness with explicit nil context", nilContext: true, withCheck: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				healthCtx, cancelHealth := context.WithCancel(t.Context())
+				defer cancelHealth()
+				checkStarted, checkCanceled := false, false
+				opts := []Option{
+					WithReadinessCheckInterval(time.Second),
+					WithReadinessCheckTimeout(time.Minute),
+				}
+				if test.withContext {
+					opts = append(opts, WitHealthCheckCtx(healthCtx))
+				}
+				if test.nilContext {
+					//nolint:staticcheck // SA1012: deliberately test the optional nil context.
+					opts = append(opts, WitHealthCheckCtx(nil))
+				}
+				if test.withCheck {
+					opts = append(opts, WithReadinessCheck(func(ctx context.Context) error {
+						checkStarted = true
+						<-ctx.Done()
+						checkCanceled = errors.Is(ctx.Err(), context.Canceled)
+						return ctx.Err()
+					}))
+				}
+
+				server := New(opts...)
+				defer server.grpcServer.Stop()
+				if server.healthMonitorCancel != nil {
+					defer server.healthMonitorCancel()
+				}
+				require.Equal(t, test.withContext || test.withCheck, server.healthMonitorCancel != nil)
+
+				if test.withCheck {
+					time.Sleep(time.Second)
+					synctest.Wait()
+					require.True(t, checkStarted, "readiness check must run")
+				}
+				if test.withContext {
+					cancelHealth()
+					synctest.Wait()
+					waitForHealthStatus(t, server, healthpb.HealthCheckResponse_NOT_SERVING)
+					if test.withCheck {
+						require.True(t, checkCanceled, "health context cancellation must stop the running check")
+					}
+				}
+
+				require.NoError(t, server.Shutdown(t.Context()))
+				synctest.Wait()
+				if test.withCheck {
+					require.True(t, checkCanceled, "shutdown must stop the running check")
+				}
+			})
 		})
 	}
 }

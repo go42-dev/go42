@@ -154,7 +154,11 @@ func New(opts ...Option) *Server {
 	}
 
 	s.healthServer = health.NewServer()
-	s.healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	initialStatus := healthpb.HealthCheckResponse_SERVING
+	if s.readyCheck != nil {
+		initialStatus = healthpb.HealthCheckResponse_NOT_SERVING
+	}
+	s.healthServer.SetServingStatus("", initialStatus)
 	healthpb.RegisterHealthServer(s.grpcServer, s.healthServer)
 	s.startHealthMonitor()
 
@@ -210,7 +214,11 @@ func (s *Server) startHealthMonitor() {
 		return
 	}
 
-	ctx, cancel := context.WithCancel(s.healthCheckCtx)
+	parent := s.healthCheckCtx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
 	s.healthMonitorCancel = cancel
 
 	go s.monitorHealth(ctx)
@@ -225,6 +233,8 @@ func (s *Server) monitorHealth(ctx context.Context) {
 
 	ticker := time.NewTicker(s.readyCheckInterval)
 	defer ticker.Stop()
+
+	s.updateHealthStatus(ctx)
 
 	for {
 		select {
