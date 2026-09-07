@@ -108,19 +108,6 @@ func main() {
 	)
 	switch cfg.Database.Engine {
 	case "sqlite":
-		// run database migrations
-		slog.Info("running database migrations...")
-		err = sqliteMigrate.Migrate(
-			ctx,
-			cfg.Database.Sqlite.SqliteFile,
-			cfg.Database.FullMigratePath(),
-			sqlite.ConnectionOption{Key: "mode", Value: cfg.Database.Sqlite.Mode},
-			sqlite.ConnectionOption{Key: "cache", Value: cfg.Database.Sqlite.CacheMode},
-		)
-		if err != nil {
-			log.Fatalf("failed to execute migrations: %v\n", err)
-		}
-
 		// connect to database
 		slog.Info("Connecting to sqlite...")
 		var sqliteConnErr error
@@ -136,6 +123,16 @@ func main() {
 		}
 
 		slog.Info("connected to sqlite")
+
+		// Migrate through the application pool to retain in-memory databases.
+		migrationDB, err := dbEngine.Master().DB()
+		if err != nil {
+			log.Fatalf("failed to retrieve sqlite db: %v\n", err)
+		}
+		slog.Info("running database migrations...")
+		if err := sqliteMigrate.Migrate(ctx, migrationDB, cfg.Database.FullMigratePath()); err != nil {
+			log.Fatalf("failed to execute migrations: %v\n", err)
+		}
 	case "mysql":
 		// run database migrations
 		slog.Info("running database migrations...")

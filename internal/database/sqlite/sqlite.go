@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/glebarez/sqlite"
 	slogGorm "github.com/orandin/slog-gorm"
@@ -122,7 +123,11 @@ func (w *Sqlite) Ping(ctx context.Context) error {
 }
 
 func AddConnectionOptions(dbPath string, connOpts []ConnectionOption) string {
-	dbPath += "?"
+	if strings.Contains(dbPath, "?") {
+		dbPath += "&"
+	} else {
+		dbPath += "?"
+	}
 	for _, option := range connOpts {
 		dbPath += option.Key + "=" + option.Value + "&"
 	}

@@ -8,18 +8,11 @@ import (
 	"os"
 
 	"github.com/pressly/goose/v3"
-
-	"github.com/go42-dev/go42/internal/database/sqlite"
 )
 
-func Migrate(ctx context.Context, dbPath string, schemaPath string, opts ...sqlite.ConnectionOption) error {
-	db, err := sql.Open("sqlite", sqlite.AddConnectionOptions(dbPath, opts))
-	if err != nil {
-		return err
-	}
-
-	db.SetMaxOpenConns(1)
-
+// Migrate applies migrations using the application's pool so in-memory databases
+// stay alive. The caller owns the pool and is responsible for closing it.
+func Migrate(ctx context.Context, db *sql.DB, schemaPath string) error {
 	provider, err := goose.NewProvider(
 		goose.DialectSQLite3,
 		db,
@@ -42,10 +35,5 @@ func Migrate(ctx context.Context, dbPath string, schemaPath string, opts ...sqli
 		return fmt.Errorf("migration failed: %w", err)
 	}
 
-	if dbPath != "file::memory:" {
-		return db.Close()
-	}
-
-	// Closing in-memory db will destroy all data.
 	return nil
 }

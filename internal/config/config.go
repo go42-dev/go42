@@ -5,12 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/caarlos0/env/v11"
+	"github.com/go-sql-driver/mysql"
 
 	"github.com/go42-dev/go42/internal/tools"
 )
@@ -219,10 +222,7 @@ type MysqlMaster struct {
 }
 
 func (db MysqlMaster) DSN() string {
-	return fmt.Sprintf(
-		"%s:%s@tcp(%s:%d)/%s?charset=%s&parseTime=True&loc=UTC",
-		db.User, db.Password, db.Host, db.Port, db.Name, db.Charset,
-	)
+	return mysqlDSN(db.Host, db.Port, db.User, db.Password, db.Name, db.Charset)
 }
 
 type MysqlSlave struct {
@@ -238,10 +238,20 @@ func (db MysqlSlave) DSN() string {
 	if db.Host == "" {
 		return ""
 	}
-	return fmt.Sprintf(
-		"%s:%s@tcp(%s:%d)/%s?charset=%s&parseTime=True&loc=UTC",
-		db.User, db.Password, db.Host, db.Port, db.Name, db.Charset,
-	)
+	return mysqlDSN(db.Host, db.Port, db.User, db.Password, db.Name, db.Charset)
+}
+
+func mysqlDSN(host string, port int, user, password, name, charset string) string {
+	cfg := mysql.NewConfig()
+	cfg.User = user
+	cfg.Passwd = password
+	cfg.Net = "tcp"
+	cfg.Addr = net.JoinHostPort(host, strconv.Itoa(port))
+	cfg.DBName = name
+	cfg.ParseTime = true
+	// Charset only assigns configuration fields and always returns nil.
+	_ = cfg.Apply(mysql.Charset(charset, ""))
+	return cfg.FormatDSN()
 }
 
 type Pgsql struct {
@@ -263,13 +273,7 @@ type PgsqlMaster struct {
 }
 
 func (db PgsqlMaster) DSN() string {
-	if db.Host == "" {
-		return ""
-	}
-	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%d/%s",
-		db.User, db.Password, db.Host, db.Port, db.Name,
-	)
+	return pgsqlDSN(db.Host, db.Port, db.User, db.Password, db.Name)
 }
 
 type PgsqlSlave struct {
@@ -281,13 +285,20 @@ type PgsqlSlave struct {
 }
 
 func (db PgsqlSlave) DSN() string {
-	if db.Host == "" {
+	return pgsqlDSN(db.Host, db.Port, db.User, db.Password, db.Name)
+}
+
+func pgsqlDSN(host string, port int, user, password, name string) string {
+	if host == "" {
 		return ""
 	}
-	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%d/%s",
-		db.User, db.Password, db.Host, db.Port, db.Name,
-	)
+	dsn := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(user, password),
+		Host:   net.JoinHostPort(host, strconv.Itoa(port)),
+		Path:   "/" + name,
+	}
+	return dsn.String()
 }
 
 // ╭──────────────────────────────╮
