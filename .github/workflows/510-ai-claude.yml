@@ -152,7 +152,7 @@ jobs:
           fi
 
       - name: 'Run Claude Code'
-        uses: anthropics/claude-code-action@28f83620103c48a57093dcc2837eec89e036bb9f # beta
+        uses: anthropics/claude-code-action@833fb0f8c9f6686b33d963a8bae0a94f4936ab2a # beta
         continue-on-error: true
         id: claude
         env:
