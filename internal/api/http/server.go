@@ -86,12 +86,8 @@ func New(opts ...Option) *Server {
 	// route echo's internal logs through the project's slog logger
 	s.e.Logger = s.l.With(slog.String("who", "echo.Logger"))
 
-	// all panics and explicit errors are handled here
+	// HTTP errors and recovered panics are handled here.
 	s.e.HTTPErrorHandler = NewErrorHandler(s.l)
-
-	// panics are handled and passed to the HTTPErrorHandler
-	// this middleware should be always the first one in the chain
-	s.e.Use(middleware.Recover())
 
 	s.e.Use(middleware.RemoveTrailingSlash())
 
@@ -106,11 +102,16 @@ func New(opts ...Option) *Server {
 		)))
 	}
 
+	s.e.Use(customMiddleware.NewMetricsCollector())
+
+	s.e.Use(customMiddleware.NewErrorHandler())
+
+	s.e.Use(middleware.Recover())
+
 	s.e.Use(customMiddleware.NewRequestID())
 
 	s.e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
 		Skipper:      customMiddleware.DefaultSkipper,
-		HandleError:  true,
 		LogStatus:    true,
 		LogMethod:    true,
 		LogURI:       true,
@@ -131,7 +132,6 @@ func New(opts ...Option) *Server {
 		},
 	}))
 
-	s.e.Use(customMiddleware.NewMetricsCollector())
 	s.e.Use(customMiddleware.NewRateLimiter(s.rateLimiter))
 	s.e.Use(middleware.BodyLimitWithConfig(middleware.BodyLimitConfig{
 		Skipper:    customMiddleware.DefaultSkipper,

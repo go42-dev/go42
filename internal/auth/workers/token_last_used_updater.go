@@ -56,7 +56,9 @@ func (u *TokenLastUsedUpdater) Run(ctx context.Context, interval time.Duration) 
 				return
 			case e := <-c:
 				u.Lock()
-				u.activeBuffer.data[e.ID] = e.When
+				if previous, found := u.activeBuffer.data[e.ID]; !found || e.When.After(previous) {
+					u.activeBuffer.data[e.ID] = e.When
+				}
 				u.Unlock()
 			}
 		}

@@ -392,12 +392,23 @@ func (r *Repository) UpdateTokenLastUsed(ctx context.Context, tokenID int, when 
 	result := r.GetTx(ctx).
 		Model(&models.Token{}).
 		Where("id = ?", tokenID).
+		Where("last_used_at IS NULL OR last_used_at < ?", when).
 		Update("last_used_at", when)
 
 	if result.Error != nil {
 		return fmt.Errorf("error updating api token: %w", result.Error)
 	}
-	if result.RowsAffected == 0 {
+	if result.RowsAffected > 0 {
+		return nil
+	}
+
+	// An older or repeated timestamp is a successful no-op for an existing token.
+	// Use the current transaction/primary so replica lag cannot report it missing.
+	var count int64
+	if err := r.GetTx(ctx).Model(&models.Token{}).Where("id = ?", tokenID).Count(&count).Error; err != nil {
+		return fmt.Errorf("error checking api token after update: %w", err)
+	}
+	if count == 0 {
 		return domain.ErrEntityNotFound
 	}
 	return nil

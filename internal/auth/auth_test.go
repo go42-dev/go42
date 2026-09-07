@@ -2278,15 +2278,113 @@ func TestRepository_UpdateTokenLastUsed(t *testing.T) {
 	if err := h.repo.UpdateTokenLastUsed(t.Context(), -1, when); !errors.Is(err, domain.ErrEntityNotFound) {
 		t.Fatalf("update missing token = %v, want not found", err)
 	}
-	if err := h.repo.UpdateTokenLastUsed(t.Context(), token.ID, when); err != nil {
-		t.Fatalf("update existing token: %v", err)
+	for _, step := range []struct {
+		name string
+		when time.Time
+		want time.Time
+	}{
+		{"first use", when, when},
+		{"newer use", when.Add(time.Hour), when.Add(time.Hour)},
+		{"delayed older flush", when, when.Add(time.Hour)},
+		{"repeated timestamp", when.Add(time.Hour), when.Add(time.Hour)},
+		{"later use", when.Add(2 * time.Hour), when.Add(2 * time.Hour)},
+	} {
+		t.Run(step.name, func(t *testing.T) {
+			err := h.repo.WithTransaction(t.Context(), func(ctx context.Context) error {
+				return h.repo.UpdateTokenLastUsed(ctx, token.ID, step.when)
+			})
+			if err != nil {
+				t.Fatalf("update existing token: %v", err)
+			}
+			var stored models.Token
+			if err := h.db.Master().WithContext(t.Context()).First(&stored, token.ID).Error; err != nil {
+				t.Fatal(err)
+			}
+			if !stored.LastUsedAt.Valid || !stored.LastUsedAt.V.Equal(step.want) {
+				t.Fatalf("stored last-used time = %v, want %s", stored.LastUsedAt, step.want)
+			}
+		})
+	}
+	if err := h.db.Master().WithContext(t.Context()).Delete(token).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := h.repo.UpdateTokenLastUsed(t.Context(), token.ID, when); !errors.Is(err, domain.ErrEntityNotFound) {
+		t.Fatalf("update deleted token = %v, want not found", err)
+	}
+}
+
+func TestRepository_UpdateTokenLastUsedInCurrentTransaction(t *testing.T) {
+	h := newSessionHarness(t)
+	when := time.Now().UTC().Truncate(time.Second)
+	token := &models.Token{
+		UUID: uuid.New(), UserID: h.user.ID, Token: sha256Hex(uuid.NewString()), Name: "uncommitted last use",
+		LastUsedAt: sql.Null[time.Time]{V: when, Valid: true},
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	err := h.repo.WithTransaction(ctx, func(txCtx context.Context) error {
+		if err := h.repo.GetTx(txCtx).Create(token).Error; err != nil {
+			return err
+		}
+		// The existence check for an ignored update must see this uncommitted token.
+		if err := h.repo.UpdateTokenLastUsed(txCtx, token.ID, when.Add(-time.Hour)); err != nil {
+			return err
+		}
+		return h.repo.UpdateTokenLastUsed(txCtx, token.ID, when)
+	})
+	if err != nil {
+		t.Fatalf("update within current transaction: %v", err)
 	}
 	var stored models.Token
-	if err := h.db.Master().First(&stored, token.ID).Error; err != nil {
+	if err := h.db.Master().WithContext(ctx).First(&stored, token.ID).Error; err != nil {
 		t.Fatal(err)
 	}
 	if !stored.LastUsedAt.Valid || !stored.LastUsedAt.V.Equal(when) {
 		t.Fatalf("stored last-used time = %v, want %s", stored.LastUsedAt, when)
+	}
+}
+
+func TestRepository_UpdateTokenLastUsedConcurrent(t *testing.T) {
+	h := newSessionHarness(t)
+	token := &models.Token{
+		UUID: uuid.New(), UserID: h.user.ID, Token: sha256Hex(uuid.NewString()), Name: "concurrent last use",
+	}
+	if err := h.db.Master().WithContext(t.Context()).Create(token).Error; err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	base := time.Now().UTC().Truncate(time.Second)
+	const writers = 16
+	want := base.Add(7 * time.Minute)
+	for _, delayed := range []bool{false, true} {
+		start := make(chan struct{})
+		results := make(chan error, writers)
+		for i := range writers {
+			when := base.Add(time.Duration(i%8) * time.Minute)
+			if delayed {
+				when = base.Add(-time.Duration(i+1) * time.Minute)
+			}
+			go func() {
+				<-start
+				results <- h.repo.WithTransaction(ctx, func(txCtx context.Context) error {
+					return h.repo.UpdateTokenLastUsed(txCtx, token.ID, when)
+				})
+			}()
+		}
+		close(start)
+		for range writers {
+			if err := <-results; err != nil {
+				t.Errorf("concurrent update (delayed=%t): %v", delayed, err)
+			}
+		}
+		var stored models.Token
+		if err := h.db.Master().WithContext(ctx).First(&stored, token.ID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if !stored.LastUsedAt.Valid || !stored.LastUsedAt.V.Equal(want) {
+			t.Errorf("stored last-used time (delayed=%t) = %v, want %s", delayed, stored.LastUsedAt, want)
+		}
 	}
 }
 

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"net/http"
 	"strconv"
 	"time"
 
@@ -11,7 +12,7 @@ import (
 
 func NewMetricsCollector() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c *echo.Context) (returnErr error) {
+		return func(c *echo.Context) error {
 			if DefaultSkipper(c) {
 				return next(c)
 			}
@@ -31,7 +32,7 @@ func NewMetricsCollector() echo.MiddlewareFunc {
 
 			_, status := echo.ResolveResponseStatus(c.Response(), err)
 			labels["status"] = strconv.Itoa(status)
-			labels["is_error"] = toStringBool(err != nil)
+			labels["is_error"] = toStringBool(status >= http.StatusBadRequest)
 
 			metrics.Counter("application_http_responses_count", labels).Inc()
 			metrics.Histogram("application_http_latency_sec", labels).Update(duration)

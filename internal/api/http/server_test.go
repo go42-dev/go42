@@ -10,6 +10,7 @@ import (
 	"net"
 	nethttp "net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -18,11 +19,15 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.uber.org/mock/gomock"
 
 	oapi "github.com/go42-dev/go42/api/gen/sdk/http/v1/auth/oapi-codegen"
 	ogen "github.com/go42-dev/go42/api/gen/sdk/http/v1/auth/ogen"
 	"github.com/go42-dev/go42/internal/api/http/mocks"
+	"github.com/go42-dev/go42/internal/metrics"
 	"github.com/go42-dev/go42/internal/tools"
 )
 
@@ -413,6 +418,157 @@ func TestHTTPClientsDecodeServerErrors(t *testing.T) {
 				}
 			})
 		})
+	}
+}
+
+func TestHTTPMetricsAndTracingRecordFinalResponses(t *testing.T) {
+	previousProvider := otel.GetTracerProvider()
+	spans := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previousProvider)
+		if err := provider.Shutdown(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+
+	for _, test := range []struct {
+		name             string
+		handler          echo.HandlerFunc
+		wantStatus       int
+		wantError        bool
+		wantHandlerCalls int
+	}{
+		{
+			name: "success", wantStatus: nethttp.StatusCreated,
+			handler: func(c *echo.Context) error { return c.NoContent(nethttp.StatusCreated) },
+		},
+		{
+			name: "explicit-client-error", wantStatus: nethttp.StatusBadRequest, wantError: true,
+			handler: func(c *echo.Context) error { return c.NoContent(nethttp.StatusBadRequest) },
+		},
+		{
+			name: "returned-client-error", wantStatus: nethttp.StatusBadRequest, wantError: true, wantHandlerCalls: 1,
+			handler: func(*echo.Context) error { return echo.ErrBadRequest },
+		},
+		{
+			name: "returned-server-error", wantStatus: nethttp.StatusInternalServerError, wantError: true, wantHandlerCalls: 1,
+			handler: func(*echo.Context) error { return errors.New("storage failure") },
+		},
+		{
+			name: "panic", wantStatus: nethttp.StatusInternalServerError, wantError: true, wantHandlerCalls: 1,
+			handler: func(*echo.Context) error { panic("handler failure") },
+		},
+		{
+			name: "panic-with-http-error", wantStatus: nethttp.StatusInternalServerError, wantError: true, wantHandlerCalls: 1,
+			handler: func(*echo.Context) error { panic(echo.ErrBadRequest) },
+		},
+		{
+			name: "error-after-response", wantStatus: nethttp.StatusAccepted, wantHandlerCalls: 1,
+			handler: func(c *echo.Context) error {
+				if err := c.String(nethttp.StatusAccepted, "already sent"); err != nil {
+					return err
+				}
+				return errors.New("failure after response")
+			},
+		},
+		{
+			name: "panic-after-response", wantStatus: nethttp.StatusAccepted, wantHandlerCalls: 1,
+			handler: func(c *echo.Context) error {
+				if err := c.String(nethttp.StatusAccepted, "already sent"); err != nil {
+					return err
+				}
+				panic("failure after response")
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := newTestServer(t, WithTracing(true))
+			t.Cleanup(server.shutdownCancel)
+			path := "/metrics-test/" + test.name
+			server.root.GET(path, test.handler)
+			handleError := server.e.HTTPErrorHandler
+			handlerCalls := 0
+			server.e.HTTPErrorHandler = func(c *echo.Context, err error) {
+				handlerCalls++
+				handleError(c, err)
+			}
+
+			labels := map[string]any{"method": nethttp.MethodGet, "path": path}
+			requests := metrics.Counter("application_http_requests_count", labels)
+			requestsBefore := requests.Get()
+			labels["status"] = strconv.Itoa(test.wantStatus)
+			labels["is_error"] = "no"
+			if test.wantError {
+				labels["is_error"] = "yes"
+			}
+			responses := metrics.Counter("application_http_responses_count", labels)
+			responsesBefore := responses.Get()
+			histogram := metrics.Histogram("application_http_latency_sec", labels)
+			latencyCount := func() uint64 {
+				var count uint64
+				histogram.VisitNonZeroBuckets(func(_ string, n uint64) { count += n })
+				return count
+			}
+			latenciesBefore := latencyCount()
+			spansBefore := len(spans.Ended())
+
+			response := httptest.NewRecorder()
+			server.e.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), nethttp.MethodGet, path, nil))
+			assert.Equal(t, test.wantStatus, response.Code)
+			assert.Equal(t, test.wantHandlerCalls, handlerCalls, "each error must be handled once")
+			assert.Equal(t, requestsBefore+1, requests.Get())
+			assert.Equal(t, responsesBefore+1, responses.Get(), "count the final response even after a panic")
+			assert.Equal(t, latenciesBefore+1, latencyCount(), "record latency even after a panic")
+
+			ended := spans.Ended()
+			require.Len(t, ended, spansBefore+1)
+			traceStatus := 0
+			for _, attribute := range ended[spansBefore].Attributes() {
+				switch string(attribute.Key) {
+				case "http.status_code", "http.response.status_code":
+					traceStatus = int(attribute.Value.AsInt64())
+				}
+			}
+			assert.Equal(t, response.Code, traceStatus, "tracing must observe the final HTTP response")
+		})
+	}
+}
+
+func TestHTTPMetricsWaitForErrorHandlerResponse(t *testing.T) {
+	const path = "/metrics-test/rendered-error"
+	server := newTestServer(t)
+	t.Cleanup(server.shutdownCancel)
+	server.root.GET(path, func(*echo.Context) error { return echo.ErrBadRequest })
+	labels := map[string]any{
+		"method": nethttp.MethodGet, "path": path, "status": "503", "is_error": "yes",
+	}
+	rendered := metrics.Counter("application_http_responses_count", labels)
+	renderedBefore := rendered.Get()
+	labels["status"] = "400"
+	inferred := metrics.Counter("application_http_responses_count", labels)
+	inferredBefore := inferred.Get()
+	handlerCalls := 0
+	server.e.HTTPErrorHandler = func(c *echo.Context, err error) {
+		handlerCalls++
+		if !errors.Is(err, echo.ErrBadRequest) {
+			t.Errorf("error handler received %v, want the original error", err)
+		}
+		if rendered.Get() != renderedBefore || inferred.Get() != inferredBefore {
+			t.Error("response metrics were recorded before error rendering finished")
+		}
+		if err := c.NoContent(nethttp.StatusServiceUnavailable); err != nil {
+			t.Error(err)
+		}
+	}
+	response := httptest.NewRecorder()
+	server.e.ServeHTTP(response, httptest.NewRequest(nethttp.MethodGet, path, nil))
+	if response.Code != nethttp.StatusServiceUnavailable || handlerCalls != 1 {
+		t.Errorf("status = %d, handler calls = %d; want 503 and one call", response.Code, handlerCalls)
+	}
+	if rendered.Get() != renderedBefore+1 || inferred.Get() != inferredBefore {
+		t.Error("metrics must record the status chosen by the error handler")
 	}
 }
 

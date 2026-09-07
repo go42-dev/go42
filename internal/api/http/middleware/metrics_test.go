@@ -30,6 +30,21 @@ func TestMetricsCollectorRecordsResponseStatus(t *testing.T) {
 			handler: func(*echo.Context) error { return nil },
 		},
 		{
+			name: "implicit-write", wantStatus: http.StatusOK, wantError: "no",
+			handler: func(c *echo.Context) error {
+				_, err := c.Response().Write([]byte("ok"))
+				return err
+			},
+		},
+		{
+			name: "explicit-client-error", wantStatus: http.StatusBadRequest, wantError: "yes",
+			handler: func(c *echo.Context) error { return c.NoContent(http.StatusBadRequest) },
+		},
+		{
+			name: "explicit-server-error", wantStatus: http.StatusInternalServerError, wantError: "yes",
+			handler: func(c *echo.Context) error { return c.NoContent(http.StatusInternalServerError) },
+		},
+		{
 			name: "deferred-validation-error", wantStatus: http.StatusBadRequest, wantError: "yes",
 			handler: func(*echo.Context) error { return echo.ErrBadRequest.Wrap(errors.New("invalid request")) },
 		},
@@ -38,7 +53,7 @@ func TestMetricsCollectorRecordsResponseStatus(t *testing.T) {
 			handler: func(*echo.Context) error { return errors.New("private storage failure") },
 		},
 		{
-			name: "committed-response", wantStatus: http.StatusAccepted, wantError: "yes",
+			name: "committed-response", wantStatus: http.StatusAccepted, wantError: "no",
 			handler: func(c *echo.Context) error {
 				if err := c.NoContent(http.StatusAccepted); err != nil {
 					return err
@@ -67,5 +82,21 @@ func TestMetricsCollectorRecordsResponseStatus(t *testing.T) {
 				t.Errorf("response counter for HTTP %d = %d, want %d", test.wantStatus, got, before+1)
 			}
 		})
+	}
+}
+
+func TestMetricsCollectorPassesThroughErrors(t *testing.T) {
+	const path = "/metrics-test/pass-through"
+	e := echo.New()
+	e.HTTPErrorHandler = func(*echo.Context, error) {
+		t.Error("metrics must not invoke the error handler")
+	}
+	response := httptest.NewRecorder()
+	c := e.NewContext(httptest.NewRequest(http.MethodGet, path, nil), response)
+	c.SetPath(path)
+	wantErr := errors.New("request failure")
+	handler := NewMetricsCollector()(func(*echo.Context) error { return wantErr })
+	if err := handler(c); !errors.Is(err, wantErr) {
+		t.Errorf("returned error = %v, want the original error %v", err, wantErr)
 	}
 }
