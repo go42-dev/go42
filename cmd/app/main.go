@@ -23,7 +23,6 @@ import (
 	"github.com/hasansino/vault2cfg"
 	"github.com/hashicorp/vault-client-go"
 	"github.com/lmittmann/tint"
-	slogmulti "github.com/samber/slog-multi"
 	etcdClient "go.etcd.io/etcd/client/v3"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
@@ -717,7 +716,7 @@ func initLogging(_ context.Context, cfg *config.Config) func(...slog.Handler) *s
 		handlers = append([]slog.Handler{slogHandler}, handlers...)
 		return slog.New(
 			tools.SlogContextWrapper(
-				slogmulti.Fanout(handlers...))).With(
+				slog.NewMultiHandler(handlers...))).With(
 			slog.String("service", cfg.Core.ServiceName),
 			slog.String("environment", cfg.Core.Environment),
 			slog.String("hostname", hostname),

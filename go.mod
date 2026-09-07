@@ -44,7 +44,6 @@ require (
 	github.com/orandin/slog-gorm v1.4.0
 	github.com/pressly/goose/v3 v3.28.0
 	github.com/redis/go-redis/v9 v9.18.0
-	github.com/samber/slog-multi v1.8.0
 	github.com/stretchr/testify v1.12.1
 	github.com/wagslane/go-password-validator v0.3.0
 	go.etcd.io/etcd/client/v3 v3.7.1
@@ -151,8 +150,6 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
-	github.com/samber/lo v1.53.0 // indirect
-	github.com/samber/slog-common v0.21.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/sethvargo/go-retry v0.4.0 // indirect
