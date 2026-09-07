@@ -130,7 +130,7 @@ jobs:
       - name: 'Download Go modules'
         run: go mod download
       - name: 'Run integration tests'
-        run: go test -count=1 -v -race ./tests/integration/...
+        run: make test-integration
         # environment variables read by integration tests
         env:
           CGO_ENABLED: 1 # needed for -race

@@ -1,4 +1,4 @@
-package migrate_test
+package database_test
 
 import (
 	"context"
@@ -51,7 +51,7 @@ func TestMigratePreservesSchema(t *testing.T) {
 			t.Cleanup(func() { require.NoError(t, db.Shutdown(context.Background())) })
 			sqlDB, err := db.Master().DB()
 			require.NoError(t, err)
-			schemaPath := "../../../../migrate/sqlite"
+			schemaPath := "../../../migrate/sqlite"
 			require.NoError(t, migrate.Migrate(t.Context(), sqlDB, schemaPath))
 
 			var users int64

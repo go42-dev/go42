@@ -14,6 +14,13 @@ FROM --platform=$BUILDPLATFORM golang:${GO_VERSION} AS builder
 ARG SOURCE_DATE_EPOCH=0
 ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
 
+WORKDIR /tmp/build
+
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod,id=gomodcache go mod download
+
+COPY . .
+
 # Passed by buildx for cross-compilation.
 ARG TARGETOS
 ARG TARGETARCH
@@ -21,12 +28,6 @@ ARG TARGETARCH
 # FROM resets arguments, so we need to declare them after.
 ARG COMMIT_HASH
 ARG RELEASE_TAG
-
-WORKDIR /tmp/build
-COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod,id=gomodcache go mod download
-
-COPY . .
 
 # CGO disabled by default.
 # Any build that requires CGO will need to adjust build process:
@@ -55,6 +56,9 @@ ENV GOGC=100
 #
 # xBuild... are variables accessable in main.go
 #
+# Build arguments follow dependency downloads so that layer stays cached
+# across commits and is shared by all target architectures.
+
 RUN --mount=type=cache,target=/go/pkg/mod,id=gomodcache \
     --mount=type=cache,target=/root/.cache/go-build,id=gobuildcache \
     GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
@@ -63,7 +67,8 @@ RUN --mount=type=cache,target=/go/pkg/mod,id=gomodcache \
     -o app cmd/app/main.go
 
 # Validate binary.
-RUN readelf -h app && du -h app && sha256sum app && go tool buildid app
+RUN --mount=type=cache,target=/root/.cache/go-build,id=gobuildcache \
+    readelf -h app && du -h app && sha256sum app && go tool buildid app
 
 # ---
 
@@ -95,8 +100,7 @@ RUN apk add --no-cache \
 RUN addgroup -g 1000 appuser && \
     adduser -u 1000 -G appuser -s /bin/sh -D appuser
 
-# Copy binary and other files from builder stage.
-COPY --from=builder --chown=appuser:appuser /tmp/build/app /usr/local/bin/
+# Copy stable runtime files before the application binary.
 COPY --chown=appuser:appuser api/openapi /usr/share/www/api
 COPY --chown=appuser:appuser static /usr/share/www
 COPY --chown=appuser:appuser migrate /migrate
@@ -105,11 +109,13 @@ COPY --chown=appuser:appuser .env.example /
 # Entry point for container:
 #   * tini is a small init system that helps with proper signal handling and reaping zombie processes.
 #   * entrypoint.sh allows to run arbitrary commands and exec inside running containers.
-COPY entrypoint.sh /
-RUN chmod +x /entrypoint.sh
+COPY --chmod=0755 entrypoint.sh /
 ENTRYPOINT ["/sbin/tini", "--", "/entrypoint.sh"]
 
 # Application will be started by appuser inside isolated home directory.
 USER 1000
 WORKDIR /home/appuser
+
+# Keep the changing binary last so runtime files stay cached across builds.
+COPY --from=builder --chown=appuser:appuser /tmp/build/app /usr/local/bin/
 CMD ["/usr/local/bin/app"]

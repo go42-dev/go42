@@ -138,6 +138,7 @@ jobs:
           echo "release_tag=$release_tag" >> "$GITHUB_ENV"
       # ----
       - name: 'Set up Docker Buildx'
+        id: buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
         with:
           cache-binary: true
@@ -147,6 +148,28 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # ----
+      # The layer cache does not preserve RUN cache mounts. Restore the Go module
+      # and compiler caches before the build, then extract them before actions/cache saves them.
+      - name: 'Restore and save Go module and compiler caches'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/docker-go-cache
+          # A new key lets each successful run save new modules and compiled packages.
+          key: docker-go-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.go_version }}-${{ hashFiles('go.mod', 'go.sum') }}-${{
+            github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            docker-go-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.go_version }}-${{ hashFiles('go.mod', 'go.sum') }}-
+            docker-go-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.go_version }}-
+      - name: 'Restore and extract Go cache mounts'
+        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
+        continue-on-error: true
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          dockerfile: Dockerfile
+          cache-dir: ${{ runner.temp }}/docker-go-cache
+          scratch-dir: ${{ runner.temp }}/buildkit-cache-dance
       # ----
       # For single platform builds `index` annotations will fail - check and set levels accordingly.
       - name: 'Determine annotation levels'
@@ -184,6 +207,7 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         id: build
         with:
+          builder: ${{ steps.buildx.outputs.name }}
           context: ${{ github.workspace }}/
           file: ${{ github.workspace }}/Dockerfile
           platforms: ${{ inputs.platforms }}

@@ -106,7 +106,7 @@ test-unit:
 test-fuzz:
 	@go run ./cmd/fuzz -fuzztime 30s
 
-## test-integration | run integration tests (http and grpc)
+## test-integration | run integration tests
 # -count=1 is needed to prevent caching of test results.
 test-integration:
 	@go test -count=1 -v -race ./tests/integration/...

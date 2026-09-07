@@ -1,4 +1,4 @@
-package repository_test
+package outbox_test
 
 import (
 	"context"
@@ -85,7 +85,7 @@ func newOutboxRepository(t *testing.T) (database.Database, *repository.Repositor
 	var err error
 	engine, dialect := "sqlite", goose.DialectSQLite3
 	// Optional DSNs must point to disposable test databases: these tests clear
-	// the outbox table. Normal unit tests use a separate SQLite database per test.
+	// the outbox table. By default, tests use a separate SQLite database per test.
 	switch {
 	case os.Getenv("GO42_OUTBOX_TEST_PGSQL_DSN") != "":
 		engine, dialect = "pgsql", goose.DialectPostgres

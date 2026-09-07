@@ -41,6 +41,24 @@ type messageDeliveryTest struct {
 	attempts  int
 }
 
+// Handler shutdown messages can still be logged while the test reads the output.
+type eventLogBuffer struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (b *eventLogBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.Write(p)
+}
+
+func (b *eventLogBuffer) Read(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.Read(p)
+}
+
 func TestPropagationRestoresCorrelationWithConsumerLifetime(t *testing.T) {
 	state, err := trace.ParseTraceState("vendor=value")
 	require.NoError(t, err)
@@ -92,7 +110,7 @@ func TestSubscribersKeepCorrelationThroughRetriesAndDeadLetters(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			recorder.Reset()
-			var output bytes.Buffer
+			var output eventLogBuffer
 			logger := slog.New(tools.SlogContextWrapper(slog.NewJSONHandler(&output, nil)))
 			router, backend, ctx := newContextTestRouter(t, logger)
 			deadLetters, err := backend.Subscriber().Subscribe(ctx, "failing_dlq")
@@ -219,7 +237,7 @@ func TestSubscriberAcceptsMessagesWithoutPropagation(t *testing.T) {
 }
 
 func TestConcurrentSubscriberRetriesKeepTheirOwnFields(t *testing.T) {
-	var output bytes.Buffer
+	var output eventLogBuffer
 	logger := slog.New(tools.SlogContextWrapper(slog.NewJSONHandler(&output, nil)))
 	router, _, ctx := newContextTestRouter(t, logger)
 	var attempts sync.Map
