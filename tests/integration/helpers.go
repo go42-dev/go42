@@ -11,6 +11,7 @@ import (
 
 const (
 	httpServerAddressEnvVarName = "HTTP_SERVER_ADDRESS"
+	httpAPIKeyEnvVarName        = "HTTP_API_KEY"
 	grpcServerAddressEnvVarName = "GRPC_SERVER_ADDRESS"
 	grpcAPIKeyEnvVarName        = "GRPC_API_KEY"
 )
@@ -42,6 +43,10 @@ func HTTPServerAddress() string {
 		return customHttpServerAddress
 	}
 	return defaultHttpServerAddress
+}
+
+func HTTPAPIKey() string {
+	return os.Getenv(httpAPIKeyEnvVarName)
 }
 
 func GRPCServerAddress() string {

@@ -41,16 +41,6 @@ type UpdateSelfRequest struct {
 	Password        string `json:"password,omitempty"`
 }
 
-type CreateUserRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-type UpdateUserRequest struct {
-	Email    string `json:"email,omitempty"`
-	Password string `json:"password,omitempty"`
-}
-
 type User struct {
 	UUID        string   `json:"uuid"`
 	Email       string   `json:"email"`
@@ -74,7 +64,8 @@ func expectSetupResponse(response *http.Response, status int) {
 	Expect(err).ToNot(HaveOccurred())
 	detail := fmt.Sprintf("%s %s setup failed: %s", response.Request.Method, response.Request.URL.Path, body)
 	if response.StatusCode == http.StatusTooManyRequests {
-		detail += "Start the application with AUTH_RATE_LIMITER_ENABLED=false using make run-integration."
+		detail += " Disable AUTH_RATE_LIMITER_ENABLED and SERVER_HTTP_RATE_LIMITER_ENABLED for integration tests. " +
+			"See tests/integration/README.md."
 	}
 	Expect(response.StatusCode).To(Equal(status), detail)
 }
@@ -94,7 +85,7 @@ var _ = Describe("Auth API Integration Tests", func() {
 
 		BeforeEach(func() {
 			testEmail = fmt.Sprintf("test-%s@example.com", integration.GenerateRandomString("user"))
-			testPassword = "TestPass123!"
+			testPassword = fixturePassword
 		})
 
 		Describe("POST /auth/signup", func() {
@@ -438,51 +429,13 @@ var _ = Describe("Auth API Integration Tests", func() {
 			})
 		})
 
-		Describe("User Management Endpoints", func() {
-			var adminAccessToken string
-			var createdUserUUID string
+		Describe("Current User Endpoints", func() {
+			var userAccessToken string
+			var currentUser User
 
-			BeforeEach(func() {
-				// Create admin user and login
-				adminEmail := fmt.Sprintf("admin-%s@example.com", integration.GenerateRandomString("admin"))
-				reqBody := SignupRequest{
-					Email:    adminEmail,
-					Password: testPassword,
-				}
-				bodyBytes, err := json.Marshal(reqBody)
-				Expect(err).ToNot(HaveOccurred())
-
-				resp, err := client.Post(
-					integration.HTTPServerAddress()+"/api/v1/auth/signup",
-					"application/json",
-					bytes.NewReader(bodyBytes),
-				)
-				Expect(err).ToNot(HaveOccurred())
-				defer resp.Body.Close()
-				expectSetupResponse(resp, http.StatusCreated)
-
-				// Login as admin
-				loginReq := LoginRequest{
-					Email:    adminEmail,
-					Password: testPassword,
-				}
-				loginBytes, err := json.Marshal(loginReq)
-				Expect(err).ToNot(HaveOccurred())
-
-				loginResp, err := client.Post(
-					integration.HTTPServerAddress()+"/api/v1/auth/login",
-					"application/json",
-					bytes.NewReader(loginBytes),
-				)
-				Expect(err).ToNot(HaveOccurred())
-				defer loginResp.Body.Close()
-				expectSetupResponse(loginResp, http.StatusOK)
-
-				var tokens Tokens
-				err = json.NewDecoder(loginResp.Body).Decode(&tokens)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(tokens.AccessToken).ToNot(BeEmpty())
-				adminAccessToken = tokens.AccessToken
+			BeforeEach(func(ctx SpecContext) {
+				admin := newOAPIUsers(credentials{apiKey: integration.HTTPAPIKey()})
+				currentUser, userAccessToken = signUpUser(ctx, admin)
 			})
 
 			Describe("GET /users/me", func() {
@@ -493,7 +446,7 @@ var _ = Describe("Auth API Integration Tests", func() {
 						nil,
 					)
 					Expect(err).ToNot(HaveOccurred())
-					req.Header.Set("Authorization", "Bearer "+adminAccessToken)
+					req.Header.Set("Authorization", "Bearer "+userAccessToken)
 
 					resp, err := client.Do(req)
 					Expect(err).ToNot(HaveOccurred())
@@ -504,8 +457,8 @@ var _ = Describe("Auth API Integration Tests", func() {
 					var user User
 					err = json.NewDecoder(resp.Body).Decode(&user)
 					Expect(err).ToNot(HaveOccurred())
-					Expect(user.UUID).ToNot(BeEmpty())
-					Expect(user.Email).ToNot(BeEmpty())
+					Expect(user.UUID).To(Equal(currentUser.UUID))
+					Expect(user.Email).To(Equal(currentUser.Email))
 				})
 
 				It("should return 401 without auth token", func() {
@@ -540,7 +493,7 @@ var _ = Describe("Auth API Integration Tests", func() {
 						bytes.NewReader(bodyBytes),
 					)
 					Expect(err).ToNot(HaveOccurred())
-					req.Header.Set("Authorization", "Bearer "+adminAccessToken)
+					req.Header.Set("Authorization", "Bearer "+userAccessToken)
 					req.Header.Set("Content-Type", "application/json")
 
 					resp, err := client.Do(req)
@@ -564,7 +517,7 @@ var _ = Describe("Auth API Integration Tests", func() {
 						bytes.NewReader(bodyBytes),
 					)
 					Expect(err).ToNot(HaveOccurred())
-					req.Header.Set("Authorization", "Bearer "+adminAccessToken)
+					req.Header.Set("Authorization", "Bearer "+userAccessToken)
 					req.Header.Set("Content-Type", "application/json")
 
 					resp, err := client.Do(req)
@@ -575,172 +528,6 @@ var _ = Describe("Auth API Integration Tests", func() {
 				})
 			})
 
-			Describe("GET /users", func() {
-				It("should list users", func() {
-					req, err := http.NewRequest(
-						http.MethodGet,
-						integration.HTTPServerAddress()+"/api/v1/users?limit=10&offset=0",
-						nil,
-					)
-					Expect(err).ToNot(HaveOccurred())
-					req.Header.Set("Authorization", "Bearer "+adminAccessToken)
-
-					resp, err := client.Do(req)
-					Expect(err).ToNot(HaveOccurred())
-					defer resp.Body.Close()
-
-					// The endpoint might not exist (404) or require permissions (403)
-					if resp.StatusCode == http.StatusOK {
-						var users []User
-						err = json.NewDecoder(resp.Body).Decode(&users)
-						Expect(err).ToNot(HaveOccurred())
-						Expect(len(users)).To(BeNumerically(">=", 0))
-					} else {
-						Expect(resp.StatusCode).To(BeElementOf(http.StatusForbidden, http.StatusNotFound))
-					}
-				})
-			})
-
-			Describe("POST /users", func() {
-				It("should create a new user", func() {
-					newUserEmail := fmt.Sprintf("newuser-%s@example.com", integration.GenerateRandomString("user"))
-					reqBody := CreateUserRequest{
-						Email:    newUserEmail,
-						Password: "NewUserPass123!",
-					}
-					bodyBytes, err := json.Marshal(reqBody)
-					Expect(err).ToNot(HaveOccurred())
-
-					req, err := http.NewRequest(
-						http.MethodPost,
-						integration.HTTPServerAddress()+"/api/v1/users",
-						bytes.NewReader(bodyBytes),
-					)
-					Expect(err).ToNot(HaveOccurred())
-					req.Header.Set("Authorization", "Bearer "+adminAccessToken)
-					req.Header.Set("Content-Type", "application/json")
-
-					resp, err := client.Do(req)
-					Expect(err).ToNot(HaveOccurred())
-					defer resp.Body.Close()
-
-					// The endpoint might not exist (404) or require permissions (403)
-					if resp.StatusCode == http.StatusCreated {
-						var user User
-						err = json.NewDecoder(resp.Body).Decode(&user)
-						Expect(err).ToNot(HaveOccurred())
-						Expect(user.Email).To(Equal(newUserEmail))
-						createdUserUUID = user.UUID
-					} else {
-						Expect(resp.StatusCode).To(BeElementOf(http.StatusForbidden, http.StatusNotFound))
-					}
-				})
-			})
-
-			Describe("GET /users/{uuid}", func() {
-				It("should get user by UUID", func() {
-					if createdUserUUID == "" {
-						Skip("No user created in previous test")
-					}
-
-					req, err := http.NewRequest(
-						http.MethodGet,
-						integration.HTTPServerAddress()+"/api/v1/users/"+createdUserUUID,
-						nil,
-					)
-					Expect(err).ToNot(HaveOccurred())
-					req.Header.Set("Authorization", "Bearer "+adminAccessToken)
-
-					resp, err := client.Do(req)
-					Expect(err).ToNot(HaveOccurred())
-					defer resp.Body.Close()
-
-					// Note: This might fail with 403 if the user doesn't have users:read_others permission
-					if resp.StatusCode == http.StatusOK {
-						var user User
-						err = json.NewDecoder(resp.Body).Decode(&user)
-						Expect(err).ToNot(HaveOccurred())
-						Expect(user.UUID).To(Equal(createdUserUUID))
-					} else {
-						Expect(resp.StatusCode).To(Equal(http.StatusForbidden))
-					}
-				})
-
-				It("should return 400 or 403 for invalid UUID", func() {
-					req, err := http.NewRequest(
-						http.MethodGet,
-						integration.HTTPServerAddress()+"/api/v1/users/invalid-uuid",
-						nil,
-					)
-					Expect(err).ToNot(HaveOccurred())
-					req.Header.Set("Authorization", "Bearer "+adminAccessToken)
-
-					resp, err := client.Do(req)
-					Expect(err).ToNot(HaveOccurred())
-					defer resp.Body.Close()
-
-					// Could be 400 for invalid UUID or 403 for no permission
-					Expect(resp.StatusCode).To(BeElementOf(http.StatusBadRequest, http.StatusForbidden))
-				})
-			})
-
-			Describe("PUT /users/{uuid}", func() {
-				It("should update user", func() {
-					if createdUserUUID == "" {
-						Skip("No user created in previous test")
-					}
-
-					updatedEmail := fmt.Sprintf("updated-%s@example.com", integration.GenerateRandomString("user"))
-					reqBody := UpdateUserRequest{
-						Email: updatedEmail,
-					}
-					bodyBytes, err := json.Marshal(reqBody)
-					Expect(err).ToNot(HaveOccurred())
-
-					req, err := http.NewRequest(
-						http.MethodPut,
-						integration.HTTPServerAddress()+"/api/v1/users/"+createdUserUUID,
-						bytes.NewReader(bodyBytes),
-					)
-					Expect(err).ToNot(HaveOccurred())
-					req.Header.Set("Authorization", "Bearer "+adminAccessToken)
-					req.Header.Set("Content-Type", "application/json")
-
-					resp, err := client.Do(req)
-					Expect(err).ToNot(HaveOccurred())
-					defer resp.Body.Close()
-
-					// Note: This might fail with 403 if the user doesn't have users:update permission
-					if resp.StatusCode != http.StatusForbidden {
-						Expect(resp.StatusCode).To(Equal(http.StatusOK))
-					}
-				})
-			})
-
-			Describe("DELETE /users/{uuid}", func() {
-				It("should delete user", func() {
-					if createdUserUUID == "" {
-						Skip("No user created in previous test")
-					}
-
-					req, err := http.NewRequest(
-						http.MethodDelete,
-						integration.HTTPServerAddress()+"/api/v1/users/"+createdUserUUID,
-						nil,
-					)
-					Expect(err).ToNot(HaveOccurred())
-					req.Header.Set("Authorization", "Bearer "+adminAccessToken)
-
-					resp, err := client.Do(req)
-					Expect(err).ToNot(HaveOccurred())
-					defer resp.Body.Close()
-
-					// Note: This might fail with 403 if the user doesn't have users:delete permission
-					if resp.StatusCode != http.StatusForbidden {
-						Expect(resp.StatusCode).To(Equal(http.StatusOK))
-					}
-				})
-			})
 		})
 	})
 })

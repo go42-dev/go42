@@ -135,5 +135,6 @@ jobs:
         env:
           CGO_ENABLED: 1 # needed for -race
           HTTP_SERVER_ADDRESS: http://localhost:${{ matrix.app_port }}
+          HTTP_API_KEY: api_kXqdf2uQ7hmOARp-pZrhA6_IsZSeKCmSEM4YFKBGIzA
           GRPC_SERVER_ADDRESS: localhost:${{ matrix.grpc_port }}
           GRPC_API_KEY: api_kXqdf2uQ7hmOARp-pZrhA6_IsZSeKCmSEM4YFKBGIzA
