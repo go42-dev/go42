@@ -10,6 +10,8 @@ import (
 	"net"
 	nethttp "net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -612,4 +614,138 @@ func getReadyStatus(server *Server) int {
 	response := httptest.NewRecorder()
 	server.e.ServeHTTP(response, request)
 	return response.Code
+}
+
+func TestSwaggerSpecDiscovery(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		prefix   string
+		files    []string
+		want     map[string]string
+		warnings []string
+	}{
+		{
+			name: "specification files", prefix: "/api/v1/",
+			files: []string{"auth.yaml", "users.json"},
+			want:  map[string]string{"auth": "/api/v1/auth.yaml", "users": "/api/v1/users.json"},
+		},
+		{
+			name: "generated file and directories", prefix: "/api/v1/",
+			files: []string{"auth.yaml", ".combined.yaml", "directory.yaml/nested.yaml"},
+			want:  map[string]string{"auth": "/api/v1/auth.yaml"},
+		},
+		{
+			name: "unexpected file names", prefix: "/api/v1/",
+			files: []string{"users.yaml", "README", "auth.v1.yaml"},
+			want:  map[string]string{"users": "/api/v1/users.yaml"}, warnings: []string{"README", "auth.v1.yaml"},
+		},
+		{name: "empty directory", prefix: "/api/v1/", want: map[string]string{}},
+		{name: "empty prefix", files: []string{"auth.yaml"}, want: map[string]string{"auth": "auth.yaml"}},
+		{
+			name: "custom prefix", prefix: "https://docs.example/specs/", files: []string{"auth.yaml"},
+			want: map[string]string{"auth": "https://docs.example/specs/auth.yaml"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeSwaggerTestFiles(t, dir, test.files...)
+			var output bytes.Buffer
+			server := newTestServer(t, WithLogger(slog.New(slog.NewJSONHandler(&output, nil))))
+			output.Reset()
+			assert.Equal(t, test.want, server.parseSpecDir(dir, test.prefix))
+
+			lines := strings.FieldsFunc(output.String(), func(r rune) bool { return r == '\n' })
+			require.Len(t, lines, len(test.warnings))
+			for index, line := range lines {
+				var entry struct{ Level, Msg, File string }
+				require.NoError(t, json.Unmarshal([]byte(line), &entry))
+				assert.Equal(t, "WARN", entry.Level)
+				assert.Equal(t, "unexpected spec file name format", entry.Msg)
+				assert.Equal(t, test.warnings[index], entry.File)
+			}
+		})
+	}
+}
+
+func TestSwaggerSpecDiscoveryReportsDirectoryErrors(t *testing.T) {
+	for _, name := range []string{"missing directory", "file instead of directory"} {
+		t.Run(name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "specs")
+			if name == "file instead of directory" {
+				require.NoError(t, os.WriteFile(dir, []byte("not a directory"), 0o600))
+			}
+			var output bytes.Buffer
+			server := newTestServer(t, WithLogger(slog.New(slog.NewJSONHandler(&output, nil))))
+			output.Reset()
+			assert.Equal(t, map[string]string{}, server.parseSpecDir(dir, "/api/v1/"))
+			var entry struct{ Level, Msg, Dir, Error string }
+			require.NoError(t, json.Unmarshal(output.Bytes(), &entry))
+			assert.Equal(t, "ERROR", entry.Level)
+			assert.Equal(t, "failed to read spec directory", entry.Msg)
+			assert.Equal(t, dir, entry.Dir)
+			assert.NotEmpty(t, entry.Error)
+		})
+	}
+}
+
+func TestSwaggerRendersAvailableSpecsAndTheme(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		t.Run("dark="+strconv.FormatBool(dark), func(t *testing.T) {
+			root := t.TempDir()
+			writeSwaggerTestFiles(t, filepath.Join(root, "v1"),
+				"auth.yaml", "users.yaml", ".combined.yaml", "README", "directory.yaml/nested.yaml",
+			)
+			server := newTestServer(t, WithSwaggerRoot(root), WithSwaggerDarkStyle(dark))
+			response := httptest.NewRecorder()
+			server.e.ServeHTTP(
+				response,
+				httptest.NewRequestWithContext(t.Context(), nethttp.MethodGet, "/api/v1/", nil),
+			)
+			require.Equal(t, nethttp.StatusOK, response.Code)
+			body := response.Body.String()
+			var specURLs []string
+			for _, line := range strings.Split(body, "\n") {
+				if value, ok := strings.CutPrefix(strings.TrimSpace(line), "url: "); ok {
+					var specURL string
+					require.NoError(t, json.Unmarshal([]byte(strings.TrimSuffix(value, ",")), &specURL))
+					specURLs = append(specURLs, specURL)
+				}
+			}
+			assert.ElementsMatch(t, []string{"/api/v1/auth.yaml", "/api/v1/users.yaml"}, specURLs)
+			assert.Contains(t, body, `name: "auth"`)
+			assert.Contains(t, body, `name: "users"`)
+			assert.NotContains(t, body, ".combined.yaml")
+			assert.NotContains(t, body, "README")
+			assert.NotContains(t, body, "directory.yaml")
+			assert.Contains(t, body, `href="/static/swagger/swagger-ui.css"`)
+			assert.Equal(t, dark, strings.Contains(body, `href="/static/swagger/dark.min.css"`))
+			assert.Equal(t, dark, strings.Contains(body, `href="/static/swagger/one-dark.min.css"`))
+
+			for _, path := range []string{"/api/v1/auth.yaml", "/api/v1/users.yaml"} {
+				spec := httptest.NewRecorder()
+				server.e.ServeHTTP(spec, httptest.NewRequestWithContext(t.Context(), nethttp.MethodGet, path, nil))
+				assert.Equal(t, nethttp.StatusOK, spec.Code)
+				assert.Equal(t, "openapi: 3.0.3\n", spec.Body.String())
+			}
+		})
+	}
+}
+
+func TestSwaggerRendersWithMissingSpecDirectory(t *testing.T) {
+	server := newTestServer(t)
+	response := httptest.NewRecorder()
+	server.e.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), nethttp.MethodGet, "/api/v1/", nil))
+	require.Equal(t, nethttp.StatusOK, response.Code)
+	assert.Contains(t, response.Body.String(), "SwaggerUIBundle({")
+	assert.Contains(t, response.Body.String(), "urls: [")
+	assert.NotContains(t, response.Body.String(), `url: "`)
+}
+
+func writeSwaggerTestFiles(t *testing.T, dir string, names ...string) {
+	t.Helper()
+	for _, name := range names {
+		path := filepath.Join(dir, name)
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+		require.NoError(t, os.WriteFile(path, []byte("openapi: 3.0.3\n"), 0o600))
+	}
 }

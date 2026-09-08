@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,6 +19,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc"
@@ -436,6 +439,105 @@ func TestService_LoginIgnoresOutboxFailure(t *testing.T) {
 	}
 }
 
+func TestService_LogoutRejectsInvalidTokensBeforePersistence(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		raw    string
+		change func(*domain.JWTClaims)
+		secret string
+	}{
+		{name: "empty token"},
+		{name: "malformed token", raw: "not-a-jwt"},
+		{name: "access token", change: func(claims *domain.JWTClaims) { claims.TokenUse = domain.JWTTokenPurposeAccess }},
+		{name: "expired token", change: func(claims *domain.JWTClaims) { claims.ExpiresAt = jwt.NewNumericDate(time.Now().Add(-time.Hour)) }},
+		{name: "invalid session ID", change: func(claims *domain.JWTClaims) { claims.SessionID = "invalid" }},
+		{name: "invalid signature", secret: "different-signing-secret"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newServiceHarness(t)
+			token := test.raw
+			if test.change != nil || test.secret != "" {
+				claims := logoutTestClaims()
+				if test.change != nil {
+					test.change(&claims)
+				}
+				secret := testJWTSecret
+				if test.secret != "" {
+					secret = test.secret
+				}
+				token = signTestJWTWithClaims(t, jwt.SigningMethodHS256, secret, claims)
+			}
+
+			err := h.service.Logout(t.Context(), token)
+
+			require.ErrorIs(t, err, domain.ErrInvalidToken)
+		})
+	}
+}
+
+func TestService_LogoutRevokesSessionBeforeRecordingEvent(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		lookupErr error
+		eventErr  error
+	}{
+		{name: "event recorded"},
+		{name: "user lookup failure", lookupErr: errors.New("user storage unavailable")},
+		{name: "event write failure", eventErr: errors.New("outbox unavailable")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			h := newServiceHarness(t, auth.WithLogger(slog.New(slog.NewJSONHandler(&logs, nil))))
+			claims := logoutTestClaims()
+			token := signTestJWTWithClaims(t, jwt.SigningMethodHS256, testJWTSecret, claims)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			revocation := h.repository.EXPECT().RevokeSession(ctx, claims.SessionID, claims.Subject).Return(nil)
+			var user *models.User
+			if test.lookupErr == nil {
+				user = &models.User{ID: 42, UUID: uuid.MustParse(claims.Subject)}
+			}
+			lookup := h.repository.EXPECT().
+				GetUserByUUID(ctx, claims.Subject).
+				Return(user, test.lookupErr).
+				After(revocation)
+			if test.lookupErr == nil {
+				h.outbox.EXPECT().NewOutboxMessage(ctx, domain.TopicNameAuthEvents,
+					outboxEventMatcher{aggregateID: user.ID, aggregateType: domain.EventTypeAuthLogout}).
+					Return(test.eventErr).After(lookup)
+			}
+
+			err := h.service.Logout(ctx, token)
+
+			require.NoError(t, err)
+			if test.lookupErr != nil {
+				assert.Contains(t, logs.String(), test.lookupErr.Error())
+			} else if test.eventErr != nil {
+				assert.Contains(t, logs.String(), test.eventErr.Error())
+			} else {
+				assert.Empty(t, logs.String())
+			}
+		})
+	}
+}
+
+func logoutTestClaims() domain.JWTClaims {
+	return domain.JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ID:       "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+			Subject:  "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+			Issuer:   testJWTIssuer,
+			Audience: testJWTAudience,
+			IssuedAt: jwt.NewNumericDate(
+				time.Now().Add(-time.Minute),
+			),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+		KID: sha256Hex(testJWTSecret), TokenUse: domain.JWTTokenPurposeRefresh,
+		SessionID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+	}
+}
+
 func TestService_CreateUser(t *testing.T) {
 	h := newServiceHarness(t)
 	expectTransaction(h.repository)
@@ -684,6 +786,214 @@ func TestService_UpdateUserReportsCommitFailure(t *testing.T) {
 		Email: &newEmail,
 	})
 	assertErrorIs(t, err, commitError)
+}
+
+func TestService_UpdateSelfSkipsUnchangedData(t *testing.T) {
+	for _, unchangedEmail := range []bool{false, true} {
+		name := "no fields"
+		if unchangedEmail {
+			name = "same normalized email"
+		}
+		t.Run(name, func(t *testing.T) {
+			h := newServiceHarness(t)
+			data := &domain.UpdateSelfData{CurrentPassword: testPassword}
+			userID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+			if unchangedEmail {
+				email := "  ALICE@Example.COM  "
+				data.Email = &email
+				expectTransaction(h.repository)
+				h.repository.EXPECT().
+					GetUserByUUID(t.Context(), userID).
+					Return(newTestUser(t, domain.UserStatusActive), nil)
+			}
+
+			err := h.service.UpdateSelf(t.Context(), userID, data)
+
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestService_UpdateSelfRequiresCurrentCredentials(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		password    string
+		inactive    bool
+		missingHash bool
+	}{
+		{name: "inactive user", password: testPassword, inactive: true},
+		{name: "wrong password", password: "a different current password"},
+		{name: "empty password"},
+		{name: "oversized password", password: strings.Repeat("a", 73)},
+		{name: "invalid UTF-8 password", password: testPassword + "\xff"},
+		{name: "missing password hash", password: testPassword, missingHash: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newServiceHarness(
+				t,
+				auth.WithRateLimiterEnabled(true),
+				auth.WithLoginAccountRequests(3),
+				auth.WithLoginWindow(time.Minute),
+			)
+			user := newTestUser(t, domain.UserStatusActive)
+			if test.inactive {
+				user.Status = domain.UserStatusInactive
+			}
+			if test.missingHash {
+				user.Password = sql.Null[string]{}
+			}
+			expectTransaction(h.repository)
+			h.repository.EXPECT().GetUserByUUID(t.Context(), user.UUID.String()).Return(user, nil)
+			h.cache.EXPECT().
+				AllowRateLimit(t.Context(), "rate_limit:auth:account:"+sha256Hex(testUserEmail), 20*time.Second, 3, time.Minute).
+				Return(true, nil)
+			email := "new@example.com"
+
+			err := h.service.UpdateSelf(t.Context(), user.UUID.String(), &domain.UpdateSelfData{
+				UpdateUserData: domain.UpdateUserData{Email: &email}, CurrentPassword: test.password,
+			})
+
+			require.ErrorIs(t, err, domain.ErrInvalidCredentials)
+		})
+	}
+}
+
+func TestService_UpdateSelfStopsOnRateLimitFailure(t *testing.T) {
+	backendError := errors.New("rate limit storage unavailable")
+	for _, test := range []struct {
+		name       string
+		allowed    bool
+		backendErr error
+		wantErr    error
+	}{
+		{name: "budget exhausted", wantErr: domain.ErrRateLimited},
+		{name: "backend unavailable", allowed: true, backendErr: backendError, wantErr: domain.ErrAuthenticationUnavailable},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newServiceHarness(
+				t,
+				auth.WithRateLimiterEnabled(true),
+				auth.WithLoginAccountRequests(3),
+				auth.WithLoginWindow(time.Minute),
+			)
+			user := newTestUser(t, domain.UserStatusActive)
+			expectTransaction(h.repository)
+			h.repository.EXPECT().GetUserByUUID(t.Context(), user.UUID.String()).Return(user, nil)
+			h.cache.EXPECT().
+				AllowRateLimit(t.Context(), "rate_limit:auth:account:"+sha256Hex(testUserEmail), 20*time.Second, 3, time.Minute).
+				Return(test.allowed, test.backendErr)
+			email := "new@example.com"
+
+			err := h.service.UpdateSelf(t.Context(), user.UUID.String(), &domain.UpdateSelfData{
+				UpdateUserData: domain.UpdateUserData{Email: &email}, CurrentPassword: testPassword,
+			})
+
+			require.ErrorIs(t, err, test.wantErr)
+			if test.backendErr != nil {
+				assert.ErrorIs(t, err, test.backendErr)
+			}
+		})
+	}
+}
+
+func TestService_UpdateSelfPersistsChangesWithTransactionContext(t *testing.T) {
+	for _, change := range []string{"email", "password", "both"} {
+		t.Run(change, func(t *testing.T) {
+			h := newServiceHarness(t)
+			user := newTestUser(t, domain.UserStatusActive)
+			oldPasswordHash := user.Password.V
+			email, password := "  NEW@Example.COM  ", "another correct horse battery staple"
+			data := &domain.UpdateSelfData{CurrentPassword: testPassword}
+			if change != "password" {
+				data.Email = &email
+			}
+			if change != "email" {
+				data.Password = &password
+			}
+			h.repository.EXPECT().WithTransaction(t.Context(), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error {
+					txCtx, cancel := context.WithCancel(ctx)
+					defer cancel()
+					h.repository.EXPECT().GetUserByUUID(txCtx, user.UUID.String()).Return(user, nil)
+					update := h.repository.EXPECT().UpdateUser(txCtx, user).
+						DoAndReturn(func(recordCtx context.Context, updated *models.User) error {
+							assert.Same(t, txCtx, recordCtx)
+							if data.Email != nil {
+								assert.Equal(t, "new@example.com", updated.Email)
+							} else {
+								assert.Equal(t, testUserEmail, updated.Email)
+							}
+							if data.Password != nil {
+								assert.NotEqual(t, oldPasswordHash, updated.Password.V)
+								assert.NoError(
+									t,
+									bcrypt.CompareHashAndPassword([]byte(updated.Password.V), []byte(password)),
+								)
+							} else {
+								assert.Equal(t, oldPasswordHash, updated.Password.V)
+							}
+							return nil
+						})
+					h.outbox.EXPECT().NewOutboxMessage(txCtx, domain.TopicNameAuthEvents,
+						outboxEventMatcher{aggregateID: user.ID, aggregateType: domain.EventTypeUserUpdate}).
+						Return(nil).After(update)
+					return fn(txCtx)
+				})
+
+			err := h.service.UpdateSelf(t.Context(), user.UUID.String(), data)
+
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestService_UpdateSelfPreservesStorageFailures(t *testing.T) {
+	for _, stage := range []string{"begin", "read", "update", "event", "commit"} {
+		t.Run(stage, func(t *testing.T) {
+			h := newServiceHarness(t)
+			user := newTestUser(t, domain.UserStatusActive)
+			cause := errors.New("storage unavailable")
+			storageError := fmt.Errorf("storage operation: %w", cause)
+			transaction := h.repository.EXPECT().WithTransaction(t.Context(), gomock.Any())
+			if stage == "begin" {
+				transaction.Return(storageError)
+			} else {
+				transaction.DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error {
+					err := fn(ctx)
+					if stage == "commit" {
+						assert.NoError(t, err)
+						return storageError
+					}
+					assert.ErrorIs(t, err, cause)
+					return err
+				})
+				if stage == "read" {
+					h.repository.EXPECT().GetUserByUUID(t.Context(), user.UUID.String()).Return(nil, storageError)
+				} else {
+					h.repository.EXPECT().GetUserByUUID(t.Context(), user.UUID.String()).Return(user, nil)
+					var updateErr, eventErr error
+					if stage == "update" {
+						updateErr = storageError
+					}
+					if stage == "event" {
+						eventErr = storageError
+					}
+					h.repository.EXPECT().UpdateUser(t.Context(), user).Return(updateErr)
+					if updateErr == nil {
+						expectOutboxEvent(h, user.ID, domain.EventTypeUserUpdate, eventErr)
+					}
+				}
+			}
+			email := "new@example.com"
+
+			err := h.service.UpdateSelf(t.Context(), user.UUID.String(), &domain.UpdateSelfData{
+				UpdateUserData: domain.UpdateUserData{Email: &email}, CurrentPassword: testPassword,
+			})
+
+			require.ErrorIs(t, err, cause)
+			assert.ErrorIs(t, err, storageError)
+		})
+	}
 }
 
 func TestService_DeleteUserFailures(t *testing.T) {

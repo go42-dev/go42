@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"log/slog"
 	"net"
 	"strconv"
 	"strings"
@@ -157,4 +158,180 @@ func TestOutboxCleanupDefaults(t *testing.T) {
 	assert.Equal(t, time.Hour, cfg.CleanupInterval)
 	assert.Equal(t, 7*24*time.Hour, cfg.CleanupRetention)
 	assert.Equal(t, 1000, cfg.CleanupBatchSize)
+}
+
+func TestConfigParsesEnvironmentOverrides(t *testing.T) {
+	clearConfigEnvironment(t)
+	for key, value := range map[string]string{
+		"SERVICE_NAME":                    "review-worker",
+		"STARTUP_CONNECT_TIMEOUT":         "1750ms",
+		"STARTUP_RETRY_INITIAL_BACKOFF":   "125ms",
+		"STARTUP_RETRY_MAX_BACKOFF":       "750ms",
+		"LOG_ADD_SOURCE":                  "false",
+		"AUTOMEMLIMIT_ENABLED":            "true",
+		"MEMLIMIT_RATIO":                  "0.75",
+		"CACHE_LOCAL_CAPACITY":            "2048",
+		"CACHE_REDIS_DB":                  "2",
+		"EVENTS_CONSUMER_MAX_RETRIES":     "0",
+		"SERVER_HTTP_CORS_ALLOW_ORIGINS":  "https://first.example,https://second.example",
+		"SERVER_HTTP_TRUSTED_PROXY_CIDRS": "10.0.0.0/8,2001:db8::/32",
+		"AUTH_JWT_SECRETS":                "first,second",
+		"AUTH_JWT_REFRESH_TOKEN_TTL":      "72h",
+	} {
+		t.Setenv(key, value)
+	}
+
+	cfg, err := config.New()
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+	assert.Equal(t, "review-worker", cfg.Core.ServiceName)
+	assert.Equal(t, 1750*time.Millisecond, cfg.Core.StartupConnectTimeout)
+	assert.Equal(t, 125*time.Millisecond, cfg.Core.StartupRetryInitialBackoff)
+	assert.Equal(t, 750*time.Millisecond, cfg.Core.StartupRetryMaxBackoff)
+	assert.False(t, cfg.Logger.AddSource)
+	assert.True(t, cfg.Limits.AutoMemLimitEnabled)
+	assert.Equal(t, 0.75, cfg.Limits.MemLimitRatio)
+	assert.Equal(t, uint64(2048), cfg.Cache.Local.Capacity)
+	assert.Equal(t, 2, cfg.Cache.Redis.DB)
+	assert.Zero(t, cfg.Events.Consumer.MaxRetries)
+	assert.Equal(t, []string{"https://first.example", "https://second.example"}, cfg.Server.HTTP.CORSAllowOrigins)
+	assert.Equal(t, []string{"10.0.0.0/8", "2001:db8::/32"}, cfg.Server.HTTP.TrustedProxyCIDRs)
+	assert.Equal(t, []string{"first", "second"}, cfg.Auth.JWT.InitialSecrets)
+	assert.Equal(t, 72*time.Hour, cfg.Auth.JWT.RefreshTokenTTL)
+}
+
+func TestConfigRejectsMalformedEnvironment(t *testing.T) {
+	clearConfigEnvironment(t)
+	for _, test := range []struct {
+		name, key, value, field string
+	}{
+		{"duration", "STARTUP_CONNECT_TIMEOUT", "soon", "StartupConnectTimeout"},
+		{"duration overflow", "STARTUP_CONNECT_TIMEOUT", "999999999999h", "StartupConnectTimeout"},
+		{"boolean", "LOG_ADD_SOURCE", "sometimes", "AddSource"},
+		{"integer", "SERVER_GRPC_MAX_SEND_MSG_SIZE_BYTES", "large", "MaxSendMsgSize"},
+		{"unsigned integer", "CACHE_LOCAL_CAPACITY", "-1", "Capacity"},
+		{"unsigned overflow", "CACHE_LOCAL_MAX_COST_BYTES", "18446744073709551616", "MaxCostBytes"},
+		{"float", "TRACING_SAMPLING_RATE", "many", "SamplingRate"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv(test.key, test.value)
+			cfg, err := config.New()
+			require.ErrorContains(t, err, "parse error")
+			assert.ErrorContains(t, err, test.field)
+			assert.Nil(t, cfg)
+		})
+	}
+}
+
+func TestConfigValidationBoundaries(t *testing.T) {
+	clearConfigEnvironment(t)
+	for _, test := range []struct {
+		name, key, value, field string
+		valid                   bool
+	}{
+		{"zero startup timeout", "STARTUP_CONNECT_TIMEOUT", "0s", "StartupConnectTimeout", false},
+		{"zero readiness timeout", "READINESS_CHECK_TIMEOUT", "0s", "ReadinessCheckTimeout", false},
+		{"negative retry interval", "STARTUP_RETRY_INITIAL_BACKOFF", "-1ms", "StartupRetryInitialBackoff", false},
+		{"memory below minimum", "MEMLIMIT_RATIO", "0.19", "MemLimitRatio", false},
+		{"memory minimum", "MEMLIMIT_RATIO", "0.2", "", true},
+		{"memory maximum", "MEMLIMIT_RATIO", "1", "", true},
+		{"memory above maximum", "MEMLIMIT_RATIO", "1.01", "MemLimitRatio", false},
+		{"sampling below minimum", "TRACING_SAMPLING_RATE", "-0.1", "SamplingRate", false},
+		{"sampling disabled", "TRACING_SAMPLING_RATE", "0", "", true},
+		{"sampling maximum", "TRACING_SAMPLING_RATE", "1", "", true},
+		{"sampling above maximum", "TRACING_SAMPLING_RATE", "1.1", "SamplingRate", false},
+		{"negative retries", "EVENTS_CONSUMER_MAX_RETRIES", "-1", "MaxRetries", false},
+		{"retries disabled", "EVENTS_CONSUMER_MAX_RETRIES", "0", "", true},
+		{"maximum retries", "EVENTS_CONSUMER_MAX_RETRIES", "100", "", true},
+		{"too many retries", "EVENTS_CONSUMER_MAX_RETRIES", "101", "MaxRetries", false},
+		{"unknown database engine", "DATABASE_ENGINE", "unknown", "Engine", false},
+		{"disabled events", "EVENTS_ENGINE", "none", "", true},
+		{"invalid IPv4 prefix", "SERVER_HTTP_TRUSTED_PROXY_CIDRS", "10.0.0.0/40", "TrustedProxyCIDRs", false},
+		{"invalid IPv6 prefix", "SERVER_HTTP_TRUSTED_PROXY_CIDRS", "2001:db8::/129", "TrustedProxyCIDRs", false},
+		{"invalid proxy in list", "SERVER_HTTP_TRUSTED_PROXY_CIDRS", "10.0.0.0/8,invalid", "TrustedProxyCIDRs", false},
+		{"zero access token TTL", "AUTH_JWT_ACCESS_TOKEN_TTL", "0s", "AccessTokenTTL", false},
+		{"negative refresh TTL", "AUTH_JWT_REFRESH_TOKEN_TTL", "-1s", "RefreshTokenTTL", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv(test.key, test.value)
+			cfg, err := config.New()
+			if test.valid {
+				require.NoError(t, err)
+				require.NotNil(t, cfg)
+				return
+			}
+			require.ErrorContains(t, err, "validation errors:")
+			assert.ErrorContains(t, err, test.field)
+			assert.Nil(t, cfg)
+		})
+	}
+}
+
+func TestConfigRetryBackoffBoundaries(t *testing.T) {
+	clearConfigEnvironment(t)
+	const initial = 250 * time.Millisecond
+	for _, test := range []struct {
+		name    string
+		maximum time.Duration
+		valid   bool
+	}{
+		{name: "below initial", maximum: initial - time.Nanosecond},
+		{name: "equal to initial", maximum: initial, valid: true},
+		{name: "above initial", maximum: initial + time.Nanosecond, valid: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("STARTUP_RETRY_INITIAL_BACKOFF", initial.String())
+			t.Setenv("STARTUP_RETRY_MAX_BACKOFF", test.maximum.String())
+			cfg, err := config.New()
+			if !test.valid {
+				require.ErrorContains(t, err, "startup retry maximum backoff must not be less than initial backoff")
+				assert.Nil(t, cfg)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, initial, cfg.Core.StartupRetryInitialBackoff)
+			assert.Equal(t, test.maximum, cfg.Core.StartupRetryMaxBackoff)
+		})
+	}
+}
+
+func TestLoggerParsesLevelModifiers(t *testing.T) {
+	for _, test := range []struct {
+		value string
+		want  slog.Level
+	}{
+		{"debug", slog.LevelDebug},
+		{"info", slog.LevelInfo},
+		{"warn", slog.LevelWarn},
+		{"error", slog.LevelError},
+		{"WaRn", slog.LevelWarn},
+		{"DEBUG+2", slog.LevelDebug + 2},
+		{"error-3", slog.LevelError - 3},
+		{"warn+0", slog.LevelWarn},
+		{"info-2", slog.LevelInfo - 2},
+		{"warn+invalid", slog.LevelWarn},
+		{"error-", slog.LevelError},
+		{"debug+999999999999999999999999999", slog.LevelDebug},
+		{"unknown", slog.LevelInfo},
+		{"unknown+5", slog.LevelInfo},
+		{"", slog.LevelInfo},
+	} {
+		t.Run(test.value, func(t *testing.T) {
+			logger := config.Logger{LogLevel: test.value}
+			assert.Equal(t, test.want, logger.Level())
+		})
+	}
+}
+
+func clearConfigEnvironment(t *testing.T) {
+	t.Helper()
+	fields, err := env.GetFieldParamsWithOptions(&config.Config{}, env.Options{
+		TagName: config.TagNameEnvVarName, DefaultValueTagName: config.TagNameDefaultValue,
+	})
+	require.NoError(t, err)
+	for _, field := range fields {
+		if field.Key != "" {
+			t.Setenv(field.Key, "")
+		}
+	}
 }
