@@ -1,6 +1,6 @@
 ---
 
-name: coverage-report
+name: report
 
 # Combines coverage from unit, integration, and resilience tests.
 
@@ -21,8 +21,8 @@ on:
 permissions: {}
 
 jobs:
-  coverage-report:
-    name: coverage-report
+  report:
+    name: report
     runs-on: ${{ inputs.runs_on }}
     continue-on-error: ${{ inputs.continue_on_error }}
     timeout-minutes: ${{ inputs.timeout_minutes }}

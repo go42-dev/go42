@@ -267,22 +267,6 @@ jobs:
       continue_on_error: false
       timeout_minutes: 15
 
-  coverage-report:
-    uses: ./.github/workflows/150-coverage-report.yaml
-    permissions:
-      actions: read
-      contents: read
-      pull-requests: write
-    needs:
-      - unit-tests
-      - fuzz-tests
-      - integration-tests
-      - resilience-tests
-    with:
-      runs_on: ubuntu-latest
-      continue_on_error: true
-      timeout_minutes: 10
-
   # stage 3: pre-build security scans
 
   security:
@@ -412,7 +396,8 @@ jobs:
       image_reference: ${{ needs.functional-tests-group.outputs.image_reference }}
       timeout_minutes: 10
 
-  # Reporting does not use the temporary image, so run it independently of cleanup.
+  # stage 7: reports and clenup
+
   load-tests-report:
     if: ${{ !cancelled() && needs.load-tests.result != 'skipped' }}
     uses: ./.github/workflows/150-load-tests-report.yaml
@@ -424,7 +409,21 @@ jobs:
       runs_on: ubuntu-latest
       timeout_minutes: 10
 
-  # stage 7: cleanup
+  coverage:
+    uses: ./.github/workflows/150-coverage-report.yaml
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    needs:
+      - unit-tests
+      - fuzz-tests
+      - integration-tests
+      - resilience-tests
+    with:
+      runs_on: ubuntu-latest
+      continue_on_error: true
+      timeout_minutes: 10
 
   cleanup:
     # Without a prepared tag no image could have been published; avoid an empty-tag API request.

@@ -1,6 +1,6 @@
 ---
 
-name: load-tests-report
+name: report
 
 # Generates a summary from K6 artifacts uploaded by the load-test matrix.
 
