@@ -24,11 +24,17 @@ import (
 )
 
 const (
-	userTestToken    = "user-test-token"
-	userTestUUID     = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
-	userTestPassword = "new user password"
-	userCreateBody   = `{"email":"Alice@Example.com","password":"new user password"}`
-	userTestJSON     = `{
+	authTestIP           = "192.0.2.42"
+	authTestRefreshToken = "refresh-token"
+	userTestToken        = "user-test-token"
+	userTestUUID         = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	userTestPassword     = "new user password"
+	userCreateBody       = `{"email":"Alice@Example.com","password":"new user password"}`
+	userCurrentPassword  = "current user password"
+	userSelfUpdateBody   = `{
+		"email":"Alice@Example.com","password":"new user password","current_password":"current user password"
+	}`
+	userTestJSON = `{
 		"uuid": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
 		"email": "alice@example.com",
 		"created_at": "2026-09-07 12:30:00",
@@ -36,6 +42,641 @@ const (
 		"permissions": ["users:list", "users:read_others"]
 	}`
 )
+
+func TestSignupReturnsCreatedUser(t *testing.T) {
+	server, service := newUserTestServer(t)
+	gomock.InOrder(
+		service.EXPECT().CheckIPLimit(t.Context(), domain.AuthenticationActionSignup, authTestIP).Return(nil),
+		service.EXPECT().SignUp(t.Context(), "Alice@Example.com", userTestPassword).Return(userFixture(), nil),
+	)
+
+	response := performUserRequest(t, server, http.MethodPost, "/api/v1/auth/signup", "", userCreateBody)
+
+	require.Equal(t, http.StatusCreated, response.Code, "response body: %s", response.Body.String())
+	assert.JSONEq(t, userTestJSON, response.Body.String())
+}
+
+func TestLoginReturnsTokens(t *testing.T) {
+	server, service := newUserTestServer(t)
+	tokens := &domain.Tokens{
+		AccessToken: "new-access-token", RefreshToken: "new-refresh-token", ExpiresIn: 900,
+	}
+	gomock.InOrder(
+		service.EXPECT().CheckIPLimit(t.Context(), domain.AuthenticationActionLogin, authTestIP).Return(nil),
+		service.EXPECT().Login(t.Context(), "Alice@Example.com", userTestPassword).Return(tokens, nil),
+	)
+
+	response := performUserRequest(t, server, http.MethodPost, "/api/v1/auth/login", "", userCreateBody)
+
+	require.Equal(t, http.StatusOK, response.Code, "response body: %s", response.Body.String())
+	assert.JSONEq(t, `{
+		"access_token":"new-access-token","refresh_token":"new-refresh-token","expires_in":900
+	}`, response.Body.String())
+}
+
+func TestRefreshReturnsNewTokens(t *testing.T) {
+	server, service := newUserTestServer(t)
+	tokens := &domain.Tokens{
+		AccessToken: "new-access-token", RefreshToken: "new-refresh-token", ExpiresIn: 900,
+	}
+	service.EXPECT().Refresh(t.Context(), authTestRefreshToken).Return(tokens, nil)
+
+	response := performUserRequest(t, server, http.MethodPost, "/api/v1/auth/refresh", "", `{"token":"refresh-token"}`)
+
+	require.Equal(t, http.StatusOK, response.Code, "response body: %s", response.Body.String())
+	assert.JSONEq(t, `{
+		"access_token":"new-access-token","refresh_token":"new-refresh-token","expires_in":900
+	}`, response.Body.String())
+}
+
+func TestLogoutUsesRefreshToken(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body string
+	}{
+		{name: "refresh token only", body: `{"refresh_token":"refresh-token"}`},
+		{
+			name: "legacy access token supplied",
+			body: `{"access_token":"expired-access-token","refresh_token":"refresh-token"}`,
+		},
+		{name: "empty access token", body: `{"access_token":"","refresh_token":"refresh-token"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			service.EXPECT().Logout(t.Context(), authTestRefreshToken).Return(nil)
+
+			response := performUserRequest(t, server, http.MethodPost, "/api/v1/auth/logout", "", test.body)
+
+			require.Equal(t, http.StatusOK, response.Code, "response body: %s", response.Body.String())
+			assert.Empty(t, response.Body.String())
+		})
+	}
+}
+
+func TestAuthenticationCredentialsRejectInvalidRequests(t *testing.T) {
+	for _, endpoint := range []struct {
+		name        string
+		action      domain.AuthenticationAction
+		requestType string
+	}{
+		{name: "signup", action: domain.AuthenticationActionSignup, requestType: "SignupRequest"},
+		{name: "login", action: domain.AuthenticationActionLogin, requestType: "LoginRequest"},
+	} {
+		t.Run(endpoint.name, func(t *testing.T) {
+			emailError := fmt.Sprintf(`{
+				"pointer":"#/%s/email","detail":"email is a required field","code":"INVALID_VALUE"
+			}`, endpoint.requestType)
+			passwordError := fmt.Sprintf(`{
+				"pointer":"#/%s/password","detail":"password is a required field","code":"INVALID_VALUE"
+			}`, endpoint.requestType)
+			for _, test := range []struct {
+				name   string
+				body   string
+				errors []string
+			}{
+				{name: "malformed JSON", body: `{"email":`},
+				{name: "array instead of object", body: `[]`},
+				{name: "wrong email type", body: `{"email":42,"password":"secret"}`},
+				{name: "wrong password type", body: `{"email":"alice@example.com","password":42}`},
+				{name: "empty body", errors: []string{emailError, passwordError}},
+				{name: "empty object", body: `{}`, errors: []string{emailError, passwordError}},
+				{name: "missing email", body: `{"password":"secret"}`, errors: []string{emailError}},
+				{name: "missing password", body: `{"email":"alice@example.com"}`, errors: []string{passwordError}},
+				{name: "empty email", body: `{"email":"","password":"secret"}`, errors: []string{emailError}},
+				{
+					name: "empty password", body: `{"email":"alice@example.com","password":""}`,
+					errors: []string{passwordError},
+				},
+				{name: "null email", body: `{"email":null,"password":"secret"}`, errors: []string{emailError}},
+				{
+					name: "null password", body: `{"email":"alice@example.com","password":null}`,
+					errors: []string{passwordError},
+				},
+			} {
+				t.Run(test.name, func(t *testing.T) {
+					server, service := newUserTestServer(t)
+					service.EXPECT().CheckIPLimit(t.Context(), endpoint.action, authTestIP).Return(nil)
+					target := "/api/v1/auth/" + endpoint.name
+
+					response := performUserRequest(t, server, http.MethodPost, target, "", test.body)
+
+					assertUserProblem(t, response, target, http.StatusBadRequest, test.errors...)
+				})
+			}
+		})
+	}
+}
+
+func TestTokenEndpointsRejectInvalidRequests(t *testing.T) {
+	for _, endpoint := range []struct {
+		name        string
+		field       string
+		requestType string
+	}{
+		{name: "refresh", field: "token", requestType: "RefreshTokenRequest"},
+		{name: "logout", field: "refresh_token", requestType: "LogoutTokenRequest"},
+	} {
+		t.Run(endpoint.name, func(t *testing.T) {
+			tokenError := fmt.Sprintf(`{
+				"pointer":"#/%s/%s","detail":"%s is a required field","code":"INVALID_VALUE"
+			}`, endpoint.requestType, endpoint.field, endpoint.field)
+			for _, test := range []struct {
+				name   string
+				body   string
+				errors []string
+			}{
+				{name: "malformed JSON", body: `{"` + endpoint.field + `":`},
+				{name: "array instead of object", body: `[]`},
+				{name: "wrong token type", body: fmt.Sprintf(`{"%s":42}`, endpoint.field)},
+				{name: "empty body", errors: []string{tokenError}},
+				{name: "empty object", body: `{}`, errors: []string{tokenError}},
+				{name: "empty token", body: fmt.Sprintf(`{"%s":""}`, endpoint.field), errors: []string{tokenError}},
+				{name: "null token", body: fmt.Sprintf(`{"%s":null}`, endpoint.field), errors: []string{tokenError}},
+				{name: "access token only", body: `{"access_token":"access-token"}`, errors: []string{tokenError}},
+			} {
+				t.Run(test.name, func(t *testing.T) {
+					server, _ := newUserTestServer(t)
+					target := "/api/v1/auth/" + endpoint.name
+
+					response := performUserRequest(t, server, http.MethodPost, target, "", test.body)
+
+					assertUserProblem(t, response, target, http.StatusBadRequest, test.errors...)
+				})
+			}
+		})
+	}
+}
+
+func TestAuthenticationIPLimitsRejectBeforeProcessing(t *testing.T) {
+	for _, endpoint := range []struct {
+		name   string
+		action domain.AuthenticationAction
+	}{
+		{name: "signup", action: domain.AuthenticationActionSignup},
+		{name: "login", action: domain.AuthenticationActionLogin},
+	} {
+		t.Run(endpoint.name, func(t *testing.T) {
+			for _, test := range []struct {
+				name       string
+				err        error
+				wantStatus int
+			}{
+				{name: "rate limited", err: domain.ErrRateLimited, wantStatus: http.StatusTooManyRequests},
+				{
+					name: "wrapped rate limit", err: fmt.Errorf("private limiter details: %w", domain.ErrRateLimited),
+					wantStatus: http.StatusTooManyRequests,
+				},
+				{
+					name: "limiter unavailable", err: domain.ErrAuthenticationUnavailable,
+					wantStatus: http.StatusServiceUnavailable,
+				},
+				{
+					name: "unexpected failure", err: errors.New("private limiter failure"),
+					wantStatus: http.StatusInternalServerError,
+				},
+			} {
+				t.Run(test.name, func(t *testing.T) {
+					for _, request := range []struct {
+						name string
+						body string
+					}{
+						{name: "valid body", body: userCreateBody},
+						{name: "malformed body", body: `{"email":`},
+					} {
+						t.Run(request.name, func(t *testing.T) {
+							server, service := newUserTestServer(t)
+							service.EXPECT().CheckIPLimit(t.Context(), endpoint.action, authTestIP).Return(test.err)
+							target := "/api/v1/auth/" + endpoint.name
+
+							response := performUserRequest(t, server, http.MethodPost, target, "", request.body)
+
+							assertUserProblem(t, response, target, test.wantStatus)
+						})
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestSignupServiceErrors(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		err        error
+		wantStatus int
+	}{
+		{name: "invalid email", err: domain.ErrInvalidEmail, wantStatus: http.StatusBadRequest},
+		{name: "weak password", err: domain.ErrPasswordWeak, wantStatus: http.StatusBadRequest},
+		{name: "duplicate user", err: domain.ErrUserAlreadyExists, wantStatus: http.StatusConflict},
+		{
+			name: "wrapped duplicate user", err: fmt.Errorf("signup: %w", domain.ErrUserAlreadyExists),
+			wantStatus: http.StatusConflict,
+		},
+		{
+			name: "unexpected failure", err: errors.New("private signup failure"),
+			wantStatus: http.StatusInternalServerError,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			gomock.InOrder(
+				service.EXPECT().CheckIPLimit(t.Context(), domain.AuthenticationActionSignup, authTestIP).Return(nil),
+				service.EXPECT().SignUp(t.Context(), "Alice@Example.com", userTestPassword).Return(nil, test.err),
+			)
+
+			response := performUserRequest(t, server, http.MethodPost, "/api/v1/auth/signup", "", userCreateBody)
+
+			assertUserProblem(t, response, "/api/v1/auth/signup", test.wantStatus)
+		})
+	}
+}
+
+func TestLoginServiceErrors(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		err        error
+		wantStatus int
+	}{
+		{name: "invalid email", err: domain.ErrInvalidEmail, wantStatus: http.StatusBadRequest},
+		{name: "invalid credentials", err: domain.ErrInvalidCredentials, wantStatus: http.StatusBadRequest},
+		{
+			name: "wrapped invalid credentials", err: fmt.Errorf("login: %w", domain.ErrInvalidCredentials),
+			wantStatus: http.StatusBadRequest,
+		},
+		{name: "account rate limited", err: domain.ErrRateLimited, wantStatus: http.StatusTooManyRequests},
+		{
+			name: "authentication unavailable", err: domain.ErrAuthenticationUnavailable,
+			wantStatus: http.StatusServiceUnavailable,
+		},
+		{
+			name: "unexpected failure", err: errors.New("private login failure"),
+			wantStatus: http.StatusInternalServerError,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			gomock.InOrder(
+				service.EXPECT().CheckIPLimit(t.Context(), domain.AuthenticationActionLogin, authTestIP).Return(nil),
+				service.EXPECT().Login(t.Context(), "Alice@Example.com", userTestPassword).Return(nil, test.err),
+			)
+
+			response := performUserRequest(t, server, http.MethodPost, "/api/v1/auth/login", "", userCreateBody)
+
+			assertUserProblem(t, response, "/api/v1/auth/login", test.wantStatus)
+		})
+	}
+}
+
+func TestRefreshServiceErrors(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		err        error
+		wantStatus int
+	}{
+		{name: "invalid token", err: domain.ErrInvalidToken, wantStatus: http.StatusUnauthorized},
+		{
+			name: "wrapped invalid token", err: fmt.Errorf("refresh: %w", domain.ErrInvalidToken),
+			wantStatus: http.StatusUnauthorized,
+		},
+		{name: "session rate limited", err: domain.ErrRateLimited, wantStatus: http.StatusTooManyRequests},
+		{
+			name: "authentication unavailable", err: domain.ErrAuthenticationUnavailable,
+			wantStatus: http.StatusServiceUnavailable,
+		},
+		{
+			name: "unexpected failure", err: errors.New("private refresh failure"),
+			wantStatus: http.StatusInternalServerError,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			service.EXPECT().Refresh(t.Context(), authTestRefreshToken).Return(nil, test.err)
+
+			response := performUserRequest(
+				t,
+				server,
+				http.MethodPost,
+				"/api/v1/auth/refresh",
+				"",
+				`{"token":"refresh-token"}`,
+			)
+
+			assertUserProblem(t, response, "/api/v1/auth/refresh", test.wantStatus)
+		})
+	}
+}
+
+func TestLogoutServiceErrors(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		err        error
+		wantStatus int
+	}{
+		{name: "invalid token", err: domain.ErrInvalidToken, wantStatus: http.StatusUnauthorized},
+		{
+			name: "authentication unavailable", err: domain.ErrAuthenticationUnavailable,
+			wantStatus: http.StatusServiceUnavailable,
+		},
+		{
+			name: "wrapped authentication failure", err: fmt.Errorf("private session details: %w", domain.ErrAuthenticationUnavailable),
+			wantStatus: http.StatusServiceUnavailable,
+		},
+		{
+			name: "unexpected failure", err: errors.New("private logout failure"),
+			wantStatus: http.StatusInternalServerError,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			service.EXPECT().Logout(t.Context(), authTestRefreshToken).Return(test.err)
+
+			response := performUserRequest(
+				t,
+				server,
+				http.MethodPost,
+				"/api/v1/auth/logout",
+				"",
+				`{"refresh_token":"refresh-token"}`,
+			)
+
+			assertUserProblem(t, response, "/api/v1/auth/logout", test.wantStatus)
+		})
+	}
+}
+
+func TestReadSelfUsesAuthenticatedUserID(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		query string
+	}{
+		{name: "current user"},
+		{name: "query cannot select another user", query: "?id=202&uuid=" + userTestUUID},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			currentUser := expectUserAuthentication(service, "read_self")
+			profile := userFixture()
+			profile.ID, profile.UUID = currentUser.ID, currentUser.UUID
+			service.EXPECT().GetUserByID(gomock.Any(), currentUser.ID).Return(profile, nil)
+
+			response := performUserRequest(t, server, http.MethodGet, "/api/v1/users/me"+test.query, userTestToken, "")
+
+			require.Equal(t, http.StatusOK, response.Code, "response body: %s", response.Body.String())
+			assert.JSONEq(
+				t,
+				strings.ReplaceAll(userTestJSON, userTestUUID, currentUser.UUID.String()),
+				response.Body.String(),
+			)
+		})
+	}
+}
+
+func TestReadSelfServiceErrors(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		err        error
+		wantStatus int
+	}{
+		{name: "not found", err: domain.ErrEntityNotFound, wantStatus: http.StatusNotFound},
+		{
+			name: "wrapped not found", err: fmt.Errorf("read self: %w", domain.ErrEntityNotFound),
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "unexpected failure", err: errors.New("private profile lookup failure"),
+			wantStatus: http.StatusInternalServerError,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			currentUser := expectUserAuthentication(service, "read_self")
+			service.EXPECT().GetUserByID(gomock.Any(), currentUser.ID).Return(nil, test.err)
+
+			response := performUserRequest(t, server, http.MethodGet, "/api/v1/users/me", userTestToken, "")
+
+			assertUserProblem(t, response, "/api/v1/users/me", test.wantStatus)
+		})
+	}
+}
+
+func TestUpdateSelfPreservesFieldsAndAuthenticatedUser(t *testing.T) {
+	email, password, empty := "new@example.com", "replacement password", ""
+	for _, test := range []struct {
+		name string
+		body string
+		want domain.UpdateSelfData
+	}{
+		{name: "empty body"},
+		{name: "omitted fields", body: `{}`},
+		{name: "null fields", body: `{"email":null,"password":null}`},
+		{
+			name: "current password only", body: `{"current_password":"current user password"}`,
+			want: domain.UpdateSelfData{CurrentPassword: userCurrentPassword},
+		},
+		{
+			name: "email only", body: `{"email":"new@example.com","current_password":"current user password"}`,
+			want: domain.UpdateSelfData{Email: &email, CurrentPassword: userCurrentPassword},
+		},
+		{
+			name: "password only", body: `{"password":"replacement password","current_password":"current user password"}`,
+			want: domain.UpdateSelfData{Password: &password, CurrentPassword: userCurrentPassword},
+		},
+		{
+			name: "both fields",
+			body: `{"email":"new@example.com","password":"replacement password","current_password":"current user password"}`,
+			want: domain.UpdateSelfData{Email: &email, Password: &password, CurrentPassword: userCurrentPassword},
+		},
+		{
+			name: "empty email", body: `{"email":"","current_password":"current user password"}`,
+			want: domain.UpdateSelfData{Email: &empty, CurrentPassword: userCurrentPassword},
+		},
+		{
+			name: "empty password", body: `{"password":"","current_password":"current user password"}`,
+			want: domain.UpdateSelfData{Password: &empty, CurrentPassword: userCurrentPassword},
+		},
+		{
+			name: "both fields empty", body: `{"email":"","password":"","current_password":"current user password"}`,
+			want: domain.UpdateSelfData{Email: &empty, Password: &empty, CurrentPassword: userCurrentPassword},
+		},
+		{
+			name: "body cannot select another user",
+			body: `{
+				"id":202,"uuid":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+				"email":"new@example.com","current_password":"current user password"
+			}`,
+			want: domain.UpdateSelfData{Email: &email, CurrentPassword: userCurrentPassword},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			currentUser := expectUserAuthentication(service, "update_self")
+			gomock.InOrder(
+				service.EXPECT().CheckIPLimit(gomock.Any(), domain.AuthenticationActionLogin, authTestIP).Return(nil),
+				service.EXPECT().UpdateSelf(gomock.Any(), currentUser.UUID.String(), &test.want).Return(nil),
+			)
+			target := "/api/v1/users/me?id=202&uuid=" + userTestUUID
+
+			response := performUserRequest(t, server, http.MethodPut, target, userTestToken, test.body)
+
+			require.Equal(t, http.StatusOK, response.Code, "response body: %s", response.Body.String())
+			assert.Empty(t, response.Body.String())
+		})
+	}
+}
+
+func TestUpdateSelfRejectsInvalidJSON(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body string
+	}{
+		{name: "malformed JSON", body: `{"email":`},
+		{name: "array instead of object", body: `[]`},
+		{name: "wrong email type", body: `{"email":42,"current_password":"current user password"}`},
+		{name: "wrong password type", body: `{"password":42,"current_password":"current user password"}`},
+		{name: "wrong current password type", body: `{"email":"new@example.com","current_password":42}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			expectUserAuthentication(service, "update_self")
+			service.EXPECT().CheckIPLimit(gomock.Any(), domain.AuthenticationActionLogin, authTestIP).Return(nil)
+
+			response := performUserRequest(t, server, http.MethodPut, "/api/v1/users/me", userTestToken, test.body)
+
+			assertUserProblem(t, response, "/api/v1/users/me", http.StatusBadRequest)
+		})
+	}
+}
+
+func TestUpdateSelfRequiresCurrentPasswordForChanges(t *testing.T) {
+	const passwordError = `{
+		"pointer":"#/UpdateSelfRequest/current_password",
+		"detail":"current_password is a required field","code":"INVALID_VALUE"
+	}`
+	for _, test := range []struct {
+		name string
+		body string
+	}{
+		{name: "email change", body: `{"email":"new@example.com"}`},
+		{name: "password change", body: `{"password":"replacement password"}`},
+		{name: "both changes", body: `{"email":"new@example.com","password":"replacement password"}`},
+		{name: "empty current password", body: `{"email":"new@example.com","current_password":""}`},
+		{name: "null current password", body: `{"password":"replacement password","current_password":null}`},
+		{name: "empty email", body: `{"email":""}`},
+		{name: "empty password", body: `{"password":""}`},
+		{name: "both fields empty", body: `{"email":"","password":""}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			expectUserAuthentication(service, "update_self")
+			service.EXPECT().CheckIPLimit(gomock.Any(), domain.AuthenticationActionLogin, authTestIP).Return(nil)
+
+			response := performUserRequest(t, server, http.MethodPut, "/api/v1/users/me", userTestToken, test.body)
+
+			assertUserProblem(t, response, "/api/v1/users/me", http.StatusBadRequest, passwordError)
+		})
+	}
+}
+
+func TestUpdateSelfIPLimitsRejectBeforeProcessing(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		err        error
+		wantStatus int
+	}{
+		{name: "rate limited", err: domain.ErrRateLimited, wantStatus: http.StatusTooManyRequests},
+		{
+			name: "wrapped rate limit", err: fmt.Errorf("private limiter details: %w", domain.ErrRateLimited),
+			wantStatus: http.StatusTooManyRequests,
+		},
+		{
+			name: "limiter unavailable", err: domain.ErrAuthenticationUnavailable,
+			wantStatus: http.StatusServiceUnavailable,
+		},
+		{
+			name: "unexpected failure", err: errors.New("private limiter failure"),
+			wantStatus: http.StatusInternalServerError,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, request := range []struct {
+				name string
+				body string
+			}{
+				{name: "valid body", body: userSelfUpdateBody},
+				{name: "malformed body", body: `{"email":`},
+			} {
+				t.Run(request.name, func(t *testing.T) {
+					server, service := newUserTestServer(t)
+					expectUserAuthentication(service, "update_self")
+					service.EXPECT().
+						CheckIPLimit(gomock.Any(), domain.AuthenticationActionLogin, authTestIP).
+						Return(test.err)
+
+					response := performUserRequest(
+						t,
+						server,
+						http.MethodPut,
+						"/api/v1/users/me",
+						userTestToken,
+						request.body,
+					)
+
+					assertUserProblem(t, response, "/api/v1/users/me", test.wantStatus)
+				})
+			}
+		})
+	}
+}
+
+func TestUpdateSelfServiceErrors(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		err        error
+		wantStatus int
+	}{
+		{name: "not found", err: domain.ErrEntityNotFound, wantStatus: http.StatusNotFound},
+		{name: "invalid email", err: domain.ErrInvalidEmail, wantStatus: http.StatusBadRequest},
+		{name: "weak password", err: domain.ErrPasswordWeak, wantStatus: http.StatusBadRequest},
+		{name: "incorrect current password", err: domain.ErrInvalidCredentials, wantStatus: http.StatusBadRequest},
+		{
+			name: "wrapped invalid credentials", err: fmt.Errorf("update self: %w", domain.ErrInvalidCredentials),
+			wantStatus: http.StatusBadRequest,
+		},
+		{name: "duplicate email", err: domain.ErrUserAlreadyExists, wantStatus: http.StatusConflict},
+		{name: "account rate limited", err: domain.ErrRateLimited, wantStatus: http.StatusTooManyRequests},
+		{
+			name: "authentication unavailable", err: domain.ErrAuthenticationUnavailable,
+			wantStatus: http.StatusServiceUnavailable,
+		},
+		{
+			name: "unexpected failure", err: errors.New("private profile update failure"),
+			wantStatus: http.StatusInternalServerError,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			currentUser := expectUserAuthentication(service, "update_self")
+			email, password := "Alice@Example.com", userTestPassword
+			gomock.InOrder(
+				service.EXPECT().CheckIPLimit(gomock.Any(), domain.AuthenticationActionLogin, authTestIP).Return(nil),
+				service.EXPECT().UpdateSelf(gomock.Any(), currentUser.UUID.String(), &domain.UpdateSelfData{
+					Email: &email, Password: &password, CurrentPassword: userCurrentPassword,
+				}).Return(test.err),
+			)
+
+			response := performUserRequest(
+				t,
+				server,
+				http.MethodPut,
+				"/api/v1/users/me",
+				userTestToken,
+				userSelfUpdateBody,
+			)
+
+			assertUserProblem(t, response, "/api/v1/users/me", test.wantStatus)
+		})
+	}
+}
 
 func TestListUsersPagination(t *testing.T) {
 	for _, test := range []struct {
@@ -493,6 +1134,11 @@ func TestUserAuthorization(t *testing.T) {
 			body: userCreateBody, otherAction: "list",
 		},
 		{name: "delete", method: http.MethodDelete, target: "/api/v1/users/" + userTestUUID, otherAction: "list"},
+		{name: "read self", method: http.MethodGet, target: "/api/v1/users/me", otherAction: "read_others"},
+		{
+			name: "update self", method: http.MethodPut, target: "/api/v1/users/me",
+			body: userSelfUpdateBody, otherAction: "update",
+		},
 	} {
 		t.Run(endpoint.name, func(t *testing.T) {
 			for _, test := range []struct {
@@ -554,7 +1200,7 @@ func newUserTestServer(t *testing.T) (*echo.Echo, *mocks.MockserviceAccessor) {
 	return server, service
 }
 
-func expectUserAuthentication(service *mocks.MockserviceAccessor, action string) {
+func expectUserAuthentication(service *mocks.MockserviceAccessor, action string) *models.User {
 	user := &models.User{
 		ID:     101,
 		UUID:   uuid.MustParse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
@@ -568,6 +1214,7 @@ func expectUserAuthentication(service *mocks.MockserviceAccessor, action string)
 	service.EXPECT().ValidateJWTToken(gomock.Any(), userTestToken, domain.JWTTokenPurposeAccess).
 		Return(claimsFor(user), nil)
 	service.EXPECT().GetUserByUUID(gomock.Any(), user.UUID.String()).Return(user, nil)
+	return user
 }
 
 func performUserRequest(
@@ -575,6 +1222,7 @@ func performUserRequest(
 ) *httptest.ResponseRecorder {
 	t.Helper()
 	request := httptest.NewRequestWithContext(t.Context(), method, target, strings.NewReader(body))
+	request.RemoteAddr = authTestIP + ":1234"
 	request.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	if token != "" {
 		request.Header.Set(echo.HeaderAuthorization, "Bearer "+token)
