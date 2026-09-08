@@ -1,0 +1,84 @@
+---
+
+name: coverage-report
+
+# Combines coverage from unit, integration, and resilience tests.
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        required: true
+        type: string
+      continue_on_error:
+        required: true
+        type: boolean
+      timeout_minutes:
+        required: false
+        type: number
+        default: 10
+
+permissions: {}
+
+jobs:
+  coverage-report:
+    name: coverage-report
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 'Setup Go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+      - name: 'Download coverage reports'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: '*-coverage*'
+          path: .build
+      - name: 'Merge unit, integration, and resilience coverage'
+        shell: bash
+        run: |-
+          awk 'FNR == 1 { next } { hits[$1 " " $2] += $3 }
+            END { print "mode: atomic"; for (block in hits) printf "%s %.0f\n", block, hits[block] }' \
+            .build/code-coverage/coverage.out \
+            .build/integration-coverage-*/coverage-integration.out \
+            .build/resilience-coverage/coverage-resilience.out > .build/coverage-total.out
+          go tool cover -html=.build/coverage-total.out -o=.build/coverage-total.html
+          go tool cover -func=.build/coverage-total.out | grep '^total:'
+      - name: 'Upload combined coverage reports'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: combined-coverage
+          path: |-
+            .build/coverage-total.out
+            .build/coverage-total.html
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: 'Generate coverage report'
+        if: github.event_name == 'pull_request'
+        id: coverage_report
+        uses: fgrosse/go-coverage-report@e432de98ee94a276e8f666d25bfd76347665f75b # v1.3.1
+        with:
+          version: v1.3.1
+          sha256sum: bce196efd0d22bbdcfa2ab45dc38ad40e96acc5802356b48be358a43958674a0
+          coverage-artifact-name: combined-coverage
+          coverage-file-name: coverage-total.out
+          root-package: github.com/go42-dev/go42
+          trim: github.com/go42-dev/go42
+          exclude: '(^|/)(api/gen|mocks)/'
+          skip-comment: >-
+            ${{ github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]' }}
+      - name: 'Add coverage report to job summary'
+        if: steps.coverage_report.outputs.coverage_report != ''
+        run: printf '%s\n' "$COVERAGE_REPORT" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          COVERAGE_REPORT: ${{ steps.coverage_report.outputs.coverage_report }}

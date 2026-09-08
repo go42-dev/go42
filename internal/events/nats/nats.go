@@ -44,6 +44,8 @@ func New(ctx context.Context, dsn string, opts ...Option) (*NATS, error) {
 			SubscribeOptions: []natsgo.SubOpt{
 				natsgo.DeliverAll(),
 				natsgo.AckExplicit(),
+				// Watermill decides when processing has completed and acknowledgement is safe.
+				natsgo.ManualAck(),
 			},
 			TrackMsgID: true,
 			AckAsync:   false,

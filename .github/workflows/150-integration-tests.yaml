@@ -38,6 +38,7 @@ jobs:
       contents: read
       packages: read
     strategy:
+      fail-fast: false
       matrix:
         database:
           - sqlite
@@ -69,6 +70,7 @@ jobs:
           MYSQL_PASSWORD: qwerty
           MYSQL_DATABASE: go42
           MYSQL_ROOT_PASSWORD: root
+          MYSQL_ROOT_HOST: '%'
         options: >-
           --health-cmd "mysql -h localhost -u user -pqwerty -D go42 -e 'SELECT 1' || exit 1" --health-start-period 30s --health-interval
           10s --health-timeout 5s --health-retries 10
@@ -134,7 +136,7 @@ jobs:
         run: |
           docker exec -e MYSQL_PWD=root "${{ job.services.mysql.id }}" \
             mysql -uroot -e "SET GLOBAL innodb_print_all_deadlocks = ON;"
-      - name: 'Run integration tests'
+      - name: 'Run integration tests with coverage'
         run: make test-integration
         # environment variables read by integration tests
         env:
@@ -143,3 +145,16 @@ jobs:
           HTTP_API_KEY: api_kXqdf2uQ7hmOARp-pZrhA6_IsZSeKCmSEM4YFKBGIzA
           GRPC_SERVER_ADDRESS: localhost:${{ matrix.grpc_port }}
           GRPC_API_KEY: api_kXqdf2uQ7hmOARp-pZrhA6_IsZSeKCmSEM4YFKBGIzA
+          DATABASE_ENGINE: ${{ matrix.database }}
+          DATABASE_MYSQL_MASTER_USER: root
+          DATABASE_MYSQL_MASTER_PASSWORD: root
+      - name: 'Upload coverage reports'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: integration-coverage-${{ matrix.database }}
+          path: |-
+            .build/coverage-integration.out
+            .build/coverage-integration.html
+          include-hidden-files: true
+          if-no-files-found: error

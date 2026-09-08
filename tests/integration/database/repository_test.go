@@ -18,6 +18,7 @@ import (
 	"github.com/go42-dev/go42/internal/database"
 	"github.com/go42-dev/go42/internal/database/sqlite"
 	"github.com/go42-dev/go42/internal/tools"
+	"github.com/go42-dev/go42/tests/integration"
 )
 
 func TestTransactionQueriesUseDerivedContext(t *testing.T) {
@@ -310,22 +311,47 @@ func TestWithTransactionPreservesRollbackErrors(t *testing.T) {
 	}
 }
 
-func newTransactionRepository(t *testing.T) (*database.BaseRepository, *sqlite.Sqlite) {
-	t.Helper()
-	db, err := sqlite.Open(filepath.Join(t.TempDir(), "transactions.db"))
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		require.NoError(t, db.Shutdown(ctx))
-	})
+func TestWithTransactionRollsBackConstraintFailures(t *testing.T) {
+	repository, db := newTransactionRepository(t)
 	require.NoError(t, db.Master().WithContext(t.Context()).Exec(
-		"CREATE TABLE entries (id INTEGER PRIMARY KEY, value TEXT NOT NULL)",
+		"CREATE UNIQUE INDEX entries_unique_value ON entries (value)",
+	).Error)
+	err := repository.WithTransaction(t.Context(), func(ctx context.Context) error {
+		for range 2 {
+			if err := repository.GetTx(ctx).
+				Exec("INSERT INTO entries (value) VALUES (?)", "duplicate").
+				Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	require.Error(t, err)
+	assert.True(t, repository.IsDuplicateKeyError(err))
+	assertTransactionValues(t, db)
+	require.NoError(t, repository.WithTransaction(t.Context(), func(ctx context.Context) error {
+		return repository.GetTx(ctx).Exec("INSERT INTO entries (value) VALUES (?)", "recovered").Error
+	}))
+	assertTransactionValues(t, db, "recovered")
+}
+
+func newTransactionRepository(t *testing.T) (*database.BaseRepository, database.Database) {
+	t.Helper()
+	db, _ := integration.NewDatabase(t)
+	identifier := "INTEGER PRIMARY KEY"
+	switch db.Master().Name() {
+	case "postgres":
+		identifier = "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY"
+	case "mysql":
+		identifier = "BIGINT AUTO_INCREMENT PRIMARY KEY"
+	}
+	require.NoError(t, db.Master().WithContext(t.Context()).Exec(
+		"CREATE TABLE entries (id "+identifier+", value VARCHAR(100) NOT NULL)",
 	).Error)
 	return database.NewBaseRepository(db), db
 }
 
-func assertTransactionValues(t *testing.T, db *sqlite.Sqlite, want ...string) {
+func assertTransactionValues(t *testing.T, db database.Database, want ...string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()

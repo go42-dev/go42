@@ -31,6 +31,7 @@ hadolint = "2.15.1"
 helm = "4.2.4"
 "go:github.com/caarlos0/jsonfmt" = "0.5.2"
 markdownlint-cli2 = "0.23.2"
+"go:go.uber.org/nilaway/cmd/nilaway" = "v0.0.0-20260808063849-8649a03c818a"
 "npm:@redocly/cli" = "2.51.2"
 "github:oasdiff/oasdiff" = "1.31.0"
 "pipx:sqlfluff" = { version = "4.3.0", uvx_args = "--python python" }

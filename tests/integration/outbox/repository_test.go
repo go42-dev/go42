@@ -20,15 +20,13 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/go42-dev/go42/internal/database"
-	"github.com/go42-dev/go42/internal/database/mysql"
-	"github.com/go42-dev/go42/internal/database/pgsql"
-	"github.com/go42-dev/go42/internal/database/sqlite"
 	"github.com/go42-dev/go42/internal/events"
 	"github.com/go42-dev/go42/internal/outbox"
 	"github.com/go42-dev/go42/internal/outbox/domain"
 	"github.com/go42-dev/go42/internal/outbox/models"
 	"github.com/go42-dev/go42/internal/outbox/repository"
 	"github.com/go42-dev/go42/internal/tools"
+	"github.com/go42-dev/go42/tests/integration"
 )
 
 func TestOutboxMetadataRoundTrip(t *testing.T) {
@@ -82,27 +80,14 @@ func TestOutboxMetadataRoundTrip(t *testing.T) {
 
 func newOutboxRepository(t *testing.T) (database.Database, *repository.Repository, *goose.Provider) {
 	t.Helper()
-	var db database.Database
-	var err error
+	db, _ := integration.NewDatabase(t)
 	engine, dialect := "sqlite", goose.DialectSQLite3
-	// Optional DSNs must point to disposable test databases: these tests clear
-	// the outbox table. By default, tests use a separate SQLite database per test.
-	switch {
-	case os.Getenv("GO42_OUTBOX_TEST_PGSQL_DSN") != "":
+	switch db.Master().Name() {
+	case "postgres":
 		engine, dialect = "pgsql", goose.DialectPostgres
-		db, err = pgsql.Open(t.Context(), os.Getenv("GO42_OUTBOX_TEST_PGSQL_DSN"), "")
-	case os.Getenv("GO42_OUTBOX_TEST_MYSQL_DSN") != "":
+	case "mysql":
 		engine, dialect = "mysql", goose.DialectMySQL
-		db, err = mysql.Open(t.Context(), os.Getenv("GO42_OUTBOX_TEST_MYSQL_DSN"), "")
-	default:
-		db, err = sqlite.Open(filepath.Join(t.TempDir(), "outbox.db"))
 	}
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		require.NoError(t, db.Shutdown(ctx))
-	})
 	sqlDB, err := db.Master().DB()
 	require.NoError(t, err)
 	migrations, err := goose.NewProvider(dialect, sqlDB,
@@ -110,8 +95,54 @@ func newOutboxRepository(t *testing.T) (database.Database, *repository.Repositor
 	require.NoError(t, err)
 	_, err = migrations.Up(t.Context())
 	require.NoError(t, err)
-	require.NoError(t, db.Master().WithContext(t.Context()).Exec("delete from transactional_outbox").Error)
 	return db, repository.New(database.NewBaseRepository(db)), migrations
+}
+
+func TestOutboxRollbackReleasesLockedMessages(t *testing.T) {
+	db, repo, _ := newOutboxRepository(t)
+	if db.Master().Name() == "sqlite" {
+		t.Skip("row locking requires PostgreSQL or MySQL")
+	}
+	entry := newOutboxTestMessage()
+	entry.Metadata = map[string]string{"request_id": "rollback-request"}
+	require.NoError(t, repo.NewOutboxMessage(t.Context(), &entry))
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	first, err := repo.Begin(ctx, sql.LevelDefault)
+	require.NoError(t, err)
+	defer func() { _ = repo.Rollback(first) }()
+	locked, err := repo.GetUnprocessedMessages(first, 1)
+	require.NoError(t, err)
+	require.Len(t, locked, 1)
+	require.Equal(t, entry.ID, locked[0].ID)
+	locked[0].RetryCount = 1
+	locked[0].LastError = "rolled-back failure"
+	require.NoError(t, repo.SaveFailedMessages(first, locked))
+	second, err := repo.Begin(ctx, sql.LevelDefault)
+	require.NoError(t, err)
+	defer func() { _ = repo.Rollback(second) }()
+	skipped, err := repo.GetUnprocessedMessages(second, 1)
+	require.NoError(t, err)
+	require.Empty(t, skipped, "a competing worker must skip the locked row")
+	require.NoError(t, repo.Rollback(second))
+	require.NoError(t, repo.Rollback(first))
+
+	require.NoError(t, repo.WithTransaction(ctx, func(txCtx context.Context) error {
+		recovered, err := repo.GetUnprocessedMessages(txCtx, 1)
+		if err != nil {
+			return err
+		}
+		require.Len(t, recovered, 1, "rollback must make the message available to another worker")
+		assert.Equal(t, entry.ID, recovered[0].ID)
+		assert.Equal(t, entry.Payload, recovered[0].Payload)
+		assert.Equal(t, entry.Metadata, recovered[0].Metadata)
+		assert.Zero(t, recovered[0].RetryCount)
+		assert.Empty(t, recovered[0].LastError)
+		return repo.SaveProcessedMessages(txCtx, recovered)
+	}))
+	remaining, err := repo.GetUnprocessedMessages(ctx, 1)
+	require.NoError(t, err)
+	assert.Empty(t, remaining)
 }
 
 type cleanupRetentionCase struct {
@@ -342,6 +373,10 @@ func TestSaveProcessedMessagesUpdatesSelectedRows(t *testing.T) {
 			started := time.Now().UTC().Truncate(time.Second)
 			require.NoError(t, repo.SaveProcessedMessages(t.Context(), selected))
 			finished := time.Now().UTC()
+			if db.Master().Name() == "mysql" {
+				// MySQL's TIMESTAMP columns round values to whole seconds.
+				finished = finished.Round(time.Second)
+			}
 			stored := storedOutboxMessages(t, db)
 			require.Len(t, stored, len(before))
 			var processedAt time.Time

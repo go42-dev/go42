@@ -47,13 +47,11 @@ import (
 	"github.com/go42-dev/go42/internal/cache"
 	"github.com/go42-dev/go42/internal/cache/local"
 	"github.com/go42-dev/go42/internal/database"
-	"github.com/go42-dev/go42/internal/database/mysql"
-	"github.com/go42-dev/go42/internal/database/pgsql"
-	"github.com/go42-dev/go42/internal/database/sqlite"
 	"github.com/go42-dev/go42/internal/outbox"
 	outboxDomain "github.com/go42-dev/go42/internal/outbox/domain"
 	outboxModels "github.com/go42-dev/go42/internal/outbox/models"
 	outboxRepository "github.com/go42-dev/go42/internal/outbox/repository"
+	"github.com/go42-dev/go42/tests/integration"
 )
 
 func TestCredentials_TransportsRejectInvalidInputWithoutChangingCredentials(t *testing.T) {
@@ -494,31 +492,14 @@ func sessionOptions(extra ...auth.Option) []auth.Option {
 
 func newSessionHarness(t *testing.T, extra ...auth.Option) *sessionHarness {
 	t.Helper()
-	var db database.Database
-	var err error
+	db, _ := integration.NewDatabase(t)
 	engine, dialect := "sqlite", goose.DialectSQLite3
-	// Optional DSNs must point to disposable test databases. By default, tests
-	// use a separate SQLite database per test and require no external services.
-	switch {
-	case os.Getenv("GO42_AUTH_TEST_PGSQL_DSN") != "":
+	switch db.Master().Name() {
+	case "postgres":
 		engine, dialect = "pgsql", goose.DialectPostgres
-		db, err = pgsql.Open(t.Context(), os.Getenv("GO42_AUTH_TEST_PGSQL_DSN"), "")
-	case os.Getenv("GO42_AUTH_TEST_MYSQL_DSN") != "":
+	case "mysql":
 		engine, dialect = "mysql", goose.DialectMySQL
-		db, err = mysql.Open(t.Context(), os.Getenv("GO42_AUTH_TEST_MYSQL_DSN"), "")
-	default:
-		db, err = sqlite.Open(filepath.Join(t.TempDir(), "auth.db"))
 	}
-	if err != nil {
-		t.Fatalf("open test database: %v", err)
-	}
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := db.Shutdown(ctx); err != nil {
-			t.Error(err)
-		}
-	})
 	sqlDB, err := db.Master().DB()
 	if err != nil {
 		t.Fatal(err)
@@ -2220,7 +2201,7 @@ func TestRepository_SessionCleanupPropagatesFailures(t *testing.T) {
 	for _, stage := range []string{"canceled", "query", "delete"} {
 		t.Run(stage, func(t *testing.T) {
 			h := newSessionCleanupHarness(t)
-			session := repositoryCleanupSession(h, time.Now().UTC().Add(-time.Hour))
+			session := repositoryCleanupSession(h, time.Now().UTC().Add(-time.Hour).Truncate(time.Second))
 			require.NoError(t, h.db.Master().WithContext(t.Context()).Create(&session).Error)
 			ctx := t.Context()
 			cause := errors.New("session cleanup " + stage + " failed")

@@ -22,7 +22,7 @@ export PATH := $(MISE_DATA_DIR)/shims:$(PATH)
 
 .PHONY: help setup setup-common setup-linters setup-generators setup-mcp \
 	test-unit test-fuzz test-integration test-resilience test-load \
-	run run-docker debug build image lint generate serve-docs \
+	run run-docker debug build image lint lint-nilaway generate serve-docs \
 	check-env generate-migration-id generate-dep-graph grpcui show-asm
 
 help: Makefile
@@ -59,6 +59,7 @@ setup-linters:
 		go:github.com/caarlos0/jsonfmt \
 		go:github.com/google/yamlfmt/cmd/yamlfmt \
 		go:github.com/securego/gosec/v2/cmd/gosec \
+		go:go.uber.org/nilaway/cmd/nilaway \
 		go:golang.org/x/vuln/cmd/govulncheck
 	@vale --config etc/vale.ini sync
 
@@ -106,10 +107,21 @@ test-unit:
 test-fuzz:
 	@go run ./cmd/fuzz -fuzztime 30s
 
-## test-integration | run integration tests
+## test-integration | run integration tests with coverage
 # -count=1 is needed to prevent caching of test results.
+# Uses application settings from .env when present.
 test-integration:
-	@go test -count=1 -v -race ./tests/integration/...
+	@mkdir -p .build
+	@set -eo pipefail; \
+	if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
+	coverage_packages=$$(go list -deps -test -f '{{if .Module}}{{if .Module.Main}}{{.ImportPath}}{{end}}{{end}}' ./tests/integration/...); \
+	coverage_exclude_pattern=$$(printf '%s\n' $(COVERAGE_EXCLUDE_DIRS) | paste -sd '|' -); \
+	coverage_packages=$$(printf '%s\n' "$$coverage_packages" | grep -vE "/($$coverage_exclude_pattern)(/|$$)" | paste -sd, -); \
+	go test -count=1 -v -race -covermode=atomic -coverpkg="$$coverage_packages" \
+		-coverprofile=.build/coverage-integration.out ./tests/integration/... \
+		| sed -E 's/(coverage: [0-9.]+% of statements) in .*/\1/'
+	@go tool cover -html=.build/coverage-integration.out -o=.build/coverage-integration.html
+	@go tool cover -func=.build/coverage-integration.out | grep '^total:'
 
 ## test-resilience | verify dependency recovery with coverage
 # Resilience tests are build-tagged and excluded from all other test targets.
@@ -211,23 +223,29 @@ image:
 
 ## lint | run all validation tools
 lint:
-	@golangci-lint run --config etc/.golangci.yml || true
-	@hadolint Dockerfile || true
-	@helm lint --strict infra/helm/app --set-string image.tag=ci-validation || true
-	@helm lint --strict infra/helm/app --set-string image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000 || true
-	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/sqlite/*.sql --dialect sqlite || true
-	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/mysql/*.sql --dialect mysql || true
-	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/pgsql/*.sql --dialect postgres || true
-	@REDOCLY_SUPPRESS_UPDATE_NOTICE=true REDOCLY_TELEMETRY=false redocly lint --config etc/redocly.yaml --format stylish api/openapi/**/*.yaml || true
-	@oasdiff breaking --fail-on ERR origin/master:api/openapi/v1/.combined.yaml api/openapi/v1/.combined.yaml || true
+	@golangci-lint run --config etc/.golangci.yml
+	@hadolint Dockerfile
+	@helm lint --strict infra/helm/app --set-string image.tag=ci-validation
+	@helm lint --strict infra/helm/app --set-string image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000
+	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/sqlite/*.sql --dialect sqlite
+	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/mysql/*.sql --dialect mysql
+	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/pgsql/*.sql --dialect postgres
+	@REDOCLY_SUPPRESS_UPDATE_NOTICE=true REDOCLY_TELEMETRY=false redocly lint --config etc/redocly.yaml --format stylish api/openapi/**/*.yaml
+	@oasdiff breaking --fail-on ERR origin/master:api/openapi/v1/.combined.yaml api/openapi/v1/.combined.yaml
 	@buf lint api || true
-	@gosec -quiet -exclude-generated ./... || true
-	@gitleaks git --config etc/gitleaks.toml --no-banner --redact -v || true
-	@markdownlint-cli2 --config etc/.markdownlint.yaml README.md docs/**/*.md || true
-	@vale --no-exit --config etc/vale.ini README.md docs/**/*.md internal/ cmd/ pkg/ tests/ || true
+	@gosec -quiet -exclude-generated ./...
+	@gitleaks git --config etc/gitleaks.toml --no-banner --redact -v
+	@markdownlint-cli2 --config etc/.markdownlint.yaml README.md docs/**/*.md
+	@vale --no-exit --config etc/vale.ini README.md docs/**/*.md internal/ cmd/ pkg/ tests/
 	@actionlint -oneline --config-file etc/actionlint.yaml
 	@zizmor -q --persona regular --min-severity high --min-confidence high --offline --format plain --color never --no-progress .
 	@ec
+	@nilaway \
+		-include-pkgs=github.com/go42-dev/go42 \
+		-exclude-file-docstrings='Code generated' \
+		-pretty-print=false \
+		-print-full-file-path=true \
+		./...
 
 ## generate | generate code for all modules
 # Side effects of this command should to be commited.

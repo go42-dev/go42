@@ -175,6 +175,11 @@ version = "0.6.0"
 backend = "go:go.uber.org/mock/mockgen"
 specifiers = ["0.6.0"]
 
+[[tools."go:go.uber.org/nilaway/cmd/nilaway"]]
+version = "0.0.0-20260808063849-8649a03c818a"
+backend = "go:go.uber.org/nilaway/cmd/nilaway"
+specifiers = ["v0.0.0-20260808063849-8649a03c818a"]
+
 [[tools."go:golang.org/x/tools/gopls"]]
 version = "0.23.0"
 backend = "go:golang.org/x/tools/gopls"

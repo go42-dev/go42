@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -13,12 +11,10 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
-	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/go42-dev/go42/internal/database"
-	"github.com/go42-dev/go42/internal/database/sqlite"
 	"github.com/go42-dev/go42/internal/events"
 	"github.com/go42-dev/go42/internal/outbox/domain"
 	"github.com/go42-dev/go42/internal/outbox/models"
@@ -27,8 +23,11 @@ import (
 	"github.com/go42-dev/go42/internal/outbox/workers/mocks"
 )
 
-func TestOutboxPublisherTimeoutCommitsProgressAndReleasesSQLite(t *testing.T) {
+func TestOutboxPublisherTimeoutCommitsProgressAndReleasesConnection(t *testing.T) {
 	db, repo := newOutboxPublisherDatabase(t)
+	pool, err := db.Master().DB()
+	require.NoError(t, err)
+	pool.SetMaxOpenConns(1)
 	for range 3 {
 		entry := newOutboxTestMessage()
 		require.NoError(t, repo.NewOutboxMessage(t.Context(), &entry))
@@ -61,7 +60,7 @@ func TestOutboxPublisherTimeoutCommitsProgressAndReleasesSQLite(t *testing.T) {
 	require.EqualValues(t, 2, calls.Load(), "the batch must stop on the first timeout")
 	successID, timeoutID := <-published, <-published
 
-	// These queries use SQLite's only connection while the underlying publish is still blocked.
+	// These queries reuse the pool's only connection while the underlying publish is still blocked.
 	queryCtx, queryCancel := context.WithTimeout(t.Context(), time.Second)
 	defer queryCancel()
 	require.NoError(t, db.Master().WithContext(queryCtx).Exec("SELECT 1").Error)
@@ -137,6 +136,19 @@ func TestOutboxPublisherCancellationRollsBackWithoutConsumingRetry(t *testing.T)
 		require.Zero(t, entry.RetryCount)
 		require.Empty(t, entry.LastError)
 	}
+	release()
+	worker = workers.NewOutboxMessagePublisher(repo, router)
+	require.NoError(t, waitForOutboxRun(t, startOutboxPublisher(t, t.Context(), repo, worker, 2)))
+	require.NoError(t, db.Master().WithContext(t.Context()).Find(&stored).Error)
+	for _, entry := range stored {
+		require.Equal(
+			t,
+			models.MessageStatusProcessed,
+			entry.Status,
+			"another worker must recover the rolled-back batch",
+		)
+		require.Zero(t, entry.RetryCount)
+	}
 }
 
 func TestOutboxPublisherTimeoutPersistenceFailureRollsBackProgress(t *testing.T) {
@@ -145,11 +157,7 @@ func TestOutboxPublisherTimeoutPersistenceFailureRollsBackProgress(t *testing.T)
 		entry := newOutboxTestMessage()
 		require.NoError(t, repo.NewOutboxMessage(t.Context(), &entry))
 	}
-	require.NoError(t, db.Master().WithContext(t.Context()).Exec(`
-		CREATE TRIGGER reject_outbox_retry BEFORE UPDATE ON transactional_outbox
-		WHEN NEW.retry_count > OLD.retry_count
-		BEGIN SELECT RAISE(ABORT, 'retry write rejected'); END
-	`).Error)
+	rejectOutboxRetries(t, db)
 	ctrl := gomock.NewController(t)
 	publisher := mocks.NewMockpublisher(ctrl)
 	gomock.InOrder(
@@ -158,7 +166,7 @@ func TestOutboxPublisherTimeoutPersistenceFailureRollsBackProgress(t *testing.T)
 	)
 	worker := workers.NewOutboxMessagePublisher(repo, publisher)
 	done := startOutboxPublisher(t, t.Context(), repo, worker, 2)
-	require.ErrorContains(t, waitForOutboxRun(t, done), "retry write rejected")
+	require.ErrorContains(t, waitForOutboxRun(t, done), "reject_outbox_retry")
 	var stored []models.Message
 	require.NoError(t, db.Master().WithContext(t.Context()).Find(&stored).Error)
 	require.Len(t, stored, 2)
@@ -169,23 +177,96 @@ func TestOutboxPublisherTimeoutPersistenceFailureRollsBackProgress(t *testing.T)
 	}
 }
 
-func newOutboxPublisherDatabase(t *testing.T) (*sqlite.Sqlite, *publisherTestRepository) {
+func newOutboxPublisherDatabase(t *testing.T) (database.Database, *publisherTestRepository) {
 	t.Helper()
-	db, err := sqlite.Open(filepath.Join(t.TempDir(), "outbox.db"))
-	require.NoError(t, err)
+	db, repo, _ := newOutboxRepository(t)
+	return db, &publisherTestRepository{Repository: repo}
+}
+
+func rejectOutboxRetries(t *testing.T, db database.Database) {
+	t.Helper()
+	statement := "ALTER TABLE transactional_outbox ADD CONSTRAINT reject_outbox_retry CHECK (retry_count = 0)"
+	cleanup := "ALTER TABLE transactional_outbox DROP CONSTRAINT reject_outbox_retry"
+	switch db.Master().Name() {
+	case "sqlite":
+		statement = `CREATE TRIGGER reject_outbox_retry BEFORE UPDATE ON transactional_outbox
+			WHEN NEW.retry_count > OLD.retry_count
+			BEGIN SELECT RAISE(ABORT, 'reject_outbox_retry'); END`
+		cleanup = "DROP TRIGGER reject_outbox_retry"
+	case "mysql":
+		cleanup = "ALTER TABLE transactional_outbox DROP CHECK reject_outbox_retry"
+	}
+	require.NoError(t, db.Master().WithContext(t.Context()).Exec(statement).Error)
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		require.NoError(t, db.Shutdown(ctx))
+		require.NoError(t, db.Master().WithContext(ctx).Exec(cleanup).Error)
 	})
-	sqlDB, err := db.Master().DB()
+}
+
+func TestOutboxConcurrentPublishersProcessDisjointBatches(t *testing.T) {
+	db, first := newOutboxPublisherDatabase(t)
+	if db.Master().Name() == "sqlite" {
+		t.Skip("row locking requires PostgreSQL or MySQL")
+	}
+	ids := make([]uuid.UUID, 0, 4)
+	for range 4 {
+		entry := newOutboxTestMessage()
+		require.NoError(t, first.NewOutboxMessage(t.Context(), &entry))
+		ids = append(ids, entry.ID)
+	}
+	entered, released := make(chan struct{}), make(chan struct{})
+	release := sync.OnceFunc(func() { close(released) })
+	defer release()
+	var calls atomic.Int32
+	published := make(chan uuid.UUID, len(ids))
+	router := newOutboxTestRouter(t, func(_ string, messages ...*message.Message) error {
+		var event domain.Event
+		if err := json.Unmarshal(messages[0].Payload, &event); err != nil {
+			return err
+		}
+		published <- event.ID
+		if calls.Add(1) == 1 {
+			close(entered)
+			<-released
+		}
+		return nil
+	})
+	firstWorker := workers.NewOutboxMessagePublisher(first, router)
+	firstDone := startOutboxPublisher(t, t.Context(), first, firstWorker, 2)
+	waitForOutboxPublishSignal(t, entered)
+	second := &publisherTestRepository{Repository: first.Repository}
+	secondWorker := workers.NewOutboxMessagePublisher(second, router)
+	require.NoError(t, waitForOutboxRun(t, startOutboxPublisher(t, t.Context(), second, secondWorker, 2)))
+	var processed int64
+	require.NoError(t, db.Master().WithContext(t.Context()).Model(&models.Message{}).
+		Where("status = ?", models.MessageStatusProcessed).Count(&processed).Error)
+	require.EqualValues(t, 2, processed, "the second worker must commit while the first holds its row locks")
+	select {
+	case err := <-firstDone:
+		t.Fatalf("first worker returned before its blocked publish was released: %v", err)
+	default:
+	}
+	release()
+	require.NoError(t, waitForOutboxRun(t, firstDone))
+	require.EqualValues(t, len(ids), calls.Load())
+	require.Len(t, published, len(ids))
+	actual := make([]uuid.UUID, 0, len(ids))
+	for range ids {
+		actual = append(actual, <-published)
+	}
+	require.ElementsMatch(t, ids, actual, "each message belongs to exactly one worker's batch")
+	remaining, err := first.GetUnprocessedMessages(t.Context(), len(ids))
 	require.NoError(t, err)
-	migrations, err := goose.NewProvider(goose.DialectSQLite3, sqlDB,
-		os.DirFS(filepath.Join("..", "..", "..", "migrate", "sqlite")))
-	require.NoError(t, err)
-	_, err = migrations.Up(t.Context())
-	require.NoError(t, err)
-	return db, &publisherTestRepository{Repository: outboxRepository.New(database.NewBaseRepository(db))}
+	require.Empty(t, remaining)
+	var stored []models.Message
+	require.NoError(t, db.Master().WithContext(t.Context()).Find(&stored).Error)
+	require.Len(t, stored, len(ids))
+	for _, entry := range stored {
+		require.Equal(t, models.MessageStatusProcessed, entry.Status)
+		require.True(t, entry.ProcessedAt.Valid)
+		require.Zero(t, entry.RetryCount)
+	}
 }
 
 type publisherTestRepository struct {
@@ -209,7 +290,6 @@ func startOutboxPublisher(
 ) <-chan error {
 	t.Helper()
 	ctx, cancel := context.WithCancel(ctx)
-	t.Cleanup(cancel)
 	var completed sync.Once
 	result := errors.New("publisher stopped before its first transaction")
 	repository.afterTransaction = func(err error) {
@@ -219,7 +299,17 @@ func startOutboxPublisher(
 		})
 	}
 	done := make(chan error, 1)
+	stopped := make(chan struct{})
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-stopped:
+		case <-time.After(3 * time.Second):
+			t.Error("outbox worker did not stop after cancellation")
+		}
+	})
 	go func() {
+		defer close(stopped)
 		worker.Run(ctx, time.Millisecond, batchSize)
 		done <- result
 	}()

@@ -268,11 +268,7 @@ jobs:
       timeout_minutes: 15
 
   coverage-report:
-    name: coverage-report
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    timeout-minutes: 10
+    uses: ./.github/workflows/150-coverage-report.yaml
     permissions:
       actions: read
       contents: read
@@ -280,25 +276,12 @@ jobs:
     needs:
       - unit-tests
       - fuzz-tests
-    steps:
-      - name: 'Generate coverage report'
-        id: coverage_report
-        uses: fgrosse/go-coverage-report@e432de98ee94a276e8f666d25bfd76347665f75b # v1.3.1
-        with:
-          version: v1.3.1
-          sha256sum: bce196efd0d22bbdcfa2ab45dc38ad40e96acc5802356b48be358a43958674a0
-          coverage-artifact-name: code-coverage
-          coverage-file-name: coverage.out
-          root-package: github.com/go42-dev/go42
-          trim: github.com/go42-dev/go42
-          exclude: '(^|/)(api/gen|mocks)/'
-          skip-comment: >-
-            ${{ github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]' }}
-      - name: 'Add coverage report to job summary'
-        if: steps.coverage_report.outputs.coverage_report != ''
-        run: printf '%s\n' "$COVERAGE_REPORT" >> "$GITHUB_STEP_SUMMARY"
-        env:
-          COVERAGE_REPORT: ${{ steps.coverage_report.outputs.coverage_report }}
+      - integration-tests
+      - resilience-tests
+    with:
+      runs_on: ubuntu-latest
+      continue_on_error: true
+      timeout_minutes: 10
 
   # stage 3: pre-build security scans
 
