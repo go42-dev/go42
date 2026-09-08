@@ -129,6 +129,11 @@ jobs:
           go-version-file: 'go.mod'
       - name: 'Download Go modules'
         run: go mod download
+      - name: 'Enable MySQL deadlock logging'
+        if: matrix.database == 'mysql'
+        run: |
+          docker exec -e MYSQL_PWD=root "${{ job.services.mysql.id }}" \
+            mysql -uroot -e "SET GLOBAL innodb_print_all_deadlocks = ON;"
       - name: 'Run integration tests'
         run: make test-integration
         # environment variables read by integration tests

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,9 +24,11 @@ import (
 )
 
 const (
-	userReadToken = "user-read-token"
-	userReadUUID  = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
-	userReadJSON  = `{
+	userTestToken    = "user-test-token"
+	userTestUUID     = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	userTestPassword = "new user password"
+	userCreateBody   = `{"email":"Alice@Example.com","password":"new user password"}`
+	userTestJSON     = `{
 		"uuid": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
 		"email": "alice@example.com",
 		"created_at": "2026-09-07 12:30:00",
@@ -51,11 +54,11 @@ func TestListUsersPagination(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			server, service := newUserReadTestServer(t)
-			expectUserReadAuthentication(service, "list")
+			server, service := newUserTestServer(t)
+			expectUserAuthentication(service, "list")
 			service.EXPECT().ListUsers(gomock.Any(), test.wantLimit, test.wantOffset).Return(nil, nil)
 
-			response := performUserReadRequest(t, server, "/api/v1/users"+test.query, userReadToken)
+			response := performUserRequest(t, server, http.MethodGet, "/api/v1/users"+test.query, userTestToken, "")
 
 			require.Equal(t, http.StatusOK, response.Code, "response body: %s", response.Body.String())
 			assert.JSONEq(t, `[]`, response.Body.String())
@@ -77,13 +80,13 @@ func TestListUsersRejectsInvalidPagination(t *testing.T) {
 		{name: "negative offset", query: "?offset=-1"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			server, service := newUserReadTestServer(t)
-			expectUserReadAuthentication(service, "list")
+			server, service := newUserTestServer(t)
+			expectUserAuthentication(service, "list")
 			target := "/api/v1/users" + test.query
 
-			response := performUserReadRequest(t, server, target, userReadToken)
+			response := performUserRequest(t, server, http.MethodGet, target, userTestToken, "")
 
-			assertUserReadProblem(t, response, target, http.StatusBadRequest)
+			assertUserProblem(t, response, target, http.StatusBadRequest)
 		})
 	}
 }
@@ -103,8 +106,8 @@ func TestListUsersResponses(t *testing.T) {
 		{name: "empty result is an empty array", users: []*models.User{}, want: `[]`},
 		{
 			name:  "users retain their order and expose public fields",
-			users: []*models.User{userReadFixture(), secondUser},
-			want: `[` + userReadJSON + `, {
+			users: []*models.User{userFixture(), secondUser},
+			want: `[` + userTestJSON + `, {
 				"uuid": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
 				"email": "bob@example.com",
 				"created_at": "2026-09-06 08:15:00",
@@ -114,11 +117,11 @@ func TestListUsersResponses(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			server, service := newUserReadTestServer(t)
-			expectUserReadAuthentication(service, "list")
+			server, service := newUserTestServer(t)
+			expectUserAuthentication(service, "list")
 			service.EXPECT().ListUsers(gomock.Any(), domain.UserListDefaultLimit, 0).Return(test.users, nil)
 
-			response := performUserReadRequest(t, server, "/api/v1/users", userReadToken)
+			response := performUserRequest(t, server, http.MethodGet, "/api/v1/users", userTestToken, "")
 
 			require.Equal(t, http.StatusOK, response.Code, "response body: %s", response.Body.String())
 			assert.JSONEq(t, test.want, response.Body.String())
@@ -143,38 +146,38 @@ func TestListUsersServiceErrors(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			server, service := newUserReadTestServer(t)
-			expectUserReadAuthentication(service, "list")
+			server, service := newUserTestServer(t)
+			expectUserAuthentication(service, "list")
 			service.EXPECT().ListUsers(gomock.Any(), domain.UserListDefaultLimit, 0).Return(nil, test.err)
 
-			response := performUserReadRequest(t, server, "/api/v1/users", userReadToken)
+			response := performUserRequest(t, server, http.MethodGet, "/api/v1/users", userTestToken, "")
 
-			assertUserReadProblem(t, response, "/api/v1/users", test.wantStatus)
+			assertUserProblem(t, response, "/api/v1/users", test.wantStatus)
 		})
 	}
 }
 
 func TestUserByUUIDReturnsUser(t *testing.T) {
-	server, service := newUserReadTestServer(t)
-	expectUserReadAuthentication(service, "read_others")
-	service.EXPECT().GetUserByUUID(gomock.Any(), userReadUUID).Return(userReadFixture(), nil)
+	server, service := newUserTestServer(t)
+	expectUserAuthentication(service, "read_others")
+	service.EXPECT().GetUserByUUID(gomock.Any(), userTestUUID).Return(userFixture(), nil)
 
-	response := performUserReadRequest(t, server, "/api/v1/users/"+userReadUUID, userReadToken)
+	response := performUserRequest(t, server, http.MethodGet, "/api/v1/users/"+userTestUUID, userTestToken, "")
 
 	require.Equal(t, http.StatusOK, response.Code, "response body: %s", response.Body.String())
-	assert.JSONEq(t, userReadJSON, response.Body.String())
+	assert.JSONEq(t, userTestJSON, response.Body.String())
 }
 
 func TestUserByUUIDRejectsInvalidUUID(t *testing.T) {
 	for _, invalidUUID := range []string{"not-a-uuid", "xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx"} {
 		t.Run(invalidUUID, func(t *testing.T) {
-			server, service := newUserReadTestServer(t)
-			expectUserReadAuthentication(service, "read_others")
+			server, service := newUserTestServer(t)
+			expectUserAuthentication(service, "read_others")
 			target := "/api/v1/users/" + invalidUUID
 
-			response := performUserReadRequest(t, server, target, userReadToken)
+			response := performUserRequest(t, server, http.MethodGet, target, userTestToken, "")
 
-			assertUserReadProblem(t, response, target, http.StatusBadRequest)
+			assertUserProblem(t, response, target, http.StatusBadRequest)
 		})
 	}
 }
@@ -196,26 +199,300 @@ func TestUserByUUIDServiceErrors(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			server, service := newUserReadTestServer(t)
-			expectUserReadAuthentication(service, "read_others")
-			service.EXPECT().GetUserByUUID(gomock.Any(), userReadUUID).Return(nil, test.err)
-			target := "/api/v1/users/" + userReadUUID
+			server, service := newUserTestServer(t)
+			expectUserAuthentication(service, "read_others")
+			service.EXPECT().GetUserByUUID(gomock.Any(), userTestUUID).Return(nil, test.err)
+			target := "/api/v1/users/" + userTestUUID
 
-			response := performUserReadRequest(t, server, target, userReadToken)
+			response := performUserRequest(t, server, http.MethodGet, target, userTestToken, "")
 
-			assertUserReadProblem(t, response, target, test.wantStatus)
+			assertUserProblem(t, response, target, test.wantStatus)
 		})
 	}
 }
 
-func TestUserReadAuthorization(t *testing.T) {
+func TestCreateUserReturnsCreatedUser(t *testing.T) {
+	server, service := newUserTestServer(t)
+	expectUserAuthentication(service, "create")
+	service.EXPECT().CreateUser(gomock.Any(), &domain.CreateUserData{
+		Email: "Alice@Example.com", Password: userTestPassword,
+	}).Return(userFixture(), nil)
+
+	response := performUserRequest(t, server, http.MethodPost, "/api/v1/users", userTestToken, userCreateBody)
+
+	require.Equal(t, http.StatusCreated, response.Code, "response body: %s", response.Body.String())
+	assert.JSONEq(t, userTestJSON, response.Body.String())
+}
+
+func TestCreateUserRejectsInvalidJSON(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body string
+	}{
+		{name: "malformed JSON", body: `{"email":`},
+		{name: "array instead of object", body: `[]`},
+		{name: "wrong email type", body: `{"email":42,"password":"secret"}`},
+		{name: "wrong password type", body: `{"email":"alice@example.com","password":42}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			expectUserAuthentication(service, "create")
+
+			response := performUserRequest(t, server, http.MethodPost, "/api/v1/users", userTestToken, test.body)
+
+			assertUserProblem(t, response, "/api/v1/users", http.StatusBadRequest)
+		})
+	}
+}
+
+func TestCreateUserRequiresEmailAndPassword(t *testing.T) {
+	const emailError = `{
+		"pointer":"#/CreateUserRequest/email","detail":"email is a required field","code":"INVALID_VALUE"
+	}`
+	const passwordError = `{
+		"pointer":"#/CreateUserRequest/password","detail":"password is a required field","code":"INVALID_VALUE"
+	}`
+	for _, test := range []struct {
+		name   string
+		body   string
+		errors []string
+	}{
+		{name: "empty body", errors: []string{emailError, passwordError}},
+		{name: "empty object", body: `{}`, errors: []string{emailError, passwordError}},
+		{name: "missing email", body: `{"password":"secret"}`, errors: []string{emailError}},
+		{name: "missing password", body: `{"email":"alice@example.com"}`, errors: []string{passwordError}},
+		{name: "empty email", body: `{"email":"","password":"secret"}`, errors: []string{emailError}},
+		{name: "empty password", body: `{"email":"alice@example.com","password":""}`, errors: []string{passwordError}},
+		{name: "null email", body: `{"email":null,"password":"secret"}`, errors: []string{emailError}},
+		{name: "null password", body: `{"email":"alice@example.com","password":null}`, errors: []string{passwordError}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			expectUserAuthentication(service, "create")
+
+			response := performUserRequest(t, server, http.MethodPost, "/api/v1/users", userTestToken, test.body)
+
+			assertUserProblem(t, response, "/api/v1/users", http.StatusBadRequest, test.errors...)
+		})
+	}
+}
+
+func TestCreateUserServiceErrors(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		err        error
+		wantStatus int
+	}{
+		{name: "invalid email", err: domain.ErrInvalidEmail, wantStatus: http.StatusBadRequest},
+		{name: "weak password", err: domain.ErrPasswordWeak, wantStatus: http.StatusBadRequest},
+		{name: "duplicate user", err: domain.ErrUserAlreadyExists, wantStatus: http.StatusConflict},
+		{
+			name: "wrapped duplicate user", err: fmt.Errorf("create user: %w", domain.ErrUserAlreadyExists),
+			wantStatus: http.StatusConflict,
+		},
+		{
+			name: "unexpected failure", err: errors.New("private database failure"),
+			wantStatus: http.StatusInternalServerError,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			expectUserAuthentication(service, "create")
+			service.EXPECT().CreateUser(gomock.Any(), &domain.CreateUserData{
+				Email: "Alice@Example.com", Password: userTestPassword,
+			}).Return(nil, test.err)
+
+			response := performUserRequest(t, server, http.MethodPost, "/api/v1/users", userTestToken, userCreateBody)
+
+			assertUserProblem(t, response, "/api/v1/users", test.wantStatus)
+		})
+	}
+}
+
+func TestUpdateUserPreservesOptionalFields(t *testing.T) {
+	email, password, empty := "new@example.com", "replacement password", ""
+	for _, test := range []struct {
+		name string
+		body string
+		want domain.UpdateUserData
+	}{
+		{name: "omitted fields", body: `{}`},
+		{name: "null fields", body: `{"email":null,"password":null}`},
+		{name: "email only", body: `{"email":"new@example.com"}`, want: domain.UpdateUserData{Email: &email}},
+		{
+			name: "password only", body: `{"password":"replacement password"}`,
+			want: domain.UpdateUserData{Password: &password},
+		},
+		{
+			name: "both fields", body: `{"email":"new@example.com","password":"replacement password"}`,
+			want: domain.UpdateUserData{Email: &email, Password: &password},
+		},
+		{name: "empty email", body: `{"email":""}`, want: domain.UpdateUserData{Email: &empty}},
+		{name: "empty password", body: `{"password":""}`, want: domain.UpdateUserData{Password: &empty}},
+		{
+			name: "both fields empty", body: `{"email":"","password":""}`,
+			want: domain.UpdateUserData{Email: &empty, Password: &empty},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			expectUserAuthentication(service, "update")
+			service.EXPECT().UpdateUser(gomock.Any(), userTestUUID, &test.want).Return(nil)
+			target := "/api/v1/users/" + userTestUUID
+
+			response := performUserRequest(t, server, http.MethodPut, target, userTestToken, test.body)
+
+			require.Equal(t, http.StatusOK, response.Code, "response body: %s", response.Body.String())
+			assert.Empty(t, response.Body.String())
+		})
+	}
+}
+
+func TestUpdateUserRejectsInvalidJSON(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body string
+	}{
+		{name: "malformed JSON", body: `{"email":`},
+		{name: "array instead of object", body: `[]`},
+		{name: "wrong email type", body: `{"email":42}`},
+		{name: "wrong password type", body: `{"password":42}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			expectUserAuthentication(service, "update")
+			target := "/api/v1/users/" + userTestUUID
+
+			response := performUserRequest(t, server, http.MethodPut, target, userTestToken, test.body)
+
+			assertUserProblem(t, response, target, http.StatusBadRequest)
+		})
+	}
+}
+
+func TestUserWritesRejectInvalidUUID(t *testing.T) {
+	for _, endpoint := range []struct {
+		method string
+		action string
+	}{
+		{method: http.MethodPut, action: "update"},
+		{method: http.MethodDelete, action: "delete"},
+	} {
+		t.Run(endpoint.method, func(t *testing.T) {
+			for _, invalidUUID := range []string{"not-a-uuid", "xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx"} {
+				t.Run(invalidUUID, func(t *testing.T) {
+					server, service := newUserTestServer(t)
+					expectUserAuthentication(service, endpoint.action)
+					target := "/api/v1/users/" + invalidUUID
+
+					response := performUserRequest(t, server, endpoint.method, target, userTestToken, `{}`)
+
+					assertUserProblem(t, response, target, http.StatusBadRequest)
+				})
+			}
+		})
+	}
+}
+
+func TestUpdateUserServiceErrors(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		err        error
+		wantStatus int
+	}{
+		{name: "not found", err: domain.ErrEntityNotFound, wantStatus: http.StatusNotFound},
+		{name: "invalid email", err: domain.ErrInvalidEmail, wantStatus: http.StatusBadRequest},
+		{name: "weak password", err: domain.ErrPasswordWeak, wantStatus: http.StatusBadRequest},
+		{name: "duplicate email", err: domain.ErrUserAlreadyExists, wantStatus: http.StatusConflict},
+		{
+			name: "wrapped not found", err: fmt.Errorf("update user: %w", domain.ErrEntityNotFound),
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "wrapped duplicate email", err: fmt.Errorf("update user: %w", domain.ErrUserAlreadyExists),
+			wantStatus: http.StatusConflict,
+		},
+		{
+			name: "unexpected failure", err: errors.New("private database failure"),
+			wantStatus: http.StatusInternalServerError,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			expectUserAuthentication(service, "update")
+			email, password := "Alice@Example.com", userTestPassword
+			service.EXPECT().UpdateUser(gomock.Any(), userTestUUID, &domain.UpdateUserData{
+				Email: &email, Password: &password,
+			}).Return(test.err)
+			target := "/api/v1/users/" + userTestUUID
+
+			response := performUserRequest(t, server, http.MethodPut, target, userTestToken, userCreateBody)
+
+			assertUserProblem(t, response, target, test.wantStatus)
+		})
+	}
+}
+
+func TestDeleteUserReturnsEmptyResponse(t *testing.T) {
+	server, service := newUserTestServer(t)
+	expectUserAuthentication(service, "delete")
+	service.EXPECT().DeleteUser(gomock.Any(), userTestUUID).Return(nil)
+	target := "/api/v1/users/" + userTestUUID
+
+	response := performUserRequest(t, server, http.MethodDelete, target, userTestToken, "")
+
+	require.Equal(t, http.StatusOK, response.Code, "response body: %s", response.Body.String())
+	assert.Empty(t, response.Body.String())
+}
+
+func TestDeleteUserServiceErrors(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		err        error
+		wantStatus int
+	}{
+		{name: "not found", err: domain.ErrEntityNotFound, wantStatus: http.StatusNotFound},
+		{
+			name: "wrapped not found", err: fmt.Errorf("delete user: %w", domain.ErrEntityNotFound),
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "unexpected failure", err: errors.New("private database failure"),
+			wantStatus: http.StatusInternalServerError,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, service := newUserTestServer(t)
+			expectUserAuthentication(service, "delete")
+			service.EXPECT().DeleteUser(gomock.Any(), userTestUUID).Return(test.err)
+			target := "/api/v1/users/" + userTestUUID
+
+			response := performUserRequest(t, server, http.MethodDelete, target, userTestToken, "")
+
+			assertUserProblem(t, response, target, test.wantStatus)
+		})
+	}
+}
+
+func TestUserAuthorization(t *testing.T) {
 	for _, endpoint := range []struct {
 		name        string
+		method      string
 		target      string
+		body        string
 		otherAction string
 	}{
-		{name: "list", target: "/api/v1/users", otherAction: "read_others"},
-		{name: "lookup", target: "/api/v1/users/" + userReadUUID, otherAction: "list"},
+		{name: "list", method: http.MethodGet, target: "/api/v1/users", otherAction: "read_others"},
+		{name: "lookup", method: http.MethodGet, target: "/api/v1/users/" + userTestUUID, otherAction: "list"},
+		{
+			name: "create", method: http.MethodPost, target: "/api/v1/users",
+			body: userCreateBody, otherAction: "list",
+		},
+		{
+			name: "update", method: http.MethodPut, target: "/api/v1/users/" + userTestUUID,
+			body: userCreateBody, otherAction: "list",
+		},
+		{name: "delete", method: http.MethodDelete, target: "/api/v1/users/" + userTestUUID, otherAction: "list"},
 	} {
 		t.Run(endpoint.name, func(t *testing.T) {
 			for _, test := range []struct {
@@ -226,50 +503,58 @@ func TestUserReadAuthorization(t *testing.T) {
 			}{
 				{name: "missing credentials", wantStatus: http.StatusUnauthorized},
 				{
-					name: "invalid token", token: userReadToken, wantStatus: http.StatusUnauthorized,
+					name: "invalid token", token: userTestToken, wantStatus: http.StatusUnauthorized,
 					setup: func(service *mocks.MockserviceAccessor) {
-						service.EXPECT().ValidateJWTToken(gomock.Any(), userReadToken, domain.JWTTokenPurposeAccess).
+						service.EXPECT().ValidateJWTToken(gomock.Any(), userTestToken, domain.JWTTokenPurposeAccess).
 							Return(nil, domain.ErrInvalidToken)
 					},
 				},
 				{
-					name: "missing permission", token: userReadToken, wantStatus: http.StatusForbidden,
+					name: "missing permission", token: userTestToken, wantStatus: http.StatusForbidden,
 					setup: func(service *mocks.MockserviceAccessor) {
-						expectUserReadAuthentication(service, "")
+						expectUserAuthentication(service, "")
 					},
 				},
 				{
-					name: "other endpoint permission", token: userReadToken, wantStatus: http.StatusForbidden,
+					name: "other endpoint permission", token: userTestToken, wantStatus: http.StatusForbidden,
 					setup: func(service *mocks.MockserviceAccessor) {
-						expectUserReadAuthentication(service, endpoint.otherAction)
+						expectUserAuthentication(service, endpoint.otherAction)
 					},
 				},
 			} {
 				t.Run(test.name, func(t *testing.T) {
-					server, service := newUserReadTestServer(t)
+					server, service := newUserTestServer(t)
 					if test.setup != nil {
 						test.setup(service)
 					}
 
-					response := performUserReadRequest(t, server, endpoint.target, test.token)
+					response := performUserRequest(
+						t,
+						server,
+						endpoint.method,
+						endpoint.target,
+						test.token,
+						endpoint.body,
+					)
 
-					assertUserReadProblem(t, response, endpoint.target, test.wantStatus)
+					assertUserProblem(t, response, endpoint.target, test.wantStatus)
 				})
 			}
 		})
 	}
 }
 
-func newUserReadTestServer(t *testing.T) (*echo.Echo, *mocks.MockserviceAccessor) {
+func newUserTestServer(t *testing.T) (*echo.Echo, *mocks.MockserviceAccessor) {
 	t.Helper()
 	service := mocks.NewMockserviceAccessor(gomock.NewController(t))
 	server := echo.New()
+	server.Validator = httpAPI.NewValidator()
 	server.HTTPErrorHandler = httpAPI.NewErrorHandler(nil)
 	adapter.New(service).Register(server.Group("/api/v1"))
 	return server, service
 }
 
-func expectUserReadAuthentication(service *mocks.MockserviceAccessor, action string) {
+func expectUserAuthentication(service *mocks.MockserviceAccessor, action string) {
 	user := &models.User{
 		ID:     101,
 		UUID:   uuid.MustParse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
@@ -280,14 +565,17 @@ func expectUserReadAuthentication(service *mocks.MockserviceAccessor, action str
 			Permissions: []models.Permission{{Resource: "users", Action: action}},
 		}}
 	}
-	service.EXPECT().ValidateJWTToken(gomock.Any(), userReadToken, domain.JWTTokenPurposeAccess).
+	service.EXPECT().ValidateJWTToken(gomock.Any(), userTestToken, domain.JWTTokenPurposeAccess).
 		Return(claimsFor(user), nil)
 	service.EXPECT().GetUserByUUID(gomock.Any(), user.UUID.String()).Return(user, nil)
 }
 
-func performUserReadRequest(t *testing.T, server http.Handler, target, token string) *httptest.ResponseRecorder {
+func performUserRequest(
+	t *testing.T, server http.Handler, method, target, token, body string,
+) *httptest.ResponseRecorder {
 	t.Helper()
-	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, nil)
+	request := httptest.NewRequestWithContext(t.Context(), method, target, strings.NewReader(body))
+	request.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	if token != "" {
 		request.Header.Set(echo.HeaderAuthorization, "Bearer "+token)
 	}
@@ -296,19 +584,23 @@ func performUserReadRequest(t *testing.T, server http.Handler, target, token str
 	return response
 }
 
-func assertUserReadProblem(t *testing.T, response *httptest.ResponseRecorder, target string, status int) {
+func assertUserProblem(
+	t *testing.T, response *httptest.ResponseRecorder, target string, status int, validationErrors ...string,
+) {
 	t.Helper()
 	require.Equal(t, status, response.Code, "response body: %s", response.Body.String())
 	assert.Equal(t, httpAPI.MIMEApplicationProblemJSON, response.Header().Get(echo.HeaderContentType))
-	assert.JSONEq(t, fmt.Sprintf(
-		`{"type":%q,"title":%q,"status":%d}`, target, http.StatusText(status), status,
-	), response.Body.String())
+	want := fmt.Sprintf(`{"type":%q,"title":%q,"status":%d`, target, http.StatusText(status), status)
+	if len(validationErrors) > 0 {
+		want += `,"errors":[` + strings.Join(validationErrors, ",") + `]`
+	}
+	assert.JSONEq(t, want+`}`, response.Body.String())
 }
 
-func userReadFixture() *models.User {
+func userFixture() *models.User {
 	return &models.User{
 		ID:        202,
-		UUID:      uuid.MustParse(userReadUUID),
+		UUID:      uuid.MustParse(userTestUUID),
 		Email:     "alice@example.com",
 		Password:  sql.Null[string]{V: "private-password-hash", Valid: true},
 		Status:    domain.UserStatusActive,
