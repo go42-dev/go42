@@ -1,12 +1,15 @@
 package workers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -17,6 +20,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/go42-dev/go42/internal/events"
+	"github.com/go42-dev/go42/internal/metrics"
 	"github.com/go42-dev/go42/internal/outbox/domain"
 	"github.com/go42-dev/go42/internal/outbox/models"
 	"github.com/go42-dev/go42/internal/outbox/workers/mocks"
@@ -171,6 +175,288 @@ func TestOutboxPublisherReturnsRepositoryReadError(t *testing.T) {
 	err := worker.run(t.Context(), 10)
 	if !errors.Is(err, wantErr) {
 		t.Errorf("run() error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestOutboxPublisherRunsOneBatchPerTick(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		ctrl := gomock.NewController(t)
+		repository := mocks.NewMockrepository(ctrl)
+		publisher := mocks.NewMockpublisher(ctrl)
+		worker := NewOutboxMessagePublisher(repository, publisher)
+		first, second := newOutboxTestMessage(), newOutboxTestMessage()
+		repository.EXPECT().WithTransaction(ctx, gomock.Any()).
+			DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) }).Times(3)
+		gomock.InOrder(
+			repository.EXPECT().GetUnprocessedMessages(ctx, 1).Return([]models.Message{first}, nil),
+			publisher.EXPECT().Publish(gomock.Any(), first.Topic, gomock.Any()).Return(nil),
+			repository.EXPECT().SaveProcessedMessages(ctx, []models.Message{first}).Return(nil),
+			repository.EXPECT().GetUnprocessedMessages(ctx, 1).Return([]models.Message{second}, nil),
+			publisher.EXPECT().Publish(gomock.Any(), second.Topic, gomock.Any()).Return(nil),
+			repository.EXPECT().SaveProcessedMessages(ctx, []models.Message{second}).Return(nil),
+			repository.EXPECT().GetUnprocessedMessages(ctx, 1).Return(nil, nil),
+		)
+		successes := metrics.Counter("application_outbox_worker_runs_total", map[string]any{"result": "success"})
+		failures := metrics.Counter("application_outbox_worker_runs_total", map[string]any{"result": "error"})
+		successesBefore, failuresBefore := successes.Get(), failures.Get()
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			worker.Run(ctx, time.Hour, 1)
+		}()
+		synctest.Wait()
+		for completed := range uint64(3) {
+			time.Sleep(time.Hour - time.Nanosecond)
+			synctest.Wait()
+			assert.Equal(t, completed, successes.Get()-successesBefore)
+			time.Sleep(time.Nanosecond)
+			synctest.Wait()
+			assert.Equal(t, completed+1, successes.Get()-successesBefore)
+		}
+		cancel()
+		synctest.Wait()
+		<-done
+		assert.Equal(t, failuresBefore, failures.Get())
+	})
+}
+
+func TestOutboxPublisherRetriesFailedRunsAtNextInterval(t *testing.T) {
+	for _, stage := range []string{
+		"begin transaction", "commit transaction", "read messages", "save processed messages", "save failed messages",
+	} {
+		t.Run(stage, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				ctrl := gomock.NewController(t)
+				repository := mocks.NewMockrepository(ctrl)
+				publisher := mocks.NewMockpublisher(ctrl)
+				var output bytes.Buffer
+				worker := NewOutboxMessagePublisher(repository, publisher, OutboxMessagePublisherWithLogger(
+					slog.New(slog.NewJSONHandler(&output, nil)),
+				))
+				message := newOutboxTestMessage()
+				storageError := errors.New("storage unavailable")
+				firstTransaction := repository.EXPECT().WithTransaction(ctx, gomock.Any())
+				if stage == "begin transaction" {
+					firstTransaction.Return(storageError)
+				} else {
+					firstTransaction.DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error {
+						err := fn(ctx)
+						if stage == "commit transaction" {
+							assert.NoError(t, err)
+							return storageError
+						}
+						assert.ErrorIs(t, err, storageError)
+						return err
+					})
+					switch stage {
+					case "read messages":
+						repository.EXPECT().GetUnprocessedMessages(ctx, 10).Return(nil, storageError)
+					case "commit transaction", "save processed messages":
+						repository.EXPECT().GetUnprocessedMessages(ctx, 10).Return([]models.Message{message}, nil)
+						publisher.EXPECT().Publish(gomock.Any(), message.Topic, gomock.Any()).Return(nil)
+						var saveError error
+						if stage == "save processed messages" {
+							saveError = storageError
+						}
+						repository.EXPECT().SaveProcessedMessages(ctx, []models.Message{message}).Return(saveError)
+					case "save failed messages":
+						brokerError := errors.New("broker unavailable")
+						repository.EXPECT().GetUnprocessedMessages(ctx, 10).Return([]models.Message{message}, nil)
+						publisher.EXPECT().Publish(gomock.Any(), message.Topic, gomock.Any()).Return(brokerError)
+						failed := message
+						failed.RetryCount++
+						failed.LastError = brokerError.Error()
+						repository.EXPECT().SaveFailedMessages(ctx, []models.Message{failed}).Return(storageError)
+					}
+				}
+				repository.EXPECT().WithTransaction(ctx, gomock.Any()).After(firstTransaction).
+					DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) })
+				repository.EXPECT().GetUnprocessedMessages(ctx, 10).Return([]models.Message{message}, nil)
+				publisher.EXPECT().Publish(gomock.Any(), message.Topic, gomock.Any()).Return(nil)
+				repository.EXPECT().SaveProcessedMessages(ctx, []models.Message{message}).Return(nil)
+				successes := metrics.Counter(
+					"application_outbox_worker_runs_total",
+					map[string]any{"result": "success"},
+				)
+				failures := metrics.Counter("application_outbox_worker_runs_total", map[string]any{"result": "error"})
+				applicationErrors := metrics.Counter(
+					"application_errors",
+					map[string]any{"type": "outbox_publisher_error"},
+				)
+				successesBefore, failuresBefore, errorsBefore := successes.Get(), failures.Get(), applicationErrors.Get()
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					worker.Run(ctx, time.Hour, 10)
+				}()
+				synctest.Wait()
+				time.Sleep(time.Hour)
+				synctest.Wait()
+				assert.Equal(t, uint64(1), failures.Get()-failuresBefore)
+				assert.Equal(t, successesBefore, successes.Get())
+				assert.Contains(t, output.String(), storageError.Error())
+				wantErrors := uint64(1)
+				if stage == "save failed messages" {
+					wantErrors++ // The broker failure and persistence failure are reported separately.
+				}
+				assert.Equal(t, wantErrors, applicationErrors.Get()-errorsBefore)
+				time.Sleep(time.Hour - time.Nanosecond)
+				synctest.Wait()
+				assert.Equal(t, successesBefore, successes.Get())
+				assert.Equal(t, uint64(1), failures.Get()-failuresBefore)
+				time.Sleep(time.Nanosecond)
+				synctest.Wait()
+				assert.Equal(t, uint64(1), successes.Get()-successesBefore)
+				assert.Equal(t, uint64(1), failures.Get()-failuresBefore)
+				assert.Equal(t, wantErrors, applicationErrors.Get()-errorsBefore)
+				cancel()
+				synctest.Wait()
+				<-done
+			})
+		})
+	}
+}
+
+func TestOutboxPublisherPreservesTransactionErrors(t *testing.T) {
+	for _, stage := range []string{"begin", "commit"} {
+		t.Run(stage, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			repository := mocks.NewMockrepository(ctrl)
+			worker := NewOutboxMessagePublisher(repository, mocks.NewMockpublisher(ctrl))
+			wantErr := errors.New("transaction unavailable")
+			repository.EXPECT().WithTransaction(t.Context(), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error {
+					if stage == "commit" {
+						assert.NoError(t, fn(ctx))
+					}
+					return wantErr
+				})
+			if stage == "commit" {
+				repository.EXPECT().GetUnprocessedMessages(t.Context(), 10).Return(nil, nil)
+			}
+
+			err := worker.run(t.Context(), 10)
+
+			require.ErrorIs(t, err, wantErr)
+		})
+	}
+}
+
+func TestOutboxPublisherStopsWhileIdle(t *testing.T) {
+	for _, cancelBeforeRun := range []bool{true, false} {
+		name := "waiting for first tick"
+		if cancelBeforeRun {
+			name = "before start"
+		}
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				ctrl := gomock.NewController(t)
+				worker := NewOutboxMessagePublisher(mocks.NewMockrepository(ctrl), mocks.NewMockpublisher(ctrl))
+				successes := metrics.Counter(
+					"application_outbox_worker_runs_total",
+					map[string]any{"result": "success"},
+				)
+				failures := metrics.Counter("application_outbox_worker_runs_total", map[string]any{"result": "error"})
+				successesBefore, failuresBefore := successes.Get(), failures.Get()
+				if cancelBeforeRun {
+					cancel()
+				}
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					worker.Run(ctx, time.Hour, 10)
+				}()
+				synctest.Wait()
+				cancel()
+				synctest.Wait()
+				<-done
+				time.Sleep(time.Hour)
+				synctest.Wait()
+				assert.Equal(t, successesBefore, successes.Get())
+				assert.Equal(t, failuresBefore, failures.Get())
+			})
+		})
+	}
+}
+
+func TestOutboxPublisherCancelsActivePublishWithoutConsumingRetry(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		wantErr error
+	}{
+		{name: "shutdown", wantErr: context.Canceled},
+		{name: "deadline", wantErr: context.DeadlineExceeded},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(t.Context(), time.Hour+time.Minute)
+				defer cancel()
+				ctrl := gomock.NewController(t)
+				repository := mocks.NewMockrepository(ctrl)
+				publisher := mocks.NewMockpublisher(ctrl)
+				worker := NewOutboxMessagePublisher(
+					repository,
+					publisher,
+					OutboxMessagePublisherWithPublishTimeout(time.Hour),
+				)
+				first, second := newOutboxTestMessage(), newOutboxTestMessage()
+				repository.EXPECT().WithTransaction(ctx, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error {
+						err := fn(ctx)
+						assert.ErrorIs(t, err, test.wantErr)
+						return err
+					})
+				repository.EXPECT().GetUnprocessedMessages(ctx, 10).Return([]models.Message{first, second}, nil)
+				publishing := make(chan context.Context, 1)
+				publisher.EXPECT().Publish(gomock.Any(), first.Topic, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, _ string, _ []byte) error {
+						publishing <- ctx
+						<-ctx.Done()
+						return ctx.Err()
+					})
+				successes := metrics.Counter(
+					"application_outbox_worker_runs_total",
+					map[string]any{"result": "success"},
+				)
+				failures := metrics.Counter("application_outbox_worker_runs_total", map[string]any{"result": "error"})
+				retries := metrics.Counter("application_outbox_messages_total", map[string]any{"result": "retry"})
+				applicationErrors := metrics.Counter(
+					"application_errors",
+					map[string]any{"type": "outbox_publisher_error"},
+				)
+				successesBefore, failuresBefore := successes.Get(), failures.Get()
+				retriesBefore, errorsBefore := retries.Get(), applicationErrors.Get()
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					worker.Run(ctx, time.Hour, 10)
+				}()
+				synctest.Wait()
+				time.Sleep(time.Hour)
+				synctest.Wait()
+				require.Len(t, publishing, 1)
+				publishCtx := <-publishing
+				require.NoError(t, publishCtx.Err())
+				if test.name == "shutdown" {
+					cancel()
+				} else {
+					time.Sleep(time.Minute)
+				}
+				synctest.Wait()
+				<-done
+				assert.ErrorIs(t, publishCtx.Err(), test.wantErr)
+				assert.Equal(t, successesBefore, successes.Get())
+				assert.Equal(t, uint64(1), failures.Get()-failuresBefore)
+				assert.Equal(t, uint64(1), applicationErrors.Get()-errorsBefore)
+				assert.Equal(t, retriesBefore, retries.Get())
+			})
+		})
 	}
 }
 
