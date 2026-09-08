@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -287,4 +288,221 @@ func TestOutboxMigrationIsReversibleAndIdempotent(t *testing.T) {
 		assert.Equal(t, up, db.Master().WithContext(t.Context()).Migrator().
 			HasIndex(&models.Message{}, "transactional_outbox_cleanup"))
 	}
+}
+
+func TestGetUnprocessedMessagesFiltersAndLimits(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		statuses []string
+		limit    int
+		want     int
+	}{
+		{name: "mixed statuses", statuses: []string{"pending", "processed", "failed", "pending"}, limit: 10, want: 2},
+		{name: "limited batch", statuses: []string{"pending", "processed", "failed", "pending"}, limit: 1, want: 1},
+		{name: "no pending messages", statuses: []string{"processed", "failed"}, limit: 10},
+		{name: "empty table", limit: 10},
+		{name: "zero limit", statuses: []string{"pending"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db, repo, _ := newOutboxRepository(t)
+			before := insertOutboxPersistenceMessages(t, db, repo, test.statuses...)
+			pending := make(map[uuid.UUID]models.Message)
+			for _, entry := range before {
+				if entry.Status == models.MessageStatusPending {
+					pending[entry.ID] = entry
+				}
+			}
+			got, err := repo.GetUnprocessedMessages(t.Context(), test.limit)
+			require.NoError(t, err)
+			require.Len(t, got, test.want)
+			for _, entry := range got {
+				expected, exists := pending[entry.ID]
+				require.True(t, exists, "unexpected or repeated message %s", entry.ID)
+				assert.Equal(t, expected, entry)
+				delete(pending, entry.ID)
+			}
+			assert.ElementsMatch(t, before, storedOutboxMessages(t, db), "selecting a batch must not change its state")
+		})
+	}
+}
+
+func TestSaveProcessedMessagesUpdatesSelectedRows(t *testing.T) {
+	for _, unusualIDs := range []bool{false, true} {
+		name := "selected rows"
+		if unusualIDs {
+			name = "missing and repeated IDs"
+		}
+		t.Run(name, func(t *testing.T) {
+			db, repo, _ := newOutboxRepository(t)
+			before := insertOutboxPersistenceMessages(t, db, repo, "pending", "pending", "failed")
+			selected := []models.Message{before[0], before[2]}
+			if unusualIDs {
+				selected = append(selected, before[0], models.Message{ID: uuid.New()})
+			}
+			started := time.Now().UTC().Truncate(time.Second)
+			require.NoError(t, repo.SaveProcessedMessages(t.Context(), selected))
+			finished := time.Now().UTC()
+			stored := storedOutboxMessages(t, db)
+			require.Len(t, stored, len(before))
+			var processedAt time.Time
+			for _, entry := range stored {
+				index := slices.IndexFunc(
+					before,
+					func(candidate models.Message) bool { return candidate.ID == entry.ID },
+				)
+				require.NotEqual(t, -1, index)
+				expected := before[index]
+				if index != 1 {
+					require.True(t, entry.ProcessedAt.Valid)
+					assert.WithinRange(t, entry.ProcessedAt.Time, started, finished)
+					if processedAt.IsZero() {
+						processedAt = entry.ProcessedAt.Time
+					} else {
+						assert.True(
+							t,
+							processedAt.Equal(entry.ProcessedAt.Time),
+							"a batch must share its processing time",
+						)
+					}
+					expected.Status = models.MessageStatusProcessed
+					expected.ProcessedAt = entry.ProcessedAt
+				}
+				assert.Equal(t, expected, entry, "processing must preserve payload, metadata, and retry history")
+			}
+		})
+	}
+}
+
+func TestOutboxEmptyBatchesPreserveRows(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		processed bool
+		messages  []models.Message
+	}{
+		{name: "processed nil", processed: true},
+		{name: "processed empty", processed: true, messages: []models.Message{}},
+		{name: "failed nil"},
+		{name: "failed empty", messages: []models.Message{}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db, repo, _ := newOutboxRepository(t)
+			before := insertOutboxPersistenceMessages(t, db, repo, "pending", "processed", "failed")
+			if test.processed {
+				require.NoError(t, repo.SaveProcessedMessages(t.Context(), test.messages))
+			} else {
+				require.NoError(t, repo.SaveFailedMessages(t.Context(), test.messages))
+			}
+			assert.ElementsMatch(t, before, storedOutboxMessages(t, db))
+		})
+	}
+}
+
+func TestSaveFailedMessagesPersistsRetryState(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		status  string
+		retries int
+		err     string
+	}{
+		{name: "retryable", status: models.MessageStatusPending, retries: 2, err: "broker unavailable"},
+		{name: "exhausted", status: models.MessageStatusFailed, retries: domain.MaxRetries, err: "retries exhausted"},
+		{name: "cleared retry history", status: models.MessageStatusPending},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db, repo, _ := newOutboxRepository(t)
+			before := insertOutboxPersistenceMessages(t, db, repo, "pending", "pending")
+			updated := before[0]
+			updated.Status, updated.RetryCount, updated.LastError = test.status, test.retries, test.err
+			require.NoError(t, repo.SaveFailedMessages(t.Context(), []models.Message{updated}))
+			assert.ElementsMatch(t, []models.Message{updated, before[1]}, storedOutboxMessages(t, db))
+		})
+	}
+}
+
+func TestOutboxRepositoryCancellationPreservesRows(t *testing.T) {
+	for _, operation := range []string{"insert", "select", "processed", "failed"} {
+		t.Run(operation, func(t *testing.T) {
+			db, repo, _ := newOutboxRepository(t)
+			before := insertOutboxPersistenceMessages(t, db, repo, "pending", "failed")
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			var err error
+			switch operation {
+			case "insert":
+				entry := newOutboxTestMessage()
+				err = repo.NewOutboxMessage(ctx, &entry)
+			case "select":
+				var messages []models.Message
+				messages, err = repo.GetUnprocessedMessages(ctx, 10)
+				assert.Nil(t, messages)
+			case "processed":
+				err = repo.SaveProcessedMessages(ctx, before[:1])
+			case "failed":
+				updated := before[0]
+				updated.Status, updated.RetryCount, updated.LastError = models.MessageStatusFailed, 3, "new error"
+				err = repo.SaveFailedMessages(ctx, []models.Message{updated})
+			}
+			require.ErrorIs(t, err, context.Canceled)
+			assert.ElementsMatch(t, before, storedOutboxMessages(t, db))
+		})
+	}
+}
+
+func TestOutboxBatchFailureRollsBackProcessedAndRetriedMessages(t *testing.T) {
+	db, repo, _ := newOutboxRepository(t)
+	before := insertOutboxPersistenceMessages(t, db, repo, "pending", "pending", "pending")
+	successfulUpdates := 0
+	callback := db.Master().Callback().Update()
+	const name = "test:observe_outbox_updates"
+	require.NoError(t, callback.After("gorm:update").Register(name, func(tx *gorm.DB) {
+		if tx.Statement.Table == "transactional_outbox" && tx.Error == nil {
+			successfulUpdates++
+		}
+	}))
+	t.Cleanup(func() { require.NoError(t, callback.Remove(name)) })
+	err := repo.WithTransaction(t.Context(), func(ctx context.Context) error {
+		if err := repo.SaveProcessedMessages(ctx, before[:1]); err != nil {
+			return err
+		}
+		retried := before[1]
+		retried.RetryCount++
+		retried.LastError = "retry after broker failure"
+		invalid := before[2]
+		invalid.Status = "invalid status"
+		return repo.SaveFailedMessages(ctx, []models.Message{retried, invalid})
+	})
+	require.ErrorContains(t, err, before[2].ID.String())
+	assert.ErrorContains(t, errors.Unwrap(err), "status")
+	assert.Equal(t, 2, successfulUpdates, "processing and the first retry must succeed before the failing write")
+	assert.ElementsMatch(t, before, storedOutboxMessages(t, db), "the transaction must roll back both earlier updates")
+}
+
+func insertOutboxPersistenceMessages(
+	t *testing.T, db database.Database, repo *repository.Repository, statuses ...string,
+) []models.Message {
+	t.Helper()
+	messages := make([]models.Message, len(statuses))
+	for index, status := range statuses {
+		entry := newOutboxTestMessage()
+		entry.Status = status
+		entry.AggregateID += index
+		entry.Payload = []byte(fmt.Sprintf(`{"index":%d}`, index))
+		entry.CreatedAt = entry.CreatedAt.UTC().Truncate(time.Second)
+		entry.RetryCount = 1
+		entry.LastError = "previous failure"
+		entry.Metadata = map[string]string{"request_id": entry.ID.String()}
+		if status == models.MessageStatusProcessed {
+			entry.ProcessedAt = sql.NullTime{Time: entry.CreatedAt.Add(time.Second), Valid: true}
+		}
+		require.NoError(t, repo.NewOutboxMessage(t.Context(), &entry))
+		require.NoError(t, db.Master().WithContext(t.Context()).First(&messages[index], "id = ?", entry.ID).Error)
+	}
+	return messages
+}
+
+func storedOutboxMessages(t *testing.T, db database.Database) []models.Message {
+	t.Helper()
+	var messages []models.Message
+	require.NoError(t, db.Master().WithContext(t.Context()).Find(&messages).Error)
+	return messages
 }

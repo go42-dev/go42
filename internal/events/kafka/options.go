@@ -71,6 +71,26 @@ func WithProducerRetryBackoff(backoff time.Duration) Option {
 	}
 }
 
+// WithProducerTimeout limits how long the broker waits for acknowledgements.
+// Network I/O, metadata lookups and retries have separate limits.
+func WithProducerTimeout(timeout time.Duration) Option {
+	return func(_ *Kafka, pubCfg *sarama.Config, _ *sarama.Config) {
+		pubCfg.Producer.Timeout = timeout
+	}
+}
+
+func WithProducerMetadataTimeout(timeout time.Duration) Option {
+	return func(_ *Kafka, pubCfg *sarama.Config, _ *sarama.Config) {
+		pubCfg.Metadata.Timeout = timeout
+	}
+}
+
+func WithProducerRetryMax(maxRetries int) Option {
+	return func(_ *Kafka, pubCfg *sarama.Config, _ *sarama.Config) {
+		pubCfg.Producer.Retry.Max = maxRetries
+	}
+}
+
 func WithProducerMaxMessageBytes(bytes int) Option {
 	return func(k *Kafka, pubCfg *sarama.Config, subCfg *sarama.Config) {
 		pubCfg.Producer.MaxMessageBytes = bytes

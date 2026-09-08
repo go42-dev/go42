@@ -284,10 +284,14 @@ func TestConcurrentSubscriberRetriesKeepTheirOwnFields(t *testing.T) {
 func newContextTestRouter(t *testing.T, logger *slog.Logger) (*events.Router, *gochan.GoChan, context.Context) {
 	t.Helper()
 	backend := gochan.New()
-	router, err := events.NewRouter(backend, events.DeliveryPolicy{
-		MaxRetries: 2, InitialBackoff: time.Millisecond, MaxBackoff: 2 * time.Millisecond,
-		DeadLetterTopicSuffix: routerDLQSuffix, CloseTimeout: time.Second,
-	}, events.WithLogger(logger))
+	router, err := events.NewRouter(backend,
+		events.WithMaxRetries(2),
+		events.WithInitialBackoff(time.Millisecond),
+		events.WithMaxBackoff(2*time.Millisecond),
+		events.WithDeadLetterTopicSuffix(routerDLQSuffix),
+		events.WithCloseTimeout(time.Second),
+		events.WithLogger(logger),
+	)
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(t.Context())
 	registerRouterCleanup(t, router, cancel)

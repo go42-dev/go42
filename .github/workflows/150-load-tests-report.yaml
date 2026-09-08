@@ -53,7 +53,12 @@ jobs:
               const [_, protocol, database] = match;
               const results = JSON.parse(fs.readFileSync(file, 'utf8'));
 
-              allResults.push({ protocol, database, results });
+              // The legacy summary export marks failed thresholds with true.
+              const failedThresholds = Object.entries(results.metrics).flatMap(([metric, data]) =>
+                Object.entries(data.thresholds || {})
+                  .filter(([, failed]) => failed)
+                  .map(([expression]) => `${metric}: ${expression}`));
+              allResults.push({ protocol, database, results, failedThresholds });
             }
 
             // Sort results for consistent output
@@ -66,42 +71,41 @@ jobs:
             let summary = '# 🚀 Load Test Results Summary\n\n';
 
             // Create a summary table
-            summary += '| Protocol | Database | VUs Max | Total Requests | Avg Response | P95 Response | Success Rate |\n';
-            summary += '|----------|----------|---------|----------------|--------------|--------------|-------------|\n';
+            summary += '| Protocol | Database | Result | VUs Max | Total Requests | Avg Response | P95 Response | Success Rate |\n';
+            summary += '|----------|----------|--------|---------|----------------|--------------|--------------|-------------|\n';
 
-            for (const { protocol, database, results } of allResults) {
+            for (const { protocol, database, results, failedThresholds } of allResults) {
+              const outcome = failedThresholds.length > 0 ? 'FAIL' : 'PASS';
               if (protocol === 'http') {
                 const vusMax = results.metrics.vus_max?.value || 'N/A';
                 const httpReqsCount = results.metrics.http_reqs?.count || 0;
                 const httpReqsRate = results.metrics.http_reqs?.rate || 0;
                 const httpReqDurationAvg = results.metrics.http_req_duration?.avg || 0;
                 const httpReqDurationP95 = results.metrics.http_req_duration?.['p(95)'] || 0;
-                const checksPasses = results.metrics.checks?.passes || 0;
-                const checksFails = results.metrics.checks?.fails || 0;
-                const totalChecks = checksPasses + checksFails;
-                const successRate = totalChecks > 0 ? (checksPasses / totalChecks * 100) : 0;
+                const successRate = (results.metrics.success_rate?.value || 0) * 100;
 
-                summary += `| HTTP | ${database} | ${vusMax} | ${httpReqsCount} (${httpReqsRate.toFixed(2)}/s) | ${httpReqDurationAvg.toFixed(2)}ms | ${httpReqDurationP95.toFixed(2)}ms | ${successRate.toFixed(2)}% |\n`;
+                summary += `| HTTP | ${database} | ${outcome} | ${vusMax} | ${httpReqsCount} (${httpReqsRate.toFixed(2)}/s) | ${httpReqDurationAvg.toFixed(2)}ms | ${httpReqDurationP95.toFixed(2)}ms | ${successRate.toFixed(2)}% |\n`;
               } else if (protocol === 'grpc') {
                 const vusMax = results.metrics.vus_max?.value || 'N/A';
-                const iterationsCount = results.metrics.iterations?.count || 0;
-                const iterationsRate = results.metrics.iterations?.rate || 0;
+                const grpcReqsCount = results.metrics.operations?.count || 0;
+                const grpcReqsRate = results.metrics.operations?.rate || 0;
                 const grpcReqDurationAvg = results.metrics.grpc_req_duration?.avg || 0;
                 const grpcReqDurationP95 = results.metrics.grpc_req_duration?.['p(95)'] || 0;
-                const checksPasses = results.metrics.checks?.passes || 0;
-                const checksFails = results.metrics.checks?.fails || 0;
-                const totalChecks = checksPasses + checksFails;
-                const successRate = totalChecks > 0 ? (checksPasses / totalChecks * 100) : 0;
+                const successRate = (results.metrics.success_rate?.value || 0) * 100;
 
-                summary += `| gRPC | ${database} | ${vusMax} | ${iterationsCount} (${iterationsRate.toFixed(2)}/s) | ${(grpcReqDurationAvg * 1000).toFixed(2)}ms | ${(grpcReqDurationP95 * 1000).toFixed(2)}ms | ${successRate.toFixed(2)}% |\n`;
+                summary += `| gRPC | ${database} | ${outcome} | ${vusMax} | ${grpcReqsCount} (${grpcReqsRate.toFixed(2)}/s) | ${grpcReqDurationAvg.toFixed(2)}ms | ${grpcReqDurationP95.toFixed(2)}ms | ${successRate.toFixed(2)}% |\n`;
               }
             }
 
             // Add detailed breakdowns
             summary += '\n## 📊 Detailed Results\n\n';
 
-            for (const { protocol, database, results } of allResults) {
+            for (const { protocol, database, results, failedThresholds } of allResults) {
               summary += `<details>\n<summary><b>${protocol.toUpperCase()} - ${database}</b></summary>\n\n`;
+              if (failedThresholds.length > 0) {
+                summary += 'Failed thresholds:\n\n';
+                summary += failedThresholds.map(threshold => `- \`${threshold}\``).join('\n') + '\n\n';
+              }
 
               if (protocol === 'http') {
                 const vusMax = results.metrics.vus_max?.value || 'N/A';
@@ -115,12 +119,10 @@ jobs:
                 const httpReqDurationMax = results.metrics.http_req_duration?.max || 0;
                 const httpReqDurationP90 = results.metrics.http_req_duration?.['p(90)'] || 0;
                 const httpReqDurationP95 = results.metrics.http_req_duration?.['p(95)'] || 0;
-                const httpReqFailedPasses = results.metrics.http_req_failed?.passes || 0;
-                const httpReqFailedValue = results.metrics.http_req_failed?.value || 0;
+                const requestFailures = results.metrics.success_rate?.fails || 0;
                 const checksPasses = results.metrics.checks?.passes || 0;
                 const checksFails = results.metrics.checks?.fails || 0;
-                const totalChecks = checksPasses + checksFails;
-                const successRate = totalChecks > 0 ? (checksPasses / totalChecks * 100) : 0;
+                const successRate = (results.metrics.success_rate?.value || 0) * 100;
 
                 summary += '| Metric | Value |\n';
                 summary += '|--------|-------|\n';
@@ -130,8 +132,9 @@ jobs:
                 summary += `| **Requests** | |\n`;
                 summary += `| Total | ${httpReqsCount} |\n`;
                 summary += `| Rate | ${httpReqsRate.toFixed(2)}/sec |\n`;
-                summary += `| Failed | ${httpReqFailedPasses} (${(httpReqFailedValue * 100).toFixed(2)}%) |\n`;
+                summary += `| Failed | ${requestFailures} |\n`;
                 summary += `| Success Rate | ${successRate.toFixed(2)}% |\n`;
+                summary += `| Connection Errors | ${results.metrics.connection_errors?.count || 0} |\n`;
                 summary += `| **Response Times** | |\n`;
                 summary += `| Min | ${httpReqDurationMin.toFixed(2)}ms |\n`;
                 summary += `| Median | ${httpReqDurationMed.toFixed(2)}ms |\n`;
@@ -146,18 +149,18 @@ jobs:
                 const vusMax = results.metrics.vus_max?.value || 'N/A';
                 const vusMin = results.metrics.vus?.min || 0;
                 const vusMaxRange = results.metrics.vus?.max || 0;
-                const iterationsCount = results.metrics.iterations?.count || 0;
-                const iterationsRate = results.metrics.iterations?.rate || 0;
+                const grpcReqsCount = results.metrics.operations?.count || 0;
+                const grpcReqsRate = results.metrics.operations?.rate || 0;
                 const grpcReqDurationAvg = results.metrics.grpc_req_duration?.avg || 0;
                 const grpcReqDurationMed = results.metrics.grpc_req_duration?.med || 0;
                 const grpcReqDurationMin = results.metrics.grpc_req_duration?.min || 0;
                 const grpcReqDurationMax = results.metrics.grpc_req_duration?.max || 0;
                 const grpcReqDurationP90 = results.metrics.grpc_req_duration?.['p(90)'] || 0;
                 const grpcReqDurationP95 = results.metrics.grpc_req_duration?.['p(95)'] || 0;
+                const requestFailures = results.metrics.success_rate?.fails || 0;
                 const checksPasses = results.metrics.checks?.passes || 0;
                 const checksFails = results.metrics.checks?.fails || 0;
-                const totalChecks = checksPasses + checksFails;
-                const successRate = totalChecks > 0 ? (checksPasses / totalChecks * 100) : 0;
+                const successRate = (results.metrics.success_rate?.value || 0) * 100;
 
                 summary += '| Metric | Value |\n';
                 summary += '|--------|-------|\n';
@@ -165,17 +168,18 @@ jobs:
                 summary += `| Maximum | ${vusMax} |\n`;
                 summary += `| Range | ${vusMin} - ${vusMaxRange} |\n`;
                 summary += `| **Requests** | |\n`;
-                summary += `| Total | ${iterationsCount} |\n`;
-                summary += `| Rate | ${iterationsRate.toFixed(2)}/sec |\n`;
-                summary += `| Failed | ${checksFails} (${totalChecks > 0 ? (checksFails / totalChecks * 100).toFixed(2) : 0}%) |\n`;
+                summary += `| Total | ${grpcReqsCount} |\n`;
+                summary += `| Rate | ${grpcReqsRate.toFixed(2)}/sec |\n`;
+                summary += `| Failed | ${requestFailures} |\n`;
                 summary += `| Success Rate | ${successRate.toFixed(2)}% |\n`;
+                summary += `| Connection Errors | ${results.metrics.connection_errors?.count || 0} |\n`;
                 summary += `| **Response Times** | |\n`;
-                summary += `| Min | ${(grpcReqDurationMin * 1000).toFixed(2)}ms |\n`;
-                summary += `| Median | ${(grpcReqDurationMed * 1000).toFixed(2)}ms |\n`;
-                summary += `| Average | ${(grpcReqDurationAvg * 1000).toFixed(2)}ms |\n`;
-                summary += `| P90 | ${(grpcReqDurationP90 * 1000).toFixed(2)}ms |\n`;
-                summary += `| P95 | ${(grpcReqDurationP95 * 1000).toFixed(2)}ms |\n`;
-                summary += `| Max | ${(grpcReqDurationMax * 1000).toFixed(2)}ms |\n`;
+                summary += `| Min | ${grpcReqDurationMin.toFixed(2)}ms |\n`;
+                summary += `| Median | ${grpcReqDurationMed.toFixed(2)}ms |\n`;
+                summary += `| Average | ${grpcReqDurationAvg.toFixed(2)}ms |\n`;
+                summary += `| P90 | ${grpcReqDurationP90.toFixed(2)}ms |\n`;
+                summary += `| P95 | ${grpcReqDurationP95.toFixed(2)}ms |\n`;
+                summary += `| Max | ${grpcReqDurationMax.toFixed(2)}ms |\n`;
                 summary += `| **Checks** | |\n`;
                 summary += `| Passed | ${checksPasses} |\n`;
                 summary += `| Failed | ${checksFails} |\n`;

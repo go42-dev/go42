@@ -20,61 +20,28 @@ import (
 	"github.com/go42-dev/go42/internal/tools"
 )
 
-type permanentError struct {
-	err error
-}
-
-func (e *permanentError) Error() string {
-	return e.err.Error()
-}
-
-func (e *permanentError) Unwrap() error {
-	return e.err
-}
-
-func Permanent(err error) error {
-	if err == nil {
-		return nil
-	}
-
-	var permanent *permanentError
-	if errors.As(err, &permanent) {
-		return err
-	}
-
-	return &permanentError{err: err}
-}
-
-// ---
-
 type Router struct {
-	backend         Backend
-	router          *message.Router
-	policy          DeliveryPolicy
-	logger          *slog.Logger
-	watermillLogger watermill.LoggerAdapter
-	handlerID       atomic.Uint64
-	shuttingDown    atomic.Bool
-	errors          chan error
+	backend               Backend
+	publisher             message.Publisher
+	router                *message.Router
+	maxRetries            int
+	initialBackoff        time.Duration
+	maxBackoff            time.Duration
+	deadLetterTopicSuffix string
+	closeTimeout          time.Duration
+	publishMaxInflight    int
+	logger                *slog.Logger
+	watermillLogger       watermill.LoggerAdapter
+	handlerID             atomic.Uint64
+	shuttingDown          atomic.Bool
+	errors                chan error
 }
 
-type DeliveryPolicy struct {
-	MaxRetries            int
-	InitialBackoff        time.Duration
-	MaxBackoff            time.Duration
-	DeadLetterTopicSuffix string
-	CloseTimeout          time.Duration
-}
-
-func NewRouter(backend Backend, policy DeliveryPolicy, opts ...Option) (*Router, error) {
-	if backend == nil {
-		return nil, errors.New("event backend is required")
-	}
-
+func NewRouter(backend Backend, opts ...Option) (*Router, error) {
 	r := &Router{
-		backend: backend,
-		policy:  policy,
-		errors:  make(chan error, 1),
+		backend:            backend,
+		publishMaxInflight: defaultPublishMaxInflight,
+		errors:             make(chan error, 1),
 	}
 	for _, opt := range opts {
 		opt(r)
@@ -85,7 +52,7 @@ func NewRouter(backend Backend, policy DeliveryPolicy, opts ...Option) (*Router,
 
 	watermillLogger := watermill.NewSlogLogger(r.logger)
 	watermillRouter, err := message.NewRouter(message.RouterConfig{
-		CloseTimeout: policy.CloseTimeout,
+		CloseTimeout: r.closeTimeout,
 	}, watermillLogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Watermill router: %w", err)
@@ -93,9 +60,88 @@ func NewRouter(backend Backend, policy DeliveryPolicy, opts ...Option) (*Router,
 
 	r.router = watermillRouter
 	r.watermillLogger = watermillLogger
+	r.publisher = newBoundedPublisher(backend.Publisher(), r.publishMaxInflight)
 
 	return r, nil
 }
+
+// Start initializes subscriptions and begins processing messages.
+// Call it once, after registering all handlers with Subscribe.
+// The caller must exit on error; failed startup does not roll back subscriptions.
+func (r *Router) Start(ctx context.Context) error {
+	runCtx, cancel := context.WithCancel(ctx)
+	runErr := make(chan error, 1)
+	go func() {
+		runErr <- r.router.Run(runCtx)
+	}()
+
+	if err := r.waitUntilReady(ctx, runErr); err != nil {
+		cancel()
+		close(r.errors)
+		return err
+	}
+
+	go r.monitor(ctx, runErr, cancel)
+
+	return nil
+}
+
+func (r *Router) waitUntilReady(ctx context.Context, runErr <-chan error) error {
+	select {
+	case <-r.router.Running():
+		return ctx.Err()
+	case err := <-runErr:
+		if err != nil {
+			return err
+		}
+		return errors.New("event router stopped during startup")
+	}
+}
+
+func (r *Router) monitor(ctx context.Context, runErr <-chan error, cancel context.CancelFunc) {
+	defer close(r.errors)
+	defer cancel()
+
+	err := <-runErr
+	if ctx.Err() != nil || r.shuttingDown.Load() {
+		return
+	}
+	if err == nil {
+		err = errors.New("event router stopped unexpectedly without error")
+	} else {
+		err = fmt.Errorf("event router stopped unexpectedly: %w", err)
+	}
+
+	r.errors <- err
+	metrics.Counter("application_event_router_stops_total", map[string]any{
+		"reason": "unexpected",
+	}).Inc()
+	r.logger.ErrorContext(ctx, "event router stopped", slog.Any("error", err))
+}
+
+// Errors reports at most one unexpected termination after Start succeeds.
+// It closes when the router stops; normal shutdown closes it without an error.
+func (r *Router) Errors() <-chan error {
+	return r.errors
+}
+
+func (r *Router) Shutdown(ctx context.Context) error {
+	r.shuttingDown.Store(true)
+	done := make(chan error, 1)
+	go func() {
+		routerErr := r.router.Close()
+		backendErr := r.backend.Shutdown(ctx)
+		done <- errors.Join(routerErr, backendErr)
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-done:
+		return err
+	}
+}
+
+// ---
 
 func (r *Router) Publish(ctx context.Context, topic string, event []byte) error {
 	ctx, span := otel.Tracer("events").Start(ctx, "publish "+topic,
@@ -106,10 +152,7 @@ func (r *Router) Publish(ctx context.Context, topic string, event []byte) error 
 
 	msg := message.NewMessageWithContext(ctx, watermill.NewUUID(), event)
 	msg.Metadata = PropagationFromContext(ctx)
-	err := ctx.Err()
-	if err == nil {
-		err = r.backend.Publisher().Publish(topic, msg)
-	}
+	err := r.publisher.Publish(topic, msg)
 
 	result := "success"
 
@@ -131,7 +174,7 @@ func (r *Router) Subscribe(
 	topic string,
 	handler func(ctx context.Context, event []byte) error,
 ) error {
-	deadLetterTopic := topic + r.policy.DeadLetterTopicSuffix
+	deadLetterTopic := topic + r.deadLetterTopicSuffix
 
 	if initializer, ok := r.backend.(TopicInitializer); ok {
 		if err := initializer.InitializeTopic(deadLetterTopic); err != nil {
@@ -145,7 +188,7 @@ func (r *Router) Subscribe(
 
 	poisonQueue, err := middleware.PoisonQueue(
 		&deadLetterPublisher{
-			publisher: r.backend.Publisher(),
+			publisher: r.publisher,
 			logger:    r.logger,
 		},
 		deadLetterTopic,
@@ -155,9 +198,9 @@ func (r *Router) Subscribe(
 	}
 
 	retry := middleware.Retry{
-		MaxRetries:          r.policy.MaxRetries,
-		InitialInterval:     r.policy.InitialBackoff,
-		MaxInterval:         r.policy.MaxBackoff,
+		MaxRetries:          r.maxRetries,
+		InitialInterval:     r.initialBackoff,
+		MaxInterval:         r.maxBackoff,
 		Multiplier:          2,
 		RandomizationFactor: 0.2,
 		ResetContextOnRetry: true,
@@ -214,64 +257,5 @@ func retryWithMetrics(topic string, retry middleware.Retry) message.HandlerMiddl
 			})
 			return retryHandler(msg)
 		}
-	}
-}
-
-func (r *Router) Start(ctx context.Context) error {
-	runErr := make(chan error, 1)
-	go func() {
-		runErr <- r.router.Run(ctx)
-	}()
-
-	select {
-	case <-r.router.Running():
-	case err := <-runErr:
-		close(r.errors)
-		if err == nil {
-			return errors.New("event router stopped during startup")
-		}
-		return fmt.Errorf("failed to start event router: %w", err)
-	}
-
-	go func() {
-		defer close(r.errors)
-		err := <-runErr
-		if ctx.Err() != nil || r.shuttingDown.Load() {
-			return
-		}
-		if err == nil {
-			err = errors.New("event router stopped unexpectedly without error")
-		} else {
-			err = fmt.Errorf("event router stopped unexpectedly: %w", err)
-		}
-		r.errors <- err
-		metrics.Counter("application_event_router_stops_total", map[string]any{
-			"reason": "unexpected",
-		}).Inc()
-		r.logger.ErrorContext(ctx, "event router stopped", slog.Any("error", err))
-	}()
-
-	return nil
-}
-
-// Errors reports at most one unexpected termination after Start succeeds.
-// It closes when the router stops; normal shutdown closes it without an error.
-func (r *Router) Errors() <-chan error {
-	return r.errors
-}
-
-func (r *Router) Shutdown(ctx context.Context) error {
-	r.shuttingDown.Store(true)
-	done := make(chan error, 1)
-	go func() {
-		routerErr := r.router.Close()
-		backendErr := r.backend.Shutdown(ctx)
-		done <- errors.Join(routerErr, backendErr)
-	}()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case err := <-done:
-		return err
 	}
 }

@@ -253,7 +253,7 @@ func (b *outboxTestBackend) Publish(topic string, messages ...*message.Message) 
 func newOutboxTestRouter(t *testing.T, publish func(string, ...*message.Message) error) *events.Router {
 	t.Helper()
 	backend := &outboxTestBackend{NoopEngine: events.NewNoop(), publish: publish}
-	router, err := events.NewRouter(backend, events.DeliveryPolicy{CloseTimeout: time.Second})
+	router, err := events.NewRouter(backend, events.WithCloseTimeout(time.Second))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)

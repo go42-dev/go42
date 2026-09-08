@@ -6,13 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
 
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -123,45 +120,6 @@ func TestOutboxPublisherMarksMessageFailedAfterLastRetry(t *testing.T) {
 func TestOutboxPublisherTimeoutExhaustsRetries(t *testing.T) {
 	assertOutboxPublishFailure(t, domain.MaxRetries-1, models.MessageStatusFailed, domain.MaxRetries,
 		context.DeadlineExceeded)
-}
-
-func TestOutboxPublisherTimeoutBoundsBlockedCallsAndAllowsRecovery(t *testing.T) {
-	entered := make(chan struct{})
-	released := make(chan struct{})
-	release := sync.OnceFunc(func() { close(released) })
-	defer release()
-	var calls atomic.Int32
-	router := newOutboxTestRouter(t, func(string, ...*message.Message) error {
-		if calls.Add(1) == 1 {
-			close(entered)
-			<-released // Simulate a broker client that ignores context cancellation.
-		}
-		return nil
-	})
-	worker := NewOutboxMessagePublisher(mocks.NewMockrepository(gomock.NewController(t)), router)
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-	defer cancel()
-	done := make(chan error, 1)
-	go func() { done <- worker.publish(ctx, "blocked", []byte("event")) }()
-	waitForOutboxPublishSignal(t, entered)
-	require.ErrorIs(t, waitForOutboxRun(t, done), context.DeadlineExceeded)
-
-	for range 3 {
-		attemptCtx, attemptCancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
-		err := worker.publish(attemptCtx, "waiting", []byte("expired"))
-		attemptCancel()
-		require.ErrorIs(t, err, context.DeadlineExceeded)
-	}
-	canceledCtx, canceledCancel := context.WithCancel(t.Context())
-	canceledCancel()
-	require.ErrorIs(t, worker.publish(canceledCtx, "canceled", nil), context.Canceled)
-	require.EqualValues(t, 1, calls.Load(), "timeouts must not create more blocked broker calls")
-
-	release()
-	recoveryCtx, recoveryCancel := context.WithTimeout(t.Context(), time.Second)
-	defer recoveryCancel()
-	require.NoError(t, worker.publish(recoveryCtx, "recovered", []byte("new")))
-	require.EqualValues(t, 2, calls.Load(), "expired waiting calls must not publish later")
 }
 
 func TestOutboxPublisherReturnsRepositoryReadError(t *testing.T) {
@@ -521,49 +479,5 @@ func newOutboxTestMessage() models.Message {
 		CreatedAt:     time.Now().Add(-time.Second),
 		Status:        models.MessageStatusPending,
 		MaxRetries:    domain.MaxRetries,
-	}
-}
-
-type outboxTestBackend struct {
-	*events.NoopEngine
-	publish func(string, ...*message.Message) error
-}
-
-func (b *outboxTestBackend) Publisher() message.Publisher { return b }
-
-func (b *outboxTestBackend) Publish(topic string, messages ...*message.Message) error {
-	return b.publish(topic, messages...)
-}
-
-func newOutboxTestRouter(t *testing.T, publish func(string, ...*message.Message) error) *events.Router {
-	t.Helper()
-	backend := &outboxTestBackend{NoopEngine: events.NewNoop(), publish: publish}
-	router, err := events.NewRouter(backend, events.DeliveryPolicy{CloseTimeout: time.Second})
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, router.Shutdown(ctx))
-	})
-	return router
-}
-
-func waitForOutboxPublishSignal(t *testing.T, signal <-chan struct{}) {
-	t.Helper()
-	select {
-	case <-signal:
-	case <-time.After(3 * time.Second):
-		t.Fatal("publisher did not reach the expected state")
-	}
-}
-
-func waitForOutboxRun(t *testing.T, done <-chan error) error {
-	t.Helper()
-	select {
-	case err := <-done:
-		return err
-	case <-time.After(3 * time.Second):
-		t.Fatal("outbox worker did not return after its publish context expired")
-		return nil
 	}
 }

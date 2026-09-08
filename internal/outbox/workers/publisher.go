@@ -22,7 +22,6 @@ type OutboxMessagePublisher struct {
 	repository     repository
 	publisher      publisher
 	publishTimeout time.Duration
-	publishSlot    chan struct{}
 }
 
 func NewOutboxMessagePublisher(
@@ -34,7 +33,6 @@ func NewOutboxMessagePublisher(
 		repository:     repository,
 		publisher:      publisher,
 		publishTimeout: defaultPublishTimeout,
-		publishSlot:    make(chan struct{}, 1),
 	}
 	for _, opt := range opts {
 		opt(pub)
@@ -102,8 +100,7 @@ func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
 			}
 
 			publishCtx, publishCtxCancel := context.WithTimeout(messageCtx, p.publishTimeout)
-			err = p.publish(publishCtx, message.Topic, jsonBytes)
-
+			err = p.publisher.Publish(publishCtx, message.Topic, jsonBytes)
 			publishCtxCancel()
 
 			// if parent context is canceled we should stop immediately,
@@ -169,28 +166,6 @@ func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
 	}
 
 	return err
-}
-
-func (p *OutboxMessagePublisher) publish(ctx context.Context, topic string, event []byte) error {
-	select {
-	case p.publishSlot <- struct{}{}:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-
-	result := make(chan error, 1)
-	go func() {
-		// Keep the slot occupied until the broker returns, even if the caller times out.
-		defer func() { <-p.publishSlot }()
-		result <- p.publisher.Publish(ctx, topic, event)
-	}()
-
-	select {
-	case err := <-result:
-		return err
-	case <-ctx.Done():
-		return ctx.Err()
-	}
 }
 
 func observeDelivery(createdAt time.Time, result string) {

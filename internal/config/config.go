@@ -349,11 +349,16 @@ type Memcached struct {
 // ╰──────────────────────────────╯
 
 type Events struct {
-	Engine   string `env:"EVENTS_ENGINE" default:"gochan" v:"oneof=none gochan nats rabbitmq kafka"`
-	Consumer EventsConsumer
-	NATS     EventsNATS
-	RabbitMQ EventsRabbitMQ
-	Kafka    EventsKafka
+	Engine    string `env:"EVENTS_ENGINE" default:"gochan" v:"oneof=none gochan nats rabbitmq kafka"`
+	Publisher EventsPublisher
+	Consumer  EventsConsumer
+	NATS      EventsNATS
+	RabbitMQ  EventsRabbitMQ
+	Kafka     EventsKafka
+}
+
+type EventsPublisher struct {
+	MaxInflight int `env:"EVENTS_PUBLISH_MAX_INFLIGHT" default:"32" v:"gt=0"`
 }
 
 type EventsConsumer struct {
@@ -373,11 +378,16 @@ type EventsNATS struct {
 	MaxRetry    int           `env:"NATS_MAX_RETRY"    default:"-1"`
 	RetryDelay  time.Duration `env:"NATS_RETRY_DELAY"  default:"1s"`
 	JetStream   EventsNATSJetStream
+	Publisher   EventsNATSPublisher
 	Subscriber  EventsNATSSubscriber
 }
 
 type EventsNATSJetStream struct {
 	AutoProvision bool `env:"NATS_JETSTREAM_AUTO_PROVISION" default:"true"`
+}
+
+type EventsNATSPublisher struct {
+	AckTimeout time.Duration `env:"NATS_PUB_ACK_TIMEOUT" default:"5s" v:"gt=0"`
 }
 
 type EventsNATSSubscriber struct {
@@ -410,6 +420,9 @@ type EventsKafka struct {
 	ReadTimeout               time.Duration `env:"KAFKA_READ_TIMEOUT"                 default:"30s"`
 	WriteTimeout              time.Duration `env:"KAFKA_WRITE_TIMEOUT"                default:"30s"`
 	KeepAlive                 time.Duration `env:"KAFKA_KEEP_ALIVE"                   default:"0s"`
+	ProducerTimeout           time.Duration `env:"KAFKA_PRODUCER_TIMEOUT"             default:"10s"            v:"gt=0"`
+	ProducerMetadataTimeout   time.Duration `env:"KAFKA_PRODUCER_METADATA_TIMEOUT"    default:"10s"            v:"gt=0"`
+	ProducerRetryMax          int           `env:"KAFKA_PRODUCER_RETRY_MAX"           default:"10"             v:"gt=0"`
 	ProducerRetryBackoff      time.Duration `env:"KAFKA_PRODUCER_RETRY_BACKOFF"       default:"100ms"`
 	ProducerMaxMessageBytes   int           `env:"KAFKA_PRODUCER_MAX_MESSAGE_BYTES"   default:"1000000"`
 	ProducerCompression       string        `env:"KAFKA_PRODUCER_COMPRESSION"         default:"none"`

@@ -78,6 +78,13 @@ func WithJetStreamAutoProvision(autoProvision bool) Option {
 	}
 }
 
+// WithPublishAckTimeout limits the wait for a JetStream publish acknowledgement.
+func WithPublishAckTimeout(timeout time.Duration) Option {
+	return func(_ *NATS, pubCfg *nats.PublisherConfig, _ *nats.SubscriberConfig) {
+		pubCfg.JetStream.PublishOptions = append(pubCfg.JetStream.PublishOptions, natsgo.AckWait(timeout))
+	}
+}
+
 func WithSubGroupPrefix(prefix string) Option {
 	return func(n *NATS, pubCfg *nats.PublisherConfig, subCfg *nats.SubscriberConfig) {
 		subCfg.QueueGroupPrefix = prefix

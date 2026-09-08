@@ -25,6 +25,8 @@ import (
 	protovalidateInterceptor "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/protovalidate"
 	"github.com/labstack/echo/v5"
 	"github.com/pressly/goose/v3"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -42,6 +44,7 @@ import (
 	"github.com/go42-dev/go42/internal/auth/domain"
 	"github.com/go42-dev/go42/internal/auth/models"
 	authRepository "github.com/go42-dev/go42/internal/auth/repository"
+	"github.com/go42-dev/go42/internal/cache"
 	"github.com/go42-dev/go42/internal/cache/local"
 	"github.com/go42-dev/go42/internal/database"
 	"github.com/go42-dev/go42/internal/database/mysql"
@@ -1592,5 +1595,681 @@ func TestAuthRateLimits_RefreshBudgetFollowsSessionAcrossRotation(t *testing.T) 
 	}
 	if err := h.service.Logout(t.Context(), tokens.RefreshToken); err != nil {
 		t.Fatalf("rate limit prevented logout: %v", err)
+	}
+}
+
+func TestRepository_ListUsersPagination(t *testing.T) {
+	h := newSessionHarness(t)
+	var existing int64
+	require.NoError(t, h.db.Master().WithContext(t.Context()).Model(&models.User{}).Count(&existing).Error)
+	users := make([]*models.User, 5)
+	for index := range users {
+		users[index] = createRepositoryUser(t, h)
+	}
+	require.NoError(t, h.db.Master().WithContext(t.Context()).Delete(users[1]).Error)
+
+	for _, test := range []struct {
+		name   string
+		limit  int
+		offset int
+		want   []int
+	}{
+		{name: "first page", limit: 2, want: []int{users[0].ID, users[2].ID}},
+		{name: "middle page", limit: 2, offset: 1, want: []int{users[2].ID, users[3].ID}},
+		{name: "last page", limit: 2, offset: 3, want: []int{users[4].ID}},
+		{name: "large page", limit: 100, want: []int{users[0].ID, users[2].ID, users[3].ID, users[4].ID}},
+		{name: "at end", limit: 2, offset: 4, want: []int{}},
+		{name: "past end", limit: 2, offset: 10, want: []int{}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			page, err := h.repo.ListUsers(t.Context(), test.limit, int(existing)+test.offset)
+			require.NoError(t, err)
+			ids := make([]int, len(page))
+			for index, user := range page {
+				ids[index] = user.ID
+				assert.False(t, user.DeletedAt.Valid)
+				assert.Empty(t, user.Roles, "unassigned users must not inherit another user's roles")
+			}
+			assert.Equal(t, test.want, ids)
+		})
+	}
+}
+
+func TestRepository_UserRoleQueries(t *testing.T) {
+	h := newSessionHarness(t)
+	other := createRepositoryUser(t, h)
+	unassigned := createRepositoryUser(t, h)
+	db := h.db.Master().WithContext(t.Context())
+	require.NoError(t, db.Where("user_id = ?", h.user.ID).Delete(&models.UserRole{}).Error)
+	suffix := uuid.NewString()
+	resource := "repository-" + suffix
+	permissions := make(map[string]models.Permission)
+	for _, action := range []string{"read", "write", "hidden", "other"} {
+		permission := models.Permission{Resource: resource, Action: action}
+		require.NoError(t, db.Create(&permission).Error)
+		permissions[action] = permission
+	}
+	roles := make(map[string]models.Role)
+	for _, fixture := range []struct {
+		name    string
+		users   []int
+		actions []string
+		expires time.Time
+		deleted bool
+	}{
+		{name: "shared", users: []int{h.user.ID, other.ID}, actions: []string{"read"}},
+		{name: "future", users: []int{h.user.ID}, actions: []string{"read", "write"}, expires: time.Now().Add(time.Hour)},
+		{name: "empty", users: []int{h.user.ID}},
+		{name: "expired", users: []int{h.user.ID}, actions: []string{"hidden"}, expires: time.Now().Add(-time.Hour)},
+		{name: "deleted", users: []int{h.user.ID}, actions: []string{"hidden"}, deleted: true},
+		{name: "other", users: []int{other.ID}, actions: []string{"other"}},
+	} {
+		role := models.Role{
+			Name: fixture.name + "-" + suffix, Description: "description for " + fixture.name,
+			IsSystem: fixture.name == "shared",
+		}
+		require.NoError(t, db.Create(&role).Error)
+		for _, action := range fixture.actions {
+			require.NoError(t, db.Table("auth_role_permissions").Create(&map[string]any{
+				"role_id": role.ID, "permission_id": permissions[action].ID,
+			}).Error)
+		}
+		for _, userID := range fixture.users {
+			assignment := models.UserRole{UserID: userID, RoleID: role.ID}
+			if !fixture.expires.IsZero() {
+				assignment.ExpiresAt = sql.Null[time.Time]{V: fixture.expires, Valid: true}
+			}
+			require.NoError(t, db.Create(&assignment).Error)
+		}
+		if fixture.deleted {
+			require.NoError(t, db.Delete(&role).Error)
+		}
+		roles[role.Name] = role
+	}
+	wantRoles := map[int]map[string][]string{
+		h.user.ID: {
+			"shared-" + suffix: {resource + ":read"},
+			"future-" + suffix: {resource + ":read", resource + ":write"},
+			"empty-" + suffix:  {},
+		},
+		other.ID: {
+			"shared-" + suffix: {resource + ":read"},
+			"other-" + suffix:  {resource + ":other"},
+		},
+		unassigned.ID: {},
+	}
+	assertUser := func(t *testing.T, got, want *models.User) {
+		t.Helper()
+		require.NotNil(t, got)
+		assert.Equal(t, want.ID, got.ID)
+		assert.Equal(t, want.UUID, got.UUID)
+		assert.Equal(t, want.Email, got.Email)
+		require.Len(t, got.Roles, len(wantRoles[want.ID]))
+		seen := make(map[string]struct{}, len(got.Roles))
+		for _, role := range got.Roles {
+			require.NotContains(t, seen, role.Name, "duplicate role for user %d", want.ID)
+			seen[role.Name] = struct{}{}
+			expectedPermissions, exists := wantRoles[want.ID][role.Name]
+			require.True(t, exists, "unexpected role %q for user %d", role.Name, want.ID)
+			assert.Equal(t, roles[role.Name].ID, role.ID)
+			assert.Equal(t, roles[role.Name].Description, role.Description)
+			assert.Equal(t, roles[role.Name].IsSystem, role.IsSystem)
+			assert.ElementsMatch(t, expectedPermissions, repositoryPermissionNames(role.Permissions))
+		}
+	}
+	users := []*models.User{h.user, other, unassigned}
+	t.Run("list", func(t *testing.T) {
+		var count int64
+		require.NoError(t, db.Model(&models.User{}).Count(&count).Error)
+		page, err := h.repo.ListUsers(t.Context(), int(count)+1, 0)
+		require.NoError(t, err)
+		byID := make(map[int]*models.User)
+		for _, user := range page {
+			byID[user.ID] = user
+		}
+		for _, user := range users {
+			assertUser(t, byID[user.ID], user)
+		}
+	})
+	for _, query := range []struct {
+		name string
+		get  func(context.Context, *models.User) (*models.User, error)
+	}{
+		{name: "id", get: func(ctx context.Context, user *models.User) (*models.User, error) {
+			return h.repo.GetUserByID(ctx, user.ID)
+		}},
+		{name: "uuid", get: func(ctx context.Context, user *models.User) (*models.User, error) {
+			return h.repo.GetUserByUUID(ctx, user.UUID.String())
+		}},
+		{name: "email", get: func(ctx context.Context, user *models.User) (*models.User, error) {
+			return h.repo.GetUserByEmail(ctx, user.Email)
+		}},
+	} {
+		t.Run(query.name, func(t *testing.T) {
+			for _, user := range users {
+				got, err := query.get(t.Context(), user)
+				require.NoError(t, err)
+				assertUser(t, got, user)
+			}
+		})
+	}
+}
+
+func TestRepository_GetTokenCache(t *testing.T) {
+	cacheFailure := errors.New("cache unavailable")
+	for _, test := range []struct {
+		name     string
+		warm     bool
+		corrupt  bool
+		readErr  error
+		writeErr error
+	}{
+		{name: "miss populates cache"},
+		{name: "hit works without database", warm: true},
+		{name: "corrupt entry is replaced", corrupt: true},
+		{name: "read failure falls back to database", readErr: cacheFailure},
+		{name: "write failure retains database result", writeErr: cacheFailure},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newSessionHarness(t)
+			token := createRepositoryToken(t, h, true)
+			backend := &repositoryCacheStub{Wrapper: h.cache, readErr: test.readErr, writeErr: test.writeErr}
+			repo := authRepository.New(h.repo.BaseRepository, backend, time.Minute)
+			key := "cache:token:" + token.Token
+			if test.warm {
+				_, err := repo.GetToken(t.Context(), token.Token)
+				require.NoError(t, err)
+				backend.writes = 0
+				sqlDB, err := h.db.Master().DB()
+				require.NoError(t, err)
+				require.NoError(t, sqlDB.Close())
+			}
+			if test.corrupt {
+				require.NoError(t, h.cache.Set(t.Context(), key, "not a gob token", time.Minute))
+			}
+			got, err := repo.GetToken(t.Context(), token.Token)
+			require.NoError(t, err)
+			assertRepositoryToken(t, token, got)
+			if test.warm {
+				assert.Zero(t, backend.writes, "a cache hit must not refresh its TTL")
+			} else {
+				assert.Equal(t, 1, backend.writes)
+			}
+			cached, err := cache.GetDecode[*models.Token](t.Context(), h.cache, key)
+			require.NoError(t, err)
+			if test.writeErr != nil {
+				assert.Nil(t, cached)
+			} else {
+				assertRepositoryToken(t, token, cached)
+			}
+		})
+	}
+}
+
+func TestRepository_GetTokenFailures(t *testing.T) {
+	for _, name := range []string{"missing", "deleted", "canceled", "token query", "permission query"} {
+		t.Run(name, func(t *testing.T) {
+			h := newSessionHarness(t)
+			token := createRepositoryToken(t, h, true)
+			ctx := t.Context()
+			lookup := token.Token
+			var want error
+			var prefix string
+			switch name {
+			case "missing":
+				lookup = sha256Hex(uuid.NewString())
+				want = domain.ErrEntityNotFound
+			case "deleted":
+				require.NoError(t, h.db.Master().WithContext(ctx).Delete(token).Error)
+				want = domain.ErrEntityNotFound
+			case "canceled":
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+				want = context.Canceled
+			case "token query", "permission query":
+				sqlDB, err := h.db.Master().DB()
+				require.NoError(t, err)
+				prefix = "error fetching api token:"
+				if name == "token query" {
+					require.NoError(t, sqlDB.Close())
+				} else {
+					prefix = "error fetching api token permissions:"
+					const callback = "test:close_after_token_query"
+					require.NoError(t, h.db.Master().Callback().Query().After("gorm:query").Register(
+						callback, func(tx *gorm.DB) {
+							if tx.Statement.Table == "auth_api_tokens" {
+								assert.NoError(t, sqlDB.Close())
+							}
+						},
+					))
+					t.Cleanup(func() { assert.NoError(t, h.db.Master().Callback().Query().Remove(callback)) })
+				}
+			}
+			got, err := h.repo.GetToken(ctx, lookup)
+			require.Error(t, err)
+			assert.Nil(t, got, "failed reads must not return a partially loaded token")
+			if want != nil {
+				assert.ErrorIs(t, err, want)
+			} else {
+				assert.ErrorContains(t, err, prefix)
+				assert.ErrorContains(t, errors.Unwrap(err), "sql: database is closed")
+			}
+			cached, cacheErr := cache.GetDecode[*models.Token](t.Context(), h.cache, "cache:token:"+lookup)
+			require.NoError(t, cacheErr)
+			assert.Nil(t, cached, "failed reads must not populate the cache")
+		})
+	}
+}
+
+func TestRepository_GetTokenWithoutPermissions(t *testing.T) {
+	h := newSessionHarness(t)
+	token := createRepositoryToken(t, h, false)
+	got, err := h.repo.GetToken(t.Context(), token.Token)
+	require.NoError(t, err)
+	assertRepositoryToken(t, token, got)
+	assert.Empty(t, got.Permissions)
+	cached, err := cache.GetDecode[*models.Token](t.Context(), h.cache, "cache:token:"+token.Token)
+	require.NoError(t, err)
+	assertRepositoryToken(t, token, cached)
+	assert.Empty(t, cached.Permissions)
+}
+
+func createRepositoryUser(t *testing.T, h *sessionHarness) *models.User {
+	t.Helper()
+	id := uuid.New()
+	user := &models.User{
+		UUID: id, Email: "repository-" + id.String() + "@example.com", Status: domain.UserStatusActive,
+		CredentialVersion: 1,
+	}
+	require.NoError(t, h.db.Master().WithContext(t.Context()).Create(user).Error)
+	return user
+}
+
+func createRepositoryToken(t *testing.T, h *sessionHarness, withPermissions bool) *models.Token {
+	t.Helper()
+	now := time.Now().UTC().Truncate(time.Second)
+	token := &models.Token{
+		UUID: uuid.New(), UserID: h.user.ID, Token: sha256Hex(uuid.NewString()), Name: "repository token",
+		LastUsedAt: sql.Null[time.Time]{V: now, Valid: true},
+		ExpiresAt:  sql.Null[time.Time]{V: now.Add(time.Hour), Valid: true},
+	}
+	db := h.db.Master().WithContext(t.Context())
+	require.NoError(t, db.Create(token).Error)
+	if withPermissions {
+		for _, action := range []string{"read", "write"} {
+			permission := models.Permission{Resource: "token-" + token.UUID.String(), Action: action}
+			require.NoError(t, db.Create(&permission).Error)
+			require.NoError(t, db.Table("auth_api_tokens_permissions").Create(&map[string]any{
+				"token_id": token.ID, "permission_id": permission.ID,
+			}).Error)
+			token.Permissions = append(token.Permissions, permission)
+		}
+	}
+	return token
+}
+
+func assertRepositoryToken(t *testing.T, want, got *models.Token) {
+	t.Helper()
+	require.NotNil(t, got)
+	assert.Equal(t, want.ID, got.ID)
+	assert.Equal(t, want.UUID, got.UUID)
+	assert.Equal(t, want.UserID, got.UserID)
+	assert.Equal(t, want.Token, got.Token)
+	assert.Equal(t, want.Name, got.Name)
+	assert.Equal(t, want.LastUsedAt.Valid, got.LastUsedAt.Valid)
+	assert.True(t, want.LastUsedAt.V.Equal(got.LastUsedAt.V))
+	assert.Equal(t, want.ExpiresAt.Valid, got.ExpiresAt.Valid)
+	assert.True(t, want.ExpiresAt.V.Equal(got.ExpiresAt.V))
+	assert.ElementsMatch(t, repositoryPermissionNames(want.Permissions), repositoryPermissionNames(got.Permissions))
+}
+
+func repositoryPermissionNames(permissions []models.Permission) []string {
+	names := make([]string, len(permissions))
+	for index, permission := range permissions {
+		names[index] = permission.Resource + ":" + permission.Action
+	}
+	return names
+}
+
+type repositoryCacheStub struct {
+	*local.Wrapper
+	readErr  error
+	writeErr error
+	writes   int
+}
+
+func (c *repositoryCacheStub) Get(ctx context.Context, key string) (string, bool, error) {
+	if c.readErr != nil {
+		return "", false, c.readErr
+	}
+	return c.Wrapper.Get(ctx, key)
+}
+
+func (c *repositoryCacheStub) Set(ctx context.Context, key, value string, ttl time.Duration) error {
+	c.writes++
+	if c.writeErr != nil {
+		return c.writeErr
+	}
+	return c.Wrapper.Set(ctx, key, value, ttl)
+}
+
+func TestRepository_CreateUserRejectsInvalidWrites(t *testing.T) {
+	for _, name := range []string{"duplicate email", "duplicate uuid", "canceled"} {
+		t.Run(name, func(t *testing.T) {
+			h := newSessionHarness(t)
+			before := loadStoredRepositoryUser(t, h, h.user.ID)
+			var countBefore int64
+			require.NoError(
+				t,
+				h.db.Master().WithContext(t.Context()).Unscoped().Model(&models.User{}).Count(&countBefore).Error,
+			)
+			candidate := &models.User{
+				UUID: uuid.New(), Email: "create-" + uuid.NewString() + "@example.com",
+				Status: domain.UserStatusActive, CredentialVersion: 1,
+			}
+			ctx := t.Context()
+			want := domain.ErrUserAlreadyExists
+			switch name {
+			case "duplicate email":
+				candidate.Email = h.user.Email
+			case "duplicate uuid":
+				candidate.UUID = h.user.UUID
+			case "canceled":
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+				want = context.Canceled
+			}
+			require.ErrorIs(t, h.repo.CreateUser(ctx, candidate), want)
+			assert.Equal(t, before, loadStoredRepositoryUser(t, h, h.user.ID))
+			var countAfter int64
+			require.NoError(
+				t,
+				h.db.Master().WithContext(t.Context()).Unscoped().Model(&models.User{}).Count(&countAfter).Error,
+			)
+			assert.Equal(t, countBefore, countAfter, "a failed insert must not create another user")
+		})
+	}
+}
+
+func TestRepository_UpdateUserRejectsStaleOrInvalidWrites(t *testing.T) {
+	for _, name := range []string{"duplicate email", "stale version", "deleted user", "canceled"} {
+		t.Run(name, func(t *testing.T) {
+			h := newSessionHarness(t)
+			candidate := *h.user
+			candidate.Email = "attempt-" + uuid.NewString() + "@example.com"
+			ctx := t.Context()
+			want := domain.ErrInvalidCredentials
+			switch name {
+			case "duplicate email":
+				other := createRepositoryUser(t, h)
+				candidate.Email = other.Email
+				want = domain.ErrUserAlreadyExists
+			case "stale version":
+				winner := *h.user
+				winner.Email = "winner-" + uuid.NewString() + "@example.com"
+				require.NoError(t, h.repo.UpdateUser(ctx, &winner))
+				require.Equal(t, candidate.CredentialVersion+1, winner.CredentialVersion)
+			case "deleted user":
+				require.NoError(t, h.db.Master().WithContext(ctx).Delete(h.user).Error)
+			case "canceled":
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+				want = context.Canceled
+			}
+			before := loadStoredRepositoryUser(t, h, h.user.ID)
+			require.ErrorIs(t, h.repo.UpdateUser(ctx, &candidate), want)
+			assert.Equal(t, before, loadStoredRepositoryUser(t, h, h.user.ID),
+				"rejected updates must preserve stored credentials and their version")
+		})
+	}
+}
+
+func TestRepository_AssignRoleRejectsInvalidAssignments(t *testing.T) {
+	for _, name := range []string{"missing role", "deleted role", "missing user", "duplicate assignment"} {
+		t.Run(name, func(t *testing.T) {
+			h := newSessionHarness(t)
+			userID, roleName := h.user.ID, domain.RBACRoleUser
+			var before []models.UserRole
+			require.NoError(
+				t,
+				h.db.Master().WithContext(t.Context()).Where("user_id = ?", h.user.ID).Find(&before).Error,
+			)
+			var want error
+			prefix := "error assigning role to user"
+			switch name {
+			case "missing role":
+				roleName = "missing-" + uuid.NewString()
+				want, prefix = gorm.ErrRecordNotFound, "error retrieving role"
+			case "deleted role":
+				role := models.Role{Name: "deleted-" + uuid.NewString()}
+				require.NoError(t, h.db.Master().WithContext(t.Context()).Create(&role).Error)
+				require.NoError(t, h.db.Master().WithContext(t.Context()).Delete(&role).Error)
+				roleName = role.Name
+				want, prefix = gorm.ErrRecordNotFound, "error retrieving role"
+			case "missing user":
+				userID = -1
+			}
+			err := h.repo.AssignRoleToUser(t.Context(), userID, roleName)
+			require.ErrorContains(t, err, prefix)
+			if want != nil {
+				assert.ErrorIs(t, err, want)
+			} else {
+				assert.NotNil(t, errors.Unwrap(err), "assignment errors must preserve the database cause")
+			}
+			var after []models.UserRole
+			require.NoError(
+				t,
+				h.db.Master().WithContext(t.Context()).Where("user_id IN ?", []int{h.user.ID, -1}).Find(&after).Error,
+			)
+			assert.ElementsMatch(t, before, after)
+		})
+	}
+}
+
+func TestRepository_UserHistoryIsIdempotent(t *testing.T) {
+	for _, changed := range []bool{false, true} {
+		name := "identical replay"
+		if changed {
+			name = "conflicting replay"
+		}
+		t.Run(name, func(t *testing.T) {
+			h := newSessionHarness(t)
+			original := models.UserHistoryRecord{
+				ID: uuid.New(), UserID: h.user.ID, OccurredAt: time.Now().UTC().Truncate(time.Second),
+				EventType: "user.created", Data: []byte(`{"email":"original@example.com"}`),
+				Metadata: `{"request_id":"original-request"}`,
+			}
+			require.NoError(t, h.repo.SaveUserHistoryRecord(t.Context(), &original))
+			var before models.UserHistoryRecord
+			require.NoError(t, h.db.Master().WithContext(t.Context()).First(&before, "id = ?", original.ID).Error)
+			assert.Equal(t, original.UserID, before.UserID)
+			assert.Equal(t, original.EventType, before.EventType)
+			assert.Equal(t, original.Data, before.Data)
+			assert.Equal(t, original.Metadata, before.Metadata)
+			assert.True(t, original.OccurredAt.Equal(before.OccurredAt))
+			replay := original
+			if changed {
+				replay.UserID = createRepositoryUser(t, h).ID
+				replay.OccurredAt = original.OccurredAt.Add(time.Hour)
+				replay.EventType = "user.updated"
+				replay.Data = []byte(`{"email":"replacement@example.com"}`)
+				replay.Metadata = `{"request_id":"replacement-request"}`
+			}
+			require.NoError(t, h.repo.SaveUserHistoryRecord(t.Context(), &replay))
+			var after models.UserHistoryRecord
+			require.NoError(t, h.db.Master().WithContext(t.Context()).First(&after, "id = ?", original.ID).Error)
+			assert.Equal(t, before, after, "replaying an event must preserve its original history")
+			next := original
+			next.ID = uuid.New()
+			next.EventType = "user.updated"
+			require.NoError(t, h.repo.SaveUserHistoryRecord(t.Context(), &next))
+			var records []models.UserHistoryRecord
+			require.NoError(
+				t,
+				h.db.Master().
+					WithContext(t.Context()).
+					Where("id IN ?", []uuid.UUID{original.ID, next.ID}).
+					Find(&records).
+					Error,
+			)
+			require.Len(t, records, 2, "deduplication must not suppress a different event")
+		})
+	}
+}
+
+func loadStoredRepositoryUser(t *testing.T, h *sessionHarness, id int) models.User {
+	t.Helper()
+	var user models.User
+	require.NoError(t, h.db.Master().WithContext(t.Context()).Unscoped().First(&user, id).Error)
+	return user
+}
+
+func TestRepository_SessionCleanupBatchesOldestFirst(t *testing.T) {
+	for _, count := range []int{0, 999, 1000, 1001} {
+		t.Run(strconv.Itoa(count), func(t *testing.T) {
+			h := newSessionCleanupHarness(t)
+			now := time.Now().UTC().Truncate(time.Second)
+			active := repositoryCleanupSession(h, now.Add(time.Hour))
+			revoked := repositoryCleanupSession(h, now.Add(time.Hour))
+			revoked.RevokedAt = sql.Null[time.Time]{V: now.Add(-time.Minute), Valid: true}
+			sessions := []models.Session{active, revoked}
+			oldest := time.Date(2001, time.January, 1, 0, 0, 0, 0, time.UTC)
+			for index := range count {
+				// Insert newest first so insertion order cannot determine which batch is deleted.
+				session := repositoryCleanupSession(h, oldest.Add(time.Duration(count-index)*time.Second))
+				if index%2 == 0 {
+					session.RevokedAt = sql.Null[time.Time]{V: session.ExpiresAt.Add(-time.Minute), Valid: true}
+				}
+				sessions = append(sessions, session)
+			}
+			require.NoError(t, h.db.Master().WithContext(t.Context()).CreateInBatches(&sessions, 100).Error)
+			deleted, err := h.repo.DeleteExpiredSessions(t.Context())
+			require.NoError(t, err)
+			assert.EqualValues(t, min(count, 1000), deleted)
+			wantIDs := []uuid.UUID{active.ID, revoked.ID}
+			if count > 1000 {
+				wantIDs = append(wantIDs, sessions[2].ID)
+			}
+			var retained []models.Session
+			require.NoError(
+				t,
+				h.db.Master().WithContext(t.Context()).Where("user_id = ?", h.user.ID).Find(&retained).Error,
+			)
+			ids := make([]uuid.UUID, len(retained))
+			for index, session := range retained {
+				ids[index] = session.ID
+			}
+			assert.ElementsMatch(t, wantIDs, ids, "only the oldest expired sessions belong in the first batch")
+			deleted, err = h.repo.DeleteExpiredSessions(t.Context())
+			require.NoError(t, err)
+			assert.EqualValues(t, max(count-1000, 0), deleted)
+			deleted, err = h.repo.DeleteExpiredSessions(t.Context())
+			require.NoError(t, err)
+			assert.Zero(t, deleted)
+			var remaining int64
+			require.NoError(t, h.db.Master().WithContext(t.Context()).Model(&models.Session{}).
+				Where("id IN ?", []uuid.UUID{active.ID, revoked.ID}).Count(&remaining).Error)
+			assert.EqualValues(t, 2, remaining, "unexpired sessions must survive every cleanup batch")
+		})
+	}
+}
+
+func TestRepository_SessionCleanupPreservesRefreshedSessions(t *testing.T) {
+	h := newSessionCleanupHarness(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	refreshed := repositoryCleanupSession(h, now.Add(-time.Hour))
+	expired := repositoryCleanupSession(h, now.Add(-2*time.Hour))
+	require.NoError(t, h.db.Master().WithContext(t.Context()).Create(&[]models.Session{refreshed, expired}).Error)
+	future, nextToken := now.Add(time.Hour), uuid.New()
+	updated := false
+	callback := h.db.Master().Callback().Delete()
+	const name = "test:refresh_session_before_cleanup_delete"
+	require.NoError(t, callback.Before("gorm:delete").Register(name, func(tx *gorm.DB) {
+		if tx.Statement.Table != "auth_sessions" {
+			return
+		}
+		result := tx.Session(&gorm.Session{NewDB: true}).Model(&models.Session{}).
+			Where("id = ?", refreshed.ID).Updates(map[string]any{"expires_at": future, "refresh_token_id": nextToken})
+		if result.Error != nil {
+			_ = tx.AddError(result.Error)
+			return
+		}
+		updated = result.RowsAffected == 1
+	}))
+	t.Cleanup(func() { require.NoError(t, callback.Remove(name)) })
+	deleted, err := h.repo.DeleteExpiredSessions(t.Context())
+	require.NoError(t, err)
+	require.True(t, updated, "the refresh must happen after selection and before deletion")
+	assert.EqualValues(t, 1, deleted)
+	stored, err := h.repo.GetActiveSession(t.Context(), refreshed.ID.String(), h.user.UUID.String())
+	require.NoError(t, err, "the refreshed session must remain usable")
+	assert.Equal(t, nextToken, stored.RefreshTokenID)
+	assert.True(t, future.Equal(stored.ExpiresAt))
+	var count int64
+	require.NoError(
+		t,
+		h.db.Master().WithContext(t.Context()).Model(&models.Session{}).Where("id = ?", expired.ID).Count(&count).Error,
+	)
+	assert.Zero(t, count)
+}
+
+func TestRepository_SessionCleanupPropagatesFailures(t *testing.T) {
+	for _, stage := range []string{"canceled", "query", "delete"} {
+		t.Run(stage, func(t *testing.T) {
+			h := newSessionCleanupHarness(t)
+			session := repositoryCleanupSession(h, time.Now().UTC().Add(-time.Hour))
+			require.NoError(t, h.db.Master().WithContext(t.Context()).Create(&session).Error)
+			ctx := t.Context()
+			cause := errors.New("session cleanup " + stage + " failed")
+			blocked := true
+			if stage == "canceled" {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+				cause = context.Canceled
+			} else {
+				callback := h.db.Master().Callback().Query()
+				if stage == "delete" {
+					callback = h.db.Master().Callback().Delete()
+				}
+				name := "test:fail_session_cleanup_" + stage
+				require.NoError(t, callback.Before("gorm:"+stage).Register(name, func(tx *gorm.DB) {
+					if blocked && tx.Statement.Table == "auth_sessions" {
+						_ = tx.AddError(cause)
+					}
+				}))
+				t.Cleanup(func() { require.NoError(t, callback.Remove(name)) })
+			}
+			deleted, err := h.repo.DeleteExpiredSessions(ctx)
+			require.ErrorIs(t, err, cause)
+			assert.Zero(t, deleted)
+			blocked = false
+			var stored models.Session
+			require.NoError(t, h.db.Master().WithContext(t.Context()).First(&stored, "id = ?", session.ID).Error)
+			assert.Equal(t, session.RefreshTokenID, stored.RefreshTokenID)
+			assert.True(t, session.ExpiresAt.Equal(stored.ExpiresAt))
+			deleted, err = h.repo.DeleteExpiredSessions(t.Context())
+			require.NoError(t, err)
+			assert.EqualValues(t, 1, deleted, "cleanup must recover once the failure is removed")
+		})
+	}
+}
+
+func newSessionCleanupHarness(t *testing.T) *sessionHarness {
+	t.Helper()
+	h := newSessionHarness(t)
+	// Optional shared test databases can contain expired sessions from earlier tests.
+	require.NoError(t, h.db.Master().WithContext(t.Context()).Where("expires_at <= ?", time.Now().UTC()).
+		Delete(&models.Session{}).Error)
+	return h
+}
+
+func repositoryCleanupSession(h *sessionHarness, expiresAt time.Time) models.Session {
+	return models.Session{
+		ID: uuid.New(), UserID: h.user.ID, CredentialVersion: h.user.CredentialVersion,
+		RefreshTokenID: uuid.New(), ExpiresAt: expiresAt,
 	}
 }

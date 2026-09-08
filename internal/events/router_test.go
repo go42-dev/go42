@@ -3,7 +3,11 @@ package events_test
 import (
 	"context"
 	"errors"
+	"flag"
 	"log/slog"
+	"os"
+	"os/exec"
+	"regexp"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -21,18 +25,19 @@ import (
 )
 
 const (
-	routerTestTimeout = 3 * time.Second
-	routerDLQSuffix   = "_dlq"
+	routerTestTimeout          = 3 * time.Second
+	routerDLQSuffix            = "_dlq"
+	routerStartupSubprocessEnv = "GO42_ROUTER_STARTUP_SUBPROCESS"
 )
 
 func TestRouterRetriesTransientFailure(t *testing.T) {
-	router, ctx := newTestRouter(t, events.DeliveryPolicy{
-		MaxRetries:            3,
-		InitialBackoff:        time.Millisecond,
-		MaxBackoff:            2 * time.Millisecond,
-		DeadLetterTopicSuffix: routerDLQSuffix,
-		CloseTimeout:          time.Second,
-	})
+	router, ctx := newTestRouter(t,
+		events.WithMaxRetries(3),
+		events.WithInitialBackoff(time.Millisecond),
+		events.WithMaxBackoff(2*time.Millisecond),
+		events.WithDeadLetterTopicSuffix(routerDLQSuffix),
+		events.WithCloseTimeout(time.Second),
+	)
 
 	var attempts atomic.Int32
 	processed := make(chan struct{})
@@ -100,10 +105,10 @@ func TestRouterCancellationDoesNotReportFailure(t *testing.T) {
 func newRunningTestRouter(t *testing.T) (*events.Router, *gochan.GoChan, context.CancelFunc) {
 	t.Helper()
 	backend := gochan.New(gochan.WithLogger(slog.New(slog.DiscardHandler)))
-	router, err := events.NewRouter(backend, events.DeliveryPolicy{
-		DeadLetterTopicSuffix: routerDLQSuffix,
-		CloseTimeout:          time.Second,
-	})
+	router, err := events.NewRouter(backend,
+		events.WithDeadLetterTopicSuffix(routerDLQSuffix),
+		events.WithCloseTimeout(time.Second),
+	)
 	if err != nil {
 		t.Fatalf("NewRouter() error = %v", err)
 	}
@@ -133,13 +138,11 @@ func assertDeadLetterDelivery(t *testing.T, maxRetries int, permanent bool, want
 	ctx, cancel := context.WithCancel(t.Context())
 	router, err := events.NewRouter(
 		backend,
-		events.DeliveryPolicy{
-			MaxRetries:            maxRetries,
-			InitialBackoff:        time.Millisecond,
-			MaxBackoff:            2 * time.Millisecond,
-			DeadLetterTopicSuffix: routerDLQSuffix,
-			CloseTimeout:          time.Second,
-		},
+		events.WithMaxRetries(maxRetries),
+		events.WithInitialBackoff(time.Millisecond),
+		events.WithMaxBackoff(2*time.Millisecond),
+		events.WithDeadLetterTopicSuffix(routerDLQSuffix),
+		events.WithCloseTimeout(time.Second),
 		events.WithLogger(slog.New(slog.DiscardHandler)),
 	)
 	if err != nil {
@@ -183,14 +186,11 @@ func assertDeadLetterDelivery(t *testing.T, maxRetries int, permanent bool, want
 	}
 }
 
-func newTestRouter(t *testing.T, policy events.DeliveryPolicy) (*events.Router, context.Context) {
+func newTestRouter(t *testing.T, opts ...events.Option) (*events.Router, context.Context) {
 	t.Helper()
 	backend := gochan.New(gochan.WithLogger(slog.New(slog.DiscardHandler)))
-	router, err := events.NewRouter(
-		backend,
-		policy,
-		events.WithLogger(slog.New(slog.DiscardHandler)),
-	)
+	opts = append(opts, events.WithLogger(slog.New(slog.DiscardHandler)))
+	router, err := events.NewRouter(backend, opts...)
 	if err != nil {
 		t.Fatalf("NewRouter() error = %v", err)
 	}
@@ -271,7 +271,7 @@ func TestRouterPublishBackendResults(t *testing.T) {
 					return cause
 				},
 			}
-			router, err := events.NewRouter(backend, events.DeliveryPolicy{CloseTimeout: time.Second})
+			router, err := events.NewRouter(backend, events.WithCloseTimeout(time.Second))
 			require.NoError(t, err)
 			registerRouterCleanup(t, router, cancel)
 			successes := metrics.Counter(
@@ -314,7 +314,7 @@ func TestRouterDoesNotPublishCanceledRequests(t *testing.T) {
 					return nil
 				},
 			}
-			router, err := events.NewRouter(backend, events.DeliveryPolicy{CloseTimeout: time.Second})
+			router, err := events.NewRouter(backend, events.WithCloseTimeout(time.Second))
 			require.NoError(t, err)
 			registerRouterCleanup(t, router, cancel)
 			topic := t.Name()
@@ -364,9 +364,10 @@ func TestRouterInitializesDeadLetterTopicBeforeSubscribing(t *testing.T) {
 					return nil
 				},
 			}
-			router, err := events.NewRouter(backend, events.DeliveryPolicy{
-				DeadLetterTopicSuffix: "_dead", CloseTimeout: time.Second,
-			})
+			router, err := events.NewRouter(backend,
+				events.WithDeadLetterTopicSuffix("_dead"),
+				events.WithCloseTimeout(time.Second),
+			)
 			require.NoError(t, err)
 			ctx, cancel := context.WithCancel(t.Context())
 			registerRouterCleanup(t, router, cancel)
@@ -402,7 +403,7 @@ func TestRouterInitializesDeadLetterTopicBeforeSubscribing(t *testing.T) {
 }
 
 func TestRouterRejectsEmptyDeadLetterTopic(t *testing.T) {
-	router, err := events.NewRouter(events.NewNoop(), events.DeliveryPolicy{CloseTimeout: time.Second})
+	router, err := events.NewRouter(events.NewNoop(), events.WithCloseTimeout(time.Second))
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(t.Context())
 	registerRouterCleanup(t, router, cancel)
@@ -434,9 +435,10 @@ func TestRouterShutdownPreservesBackendAndRouterErrors(t *testing.T) {
 				// Watermill waits on mutexes during draining, which prevents synctest time from advancing.
 				closeTimeout = 10 * time.Millisecond
 			}
-			router, err := events.NewRouter(backend, events.DeliveryPolicy{
-				DeadLetterTopicSuffix: routerDLQSuffix, CloseTimeout: closeTimeout,
-			})
+			router, err := events.NewRouter(backend,
+				events.WithDeadLetterTopicSuffix(routerDLQSuffix),
+				events.WithCloseTimeout(closeTimeout),
+			)
 			require.NoError(t, err)
 			ctx, cancel := context.WithCancel(t.Context())
 			registerRouterErrorCleanup(t, router, cancel, cause)
@@ -493,9 +495,10 @@ func TestRouterShutdownHonorsContextWhileBackendIsBlocked(t *testing.T) {
 						return nil
 					},
 				}
-				router, err := events.NewRouter(backend, events.DeliveryPolicy{
-					DeadLetterTopicSuffix: routerDLQSuffix, CloseTimeout: time.Second,
-				})
+				router, err := events.NewRouter(backend,
+					events.WithDeadLetterTopicSuffix(routerDLQSuffix),
+					events.WithCloseTimeout(time.Second),
+				)
 				require.NoError(t, err)
 				ctx, cancel := context.WithCancel(t.Context())
 				defer cancel()
@@ -583,3 +586,127 @@ func (f routerPublisherFunc) Publish(topic string, messages ...*message.Message)
 func (routerPublisherFunc) Close() error { return nil }
 
 type routerPublishContextKey struct{}
+
+type routerStartupFailureCase struct {
+	name   string
+	topics int
+	failAt int
+	cancel bool
+}
+
+func TestRouterStartupFailureReturnsError(t *testing.T) {
+	if runStartupFailureSubprocess(t) {
+		return
+	}
+
+	for _, test := range []routerStartupFailureCase{
+		{name: "single subscription", topics: 1, failAt: 1},
+		{name: "first of several subscriptions", topics: 4, failAt: 1},
+		{name: "partial startup", topics: 4, failAt: 3},
+		{name: "last subscription", topics: 4, failAt: 4},
+		{name: "canceled during startup", topics: 4, failAt: 2, cancel: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			cause := errors.New("subscription unavailable")
+			if test.cancel {
+				cause = context.Canceled
+			}
+			base := gochan.New()
+			var calls int
+			var failedTopic string
+			subscriber := &routerSubscribeStub{
+				Subscriber: base.Subscriber(),
+				subscribe: func(ctx context.Context, topic string) (<-chan *message.Message, error) {
+					calls++
+					if calls == test.failAt {
+						failedTopic = topic
+						if test.cancel {
+							cancel()
+						}
+						return nil, cause
+					}
+					return base.Subscriber().Subscribe(ctx, topic)
+				},
+			}
+			backend := &routerBackendStub{Backend: base, subscriber: func() message.Subscriber { return subscriber }}
+			router, err := events.NewRouter(backend,
+				events.WithDeadLetterTopicSuffix(routerDLQSuffix),
+				events.WithCloseTimeout(time.Minute),
+			)
+			require.NoError(t, err)
+			for _, topic := range []string{"one", "two", "three", "four"}[:test.topics] {
+				require.NoError(t, router.Subscribe(topic, func(context.Context, []byte) error { return nil }))
+			}
+			stops := metrics.Counter("application_event_router_stops_total", map[string]any{"reason": "unexpected"})
+			stopsBefore := stops.Get()
+			err = router.Start(ctx)
+			require.ErrorIs(t, err, cause)
+			assert.ErrorContains(t, err, failedTopic)
+			assert.Equal(t, test.failAt, calls, "later subscriptions must not be attempted after failure")
+			if !test.cancel {
+				assert.NoError(t, ctx.Err(), "startup failure must not cancel the caller's context")
+			}
+			if err, open := waitForRouterError(t, router.Errors()); open {
+				t.Fatalf("startup failure was reported again asynchronously: %v", err)
+			}
+			assert.Equal(t, stopsBefore, stops.Get())
+		})
+	}
+
+	// Startup failures end the application process, which releases Watermill's remaining waiters.
+	if t.Failed() {
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+// Return true in the parent after checking startup failures in an isolated process.
+func runStartupFailureSubprocess(t *testing.T) bool {
+	t.Helper()
+	if os.Getenv(routerStartupSubprocessEnv) == t.Name() {
+		return false
+	}
+	executable, err := os.Executable()
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*routerTestTimeout)
+	defer cancel()
+	args := []string{"-test.run=^" + regexp.QuoteMeta(t.Name()) + "$", "-test.v", "-test.timeout=10s"}
+	if coverDir := flag.Lookup("test.gocoverdir"); coverDir != nil && len(coverDir.Value.String()) != 0 {
+		args = append(args, "-test.gocoverdir="+coverDir.Value.String())
+	}
+	command := exec.CommandContext(ctx, executable, args...)
+	command.Env = append(os.Environ(), routerStartupSubprocessEnv+"="+t.Name())
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, "startup failure subprocess: %s", output)
+	return true
+}
+
+type routerSubscribeStub struct {
+	message.Subscriber
+	subscribe func(context.Context, string) (<-chan *message.Message, error)
+}
+
+func (s *routerSubscribeStub) Subscribe(ctx context.Context, topic string) (<-chan *message.Message, error) {
+	return s.subscribe(ctx, topic)
+}
+
+func TestRouterCanceledStartupWithoutSubscriptions(t *testing.T) {
+	for _, cause := range []error{context.Canceled, context.DeadlineExceeded} {
+		t.Run(cause.Error(), func(t *testing.T) {
+			router, err := events.NewRouter(events.NewNoop(), events.WithCloseTimeout(time.Second))
+			require.NoError(t, err)
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			if errors.Is(cause, context.DeadlineExceeded) {
+				ctx, cancel = context.WithDeadline(t.Context(), time.Unix(0, 0))
+			}
+			registerRouterCleanup(t, router, cancel)
+			require.ErrorIs(t, router.Start(ctx), cause)
+			if err, open := waitForRouterError(t, router.Errors()); open {
+				t.Fatalf("canceled startup reported an asynchronous failure: %v", err)
+			}
+		})
+	}
+}

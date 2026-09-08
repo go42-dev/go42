@@ -351,6 +351,7 @@ func main() {
 			nats.WithMaxReconnects(cfg.Events.NATS.MaxRetry),
 			nats.WithReconnectDelay(cfg.Events.NATS.RetryDelay),
 			nats.WithJetStreamAutoProvision(cfg.Events.NATS.JetStream.AutoProvision),
+			nats.WithPublishAckTimeout(cfg.Events.NATS.Publisher.AckTimeout),
 			nats.WithSubGroupPrefix(cfg.Events.Consumer.Group),
 			nats.WithSubWorkerCount(cfg.Events.NATS.Subscriber.WorkerCount),
 			nats.WithSubTimeout(cfg.Events.NATS.Subscriber.Timeout),
@@ -407,6 +408,9 @@ func main() {
 			kafka.WithReadTimeout(cfg.Events.Kafka.ReadTimeout),
 			kafka.WithWriteTimeout(cfg.Events.Kafka.WriteTimeout),
 			kafka.WithKeepAlive(cfg.Events.Kafka.KeepAlive),
+			kafka.WithProducerTimeout(cfg.Events.Kafka.ProducerTimeout),
+			kafka.WithProducerMetadataTimeout(cfg.Events.Kafka.ProducerMetadataTimeout),
+			kafka.WithProducerRetryMax(cfg.Events.Kafka.ProducerRetryMax),
 			kafka.WithProducerRetryBackoff(cfg.Events.Kafka.ProducerRetryBackoff),
 			kafka.WithProducerMaxMessageBytes(cfg.Events.Kafka.ProducerMaxMessageBytes),
 			kafka.WithProducerCompression(cfg.Events.Kafka.ProducerCompression),
@@ -430,17 +434,16 @@ func main() {
 
 	eventsEngine, err := events.NewRouter(
 		eventsBackend,
-		events.DeliveryPolicy{
-			MaxRetries:            cfg.Events.Consumer.MaxRetries,
-			InitialBackoff:        cfg.Events.Consumer.InitialBackoff,
-			MaxBackoff:            cfg.Events.Consumer.MaxBackoff,
-			DeadLetterTopicSuffix: cfg.Events.Consumer.DeadLetterTopicSuffix,
-			CloseTimeout:          cfg.Core.ShutdownComponentTimeout,
-		},
+		events.WithMaxRetries(cfg.Events.Consumer.MaxRetries),
+		events.WithInitialBackoff(cfg.Events.Consumer.InitialBackoff),
+		events.WithMaxBackoff(cfg.Events.Consumer.MaxBackoff),
+		events.WithDeadLetterTopicSuffix(cfg.Events.Consumer.DeadLetterTopicSuffix),
+		events.WithCloseTimeout(cfg.Core.ShutdownComponentTimeout),
 		events.WithLogger(slog.Default().With(slog.String("component", "events-router"))),
+		events.WithPublishMaxInflight(cfg.Events.Publisher.MaxInflight),
 	)
 	if err != nil {
-		log.Fatalf("failed to initialize event delivery policy: %v\n", err)
+		log.Fatalf("failed to initialize event router: %v\n", err)
 	}
 
 	// service layer

@@ -140,9 +140,15 @@ test-resilience:
 
 ## test-load | run load tests (http and grpc)
 test-load:
+	@rm -f .build/k6-summary-{http,grpc}-v1.json
+	@mkdir -p .build
 	@k6 version
-	@k6 run tests/load/http/v1/auth_test.js || true
-	@k6 run tests/load/grpc/v1/auth_test.js || true
+	@load_status=0; \
+	for protocol in http grpc; do \
+		k6 run --summary-export=.build/k6-summary-$$protocol-v1.json \
+			tests/load/$$protocol/v1/auth_test.js || load_status=$$?; \
+	done; \
+	exit $$load_status
 
 ## run | run application
 # `-N -l` disables compiler optimizations and inlining, which makes debugging easier.

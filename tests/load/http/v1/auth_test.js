@@ -1,26 +1,28 @@
 // noinspection JSUnusedGlobalSymbols
 
 import http from 'k6/http';
-import { check, group } from 'k6';
+import { check, fail, group, sleep } from 'k6';
 import { Counter, Rate } from 'k6/metrics';
 import * as helpers from '../../helpers.js';
 
 const successRate = new Rate('success_rate');
 const connectionErrors = new Counter('connection_errors');
-const signupErrors = new Counter('signup_errors');
-const loginErrors = new Counter('login_errors');
-const refreshErrors = new Counter('refresh_errors');
-const logoutErrors = new Counter('logout_errors');
-const getMeErrors = new Counter('get_me_errors');
-const updateMeErrors = new Counter('update_me_errors');
-const listUsersErrors = new Counter('list_users_errors');
+const operations = new Counter('operations');
+const completedFlows = new Counter('completed_flows');
 
 const ADDR = helpers.HTTPServerAddress();
 const API_KEY = helpers.GRPCAPIKey();
-
-if (!API_KEY) {
-    throw new Error('GRPC_API_KEY must contain the load-test API key');
-}
+const PASSWORD = 'LoadTest-Only!8qP3mZ7sK4vN2xR6';
+const requiredOperations = [
+    'signup', 'login', 'get_me', 'update_me',
+    'invalidated_access', 'invalidated_refresh', 'login_updated', 'get_updated_me',
+    'refresh', 'get_refreshed_me', 'logout', 'logged_out_access', 'logged_out_refresh', 'list_users',
+];
+const expectedResponses = {
+    200: http.expectedStatuses(200),
+    201: http.expectedStatuses(201),
+    401: http.expectedStatuses(401),
+};
 
 export const options = {
     scenarios: {
@@ -46,398 +48,157 @@ export const options = {
     },
     thresholds: {
         http_req_duration: ['p(95)<500'],
-        'success_rate': ['rate>=0.8'], // Allow some failures
-        'connection_errors': ['count<50'], // Connection errors should be limited
+        http_req_failed: ['rate==0'],
+        checks: ['rate==1'],
+        success_rate: ['rate==1'],
+        connection_errors: ['count==0'],
+        dropped_iterations: ['count==0'],
+        'completed_flows{flow:auth}': ['count>0'],
+        'completed_flows{flow:api}': ['count>0'],
     },
 };
 
-const activeUsers = [];
+for (const operation of requiredOperations) {
+    options.thresholds[`operations{operation:${operation}}`] = ['count>0'];
+}
 
-function serverIsReachable() {
-    // Check if the server is reachable
-    const healthCheck = http.get(ADDR + '/health', { 
-        timeout: '3s',
-        tags: { name: 'health_check' }
-    });
-    
-    if (healthCheck.status === 0) {
-        connectionErrors.add(1);
-        helpers.randomSleep(2);
-        return false;
+export function setup() {
+    connectionErrors.add(0);
+    completedFlows.add(0, { flow: 'auth' });
+    completedFlows.add(0, { flow: 'api' });
+    // Emit zero samples so skipped operations fail their coverage thresholds.
+    for (const operation of requiredOperations) {
+        operations.add(0, { operation });
     }
-
-    return true;
 }
 
 export function authFlow() {
-    if (!serverIsReachable()) {
-        return;
-    }
-    runAuthFlow();
+    runFlow('auth', () => {
+        const user = signup('auth');
+        let tokens = login(user.email);
+        getMe('get_me', tokens.access_token, user);
+
+        const updatedEmail = `updated-${user.email}`;
+        request('update_me', 'PUT', '/users/me', {
+            accessToken: tokens.access_token,
+            body: { email: updatedEmail, current_password: PASSWORD },
+        });
+        assertSessionRejected('invalidated', tokens);
+
+        user.email = updatedEmail;
+        tokens = login(user.email, 'login_updated');
+        getMe('get_updated_me', tokens.access_token, user);
+
+        const refreshed = request('refresh', 'POST', '/auth/refresh', {
+            body: { token: tokens.refresh_token },
+            validate: (body) => hasTokens(body) && body.refresh_token !== tokens.refresh_token,
+        });
+        getMe('get_refreshed_me', refreshed.access_token, user);
+        request('logout', 'POST', '/auth/logout', {
+            body: { refresh_token: refreshed.refresh_token },
+        });
+        assertSessionRejected('logged_out', refreshed);
+    });
 }
+
+// Each read VU owns its session; credential updates happen in the auth scenario.
+let reader;
 
 export function apiOperations() {
-    if (!serverIsReachable()) {
-        return;
-    }
-    runApiOperations();
-}
-
-function runAuthFlow() {
-    group('Auth Flow', () => {
-        const email = `test-${helpers.GenerateRandomString()}@example.com`;
-        const password = 'TestPass123!';
-        
-        const signupSuccess = signup(email, password);
-        if (!signupSuccess) {
-            return;
+    runFlow('api', () => {
+        if (!reader) {
+            const user = signup('api');
+            reader = { user, tokens: login(user.email) };
         }
-        
-        helpers.randomSleep(0.5);
-        
-        const loginData = login(email, password);
-        if (!loginData) {
-            return;
-        }
-        
-        const user = {
-            email: email,
-            accessToken: loginData.access_token,
-            refreshToken: loginData.refresh_token,
-        };
-        
-        helpers.randomSleep(1);
-        
-        if (Math.random() < 0.3) {
-            const newTokens = refresh(user.refreshToken);
-            if (newTokens) {
-                user.accessToken = newTokens.access_token;
-                user.refreshToken = newTokens.refresh_token;
-            }
-        }
-        
-        helpers.randomSleep(0.5);
-        
-        if (Math.random() < 0.2) {
-            logout(user.accessToken, user.refreshToken);
-        }
+        getMe('get_me', reader.tokens.access_token, reader.user);
+        request('list_users', 'GET', '/users?limit=10&offset=0', {
+            headers: { 'X-API-Key': API_KEY },
+            validate: (body) => Array.isArray(body) && body.length > 0 && body.length <= 10 &&
+                body.every((user) => typeof user.uuid === 'string' && typeof user.email === 'string'),
+        });
     });
 }
 
-function runApiOperations() {
-    group('API Operations', () => {
-        if (activeUsers.length === 0) {
-            // Create a user if none exist
-            const email = `api-test-${helpers.GenerateRandomString()}@example.com`;
-            const password = 'TestPass123!';
-            
-            if (signup(email, password)) {
-                const loginData = login(email, password);
-                if (loginData) {
-                    activeUsers.push({
-                        email: email,
-                        accessToken: loginData.access_token,
-                        refreshToken: loginData.refresh_token,
-                    });
-                }
-            }
-            return;
-        }
-        
-        const randomUser = activeUsers[Math.floor(Math.random() * activeUsers.length)];
-        if (!randomUser) {
-            return;
-        }
-        
-        getMe(randomUser.accessToken);
-        
-        helpers.randomSleep(0.3);
-        
-        if (Math.random() < 0.2) {
-            updateMe(randomUser.accessToken);
-        }
-        
-        if (Math.random() < 0.1) {
-            listUsers();
-        }
-    });
-}
-
-function signup(email, password) {
-    const url = `${ADDR}/api/v1/auth/signup`;
-    const payload = JSON.stringify({
-        email: email,
-        password: password,
-    });
-    const params = {
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        tags: { name: 'signup' },
-        timeout: '5s',
-    };
-    
-    const res = http.post(url, payload, params);
-    
-    if (res.status === 0) {
-        connectionErrors.add(1);
-        return false;
-    }
-    
-    const success = check(res, {
-        'signup status is 201': (r) => r.status === 201,
-        'signup response has user': (r) => {
-            try {
-                const body = JSON.parse(r.body);
-                return body && body.uuid !== undefined;
-            } catch (e) {
-                return false;
-            }
-        },
-    });
-    
-    successRate.add(success);
-    if (!success) {
-        signupErrors.add(1);
-        if (res.status !== 409) { // 409 is expected for duplicate emails
-            console.log(`Failed to signup: ${res.status} ${res.body}`);
-        }
-        return false;
-    }
-    return true;
-}
-
-function login(email, password) {
-    const url = `${ADDR}/api/v1/auth/login`;
-    const payload = JSON.stringify({
-        email: email,
-        password: password,
-    });
-    const params = {
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        tags: { name: 'login' },
-        timeout: '5s',
-    };
-    
-    const res = http.post(url, payload, params);
-    
-    if (res.status === 0) {
-        connectionErrors.add(1);
-        return null;
-    }
-    
-    const success = check(res, {
-        'login status is 200': (r) => r.status === 200,
-        'login response has tokens': (r) => {
-            try {
-                const body = JSON.parse(r.body);
-                return body && body.access_token !== undefined && body.refresh_token !== undefined;
-            } catch (e) {
-                return false;
-            }
-        },
-    });
-    
-    successRate.add(success);
-    if (!success) {
-        loginErrors.add(1);
-        console.log(`Failed to login: ${res.status} ${res.body}`);
-        return null;
-    }
-    
+function runFlow(name, run) {
+    let completed = false;
     try {
-        return JSON.parse(res.body);
-    } catch (e) {
-        return null;
+        group(name, run);
+        completed = true;
+    } finally {
+        completedFlows.add(Number(completed), { flow: name });
+        check(completed, { [`${name} flow completed`]: (value) => value });
     }
+    sleep(0.5);
 }
 
-function refresh(refreshToken) {
-    const url = `${ADDR}/api/v1/auth/refresh`;
-    const payload = JSON.stringify({
-        token: refreshToken,
+function signup(prefix) {
+    const email = `load-${prefix}-${__VU}-${__ITER}-${helpers.GenerateRandomString()}@example.com`.toLowerCase();
+    return request('signup', 'POST', '/auth/signup', {
+        body: { email, password: PASSWORD },
+        status: 201,
+        validate: (body) => body && typeof body.uuid === 'string' && body.uuid.length > 0 && body.email === email,
     });
-    const params = {
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        tags: { name: 'refresh' },
-        timeout: '5s',
-    };
-    
-    const res = http.post(url, payload, params);
-    
-    if (res.status === 0) {
-        connectionErrors.add(1);
-        return null;
-    }
-    
-    const success = check(res, {
-        'refresh status is 200': (r) => r.status === 200,
-        'refresh response has tokens': (r) => {
-            try {
-                const body = JSON.parse(r.body);
-                return body && body.access_token !== undefined && body.refresh_token !== undefined;
-            } catch (e) {
-                return false;
-            }
-        },
-    });
-    
-    successRate.add(success);
-    if (!success) {
-        refreshErrors.add(1);
-        if (res.status !== 401) { // 401 is expected for expired tokens
-            console.log(`Failed to refresh: ${res.status} ${res.body}`);
-        }
-        return null;
-    }
-    
-    try {
-        return JSON.parse(res.body);
-    } catch (e) {
-        return null;
-    }
 }
 
-function logout(accessToken, refreshToken) {
-    const url = `${ADDR}/api/v1/auth/logout`;
-    const payload = JSON.stringify({
-        access_token: accessToken,
-        refresh_token: refreshToken,
+function login(email, operation = 'login') {
+    return request(operation, 'POST', '/auth/login', {
+        body: { email, password: PASSWORD },
+        validate: hasTokens,
     });
-    const params = {
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        tags: { name: 'logout' },
-        timeout: '5s',
-    };
-    
-    const res = http.post(url, payload, params);
-    
-    if (res.status === 0) {
-        connectionErrors.add(1);
-        return;
-    }
-    
-    const success = check(res, {
-        'logout status is 200': (r) => r.status === 200,
-    });
-    
-    successRate.add(success);
-    if (!success) {
-        logoutErrors.add(1);
-        console.log(`Failed to logout: ${res.status} ${res.body}`);
-    }
 }
 
-function getMe(accessToken) {
-    const url = `${ADDR}/api/v1/users/me`;
-    const params = {
-        headers: {
-            'Authorization': `Bearer ${accessToken}`,
-        },
-        tags: { name: 'get_me' },
-        timeout: '5s',
-    };
-    
-    const res = http.get(url, params);
-    
-    if (res.status === 0) {
-        connectionErrors.add(1);
-        return;
-    }
-    
-    const success = check(res, {
-        'get me status is 200': (r) => r.status === 200,
-        'get me response has user': (r) => {
-            try {
-                const body = JSON.parse(r.body);
-                return body && body.uuid !== undefined;
-            } catch (e) {
-                return false;
-            }
-        },
+function hasTokens(body) {
+    return body && typeof body.access_token === 'string' && body.access_token.length > 0 &&
+        typeof body.refresh_token === 'string' && body.refresh_token.length > 0;
+}
+
+function getMe(operation, accessToken, user) {
+    request(operation, 'GET', '/users/me', {
+        accessToken,
+        validate: (body) => body && body.uuid === user.uuid && body.email === user.email,
     });
-    
-    successRate.add(success);
-    if (!success) {
-        getMeErrors.add(1);
-        if (res.status !== 401) { // 401 is expected for expired tokens
-            console.log(`Failed to get me: ${res.status} ${res.body}`);
+}
+
+function assertSessionRejected(prefix, tokens) {
+    request(`${prefix}_access`, 'GET', '/users/me', { accessToken: tokens.access_token, status: 401 });
+    request(`${prefix}_refresh`, 'POST', '/auth/refresh', {
+        body: { token: tokens.refresh_token },
+        status: 401,
+    });
+}
+
+function request(operation, method, path, { body, accessToken, headers = {}, status = 200, validate } = {}) {
+    const params = {
+        headers: { 'Content-Type': 'application/json', ...headers },
+        tags: { name: operation },
+        timeout: '5s',
+        redirects: 0,
+        // Expected rejection checks must not inflate the HTTP failure rate.
+        responseCallback: expectedResponses[status],
+    };
+    if (accessToken) {
+        params.headers.Authorization = `Bearer ${accessToken}`;
+    }
+
+    const response = http.request(method, `${ADDR}/api/v1${path}`, body ? JSON.stringify(body) : null, params);
+    let data = null;
+    if (validate) {
+        try {
+            data = response.json();
+        } catch (_) {
+            // The response check below reports invalid JSON as a failure.
         }
     }
-}
-
-function updateMe(accessToken) {
-    const url = `${ADDR}/api/v1/users/me`;
-    const payload = JSON.stringify({
-        email: `updated-${helpers.GenerateRandomString()}@example.com`,
-    });
-    const params = {
-        headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-        },
-        tags: { name: 'update_me' },
-        timeout: '5s',
-    };
-    
-    const res = http.put(url, payload, params);
-    
-    if (res.status === 0) {
-        connectionErrors.add(1);
-        return;
+    const assertions = { [`${operation}: status ${status}`]: (res) => res.status === status };
+    if (validate) {
+        assertions[`${operation}: response matches`] = () => validate(data);
     }
-    
-    const success = check(res, {
-        'update me status is 200': (r) => r.status === 200,
-    });
-    
-    successRate.add(success);
+    const success = check(response, assertions, { operation });
+    operations.add(1, { operation });
+    connectionErrors.add(Number(response.status === 0));
+    successRate.add(success, { operation });
     if (!success) {
-        updateMeErrors.add(1);
-        if (res.status !== 401 && res.status !== 403) {
-            console.log(`Failed to update me: ${res.status} ${res.body}`);
-        }
+        fail(`${operation}: expected status ${status} and a valid response, received status ${response.status}`);
     }
-}
-
-function listUsers() {
-    const url = `${ADDR}/api/v1/users?limit=10&offset=0`;
-    const params = {
-        headers: {
-            'X-API-Key': API_KEY,
-        },
-        tags: { name: 'list_users' },
-        timeout: '5s',
-    };
-    
-    const res = http.get(url, params);
-    
-    if (res.status === 0) {
-        connectionErrors.add(1);
-        return;
-    }
-    
-    const success = check(res, {
-        'list users status is 200': (r) => r.status === 200,
-        'list users returns array': (r) => {
-            try {
-                const body = JSON.parse(r.body);
-                return Array.isArray(body);
-            } catch (e) {
-                return false;
-            }
-        },
-    });
-    
-    successRate.add(success);
-    if (!success) {
-        listUsersErrors.add(1);
-        console.log(`Failed to list users: ${res.status} ${res.body}`);
-    }
+    return data;
 }

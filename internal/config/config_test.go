@@ -160,6 +160,20 @@ func TestOutboxCleanupDefaults(t *testing.T) {
 	assert.Equal(t, 1000, cfg.CleanupBatchSize)
 }
 
+func TestEventsPublisherDefaults(t *testing.T) {
+	var cfg config.Events
+	require.NoError(t, env.ParseWithOptions(&cfg, env.Options{
+		TagName: config.TagNameEnvVarName, DefaultValueTagName: config.TagNameDefaultValue,
+		Environment: map[string]string{},
+	}))
+	require.NoError(t, tools.ValidateStructCompact(cfg))
+	assert.Equal(t, 32, cfg.Publisher.MaxInflight)
+	assert.Equal(t, 5*time.Second, cfg.NATS.Publisher.AckTimeout)
+	assert.Equal(t, 10*time.Second, cfg.Kafka.ProducerTimeout)
+	assert.Equal(t, 10*time.Second, cfg.Kafka.ProducerMetadataTimeout)
+	assert.Equal(t, 10, cfg.Kafka.ProducerRetryMax)
+}
+
 func TestConfigParsesEnvironmentOverrides(t *testing.T) {
 	clearConfigEnvironment(t)
 	for key, value := range map[string]string{
@@ -173,6 +187,11 @@ func TestConfigParsesEnvironmentOverrides(t *testing.T) {
 		"CACHE_LOCAL_CAPACITY":            "2048",
 		"CACHE_REDIS_DB":                  "2",
 		"EVENTS_CONSUMER_MAX_RETRIES":     "0",
+		"EVENTS_PUBLISH_MAX_INFLIGHT":     "4",
+		"NATS_PUB_ACK_TIMEOUT":            "750ms",
+		"KAFKA_PRODUCER_TIMEOUT":          "2s",
+		"KAFKA_PRODUCER_METADATA_TIMEOUT": "3s",
+		"KAFKA_PRODUCER_RETRY_MAX":        "2",
 		"SERVER_HTTP_CORS_ALLOW_ORIGINS":  "https://first.example,https://second.example",
 		"SERVER_HTTP_TRUSTED_PROXY_CIDRS": "10.0.0.0/8,2001:db8::/32",
 		"AUTH_JWT_SECRETS":                "first,second",
@@ -194,6 +213,11 @@ func TestConfigParsesEnvironmentOverrides(t *testing.T) {
 	assert.Equal(t, uint64(2048), cfg.Cache.Local.Capacity)
 	assert.Equal(t, 2, cfg.Cache.Redis.DB)
 	assert.Zero(t, cfg.Events.Consumer.MaxRetries)
+	assert.Equal(t, 4, cfg.Events.Publisher.MaxInflight)
+	assert.Equal(t, 750*time.Millisecond, cfg.Events.NATS.Publisher.AckTimeout)
+	assert.Equal(t, 2*time.Second, cfg.Events.Kafka.ProducerTimeout)
+	assert.Equal(t, 3*time.Second, cfg.Events.Kafka.ProducerMetadataTimeout)
+	assert.Equal(t, 2, cfg.Events.Kafka.ProducerRetryMax)
 	assert.Equal(t, []string{"https://first.example", "https://second.example"}, cfg.Server.HTTP.CORSAllowOrigins)
 	assert.Equal(t, []string{"10.0.0.0/8", "2001:db8::/32"}, cfg.Server.HTTP.TrustedProxyCIDRs)
 	assert.Equal(t, []string{"first", "second"}, cfg.Auth.JWT.InitialSecrets)
@@ -244,6 +268,13 @@ func TestConfigValidationBoundaries(t *testing.T) {
 		{"retries disabled", "EVENTS_CONSUMER_MAX_RETRIES", "0", "", true},
 		{"maximum retries", "EVENTS_CONSUMER_MAX_RETRIES", "100", "", true},
 		{"too many retries", "EVENTS_CONSUMER_MAX_RETRIES", "101", "MaxRetries", false},
+		{"zero publish capacity", "EVENTS_PUBLISH_MAX_INFLIGHT", "0", "MaxInflight", false},
+		{"negative publish capacity", "EVENTS_PUBLISH_MAX_INFLIGHT", "-1", "MaxInflight", false},
+		{"single publish capacity", "EVENTS_PUBLISH_MAX_INFLIGHT", "1", "", true},
+		{"zero NATS publish timeout", "NATS_PUB_ACK_TIMEOUT", "0s", "AckTimeout", false},
+		{"zero Kafka producer timeout", "KAFKA_PRODUCER_TIMEOUT", "0s", "ProducerTimeout", false},
+		{"zero Kafka metadata timeout", "KAFKA_PRODUCER_METADATA_TIMEOUT", "0s", "ProducerMetadataTimeout", false},
+		{"zero Kafka producer retries", "KAFKA_PRODUCER_RETRY_MAX", "0", "ProducerRetryMax", false},
 		{"unknown database engine", "DATABASE_ENGINE", "unknown", "Engine", false},
 		{"disabled events", "EVENTS_ENGINE", "none", "", true},
 		{"invalid IPv4 prefix", "SERVER_HTTP_TRUSTED_PROXY_CIDRS", "10.0.0.0/40", "TrustedProxyCIDRs", false},
