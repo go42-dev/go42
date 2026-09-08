@@ -120,8 +120,13 @@ jobs:
             exit 1
           fi
       # ----
-      - name: 'Extract Go version'
-        run: echo "go_version=$(grep '^go ' go.mod | awk '{print $2}')" >> "$GITHUB_ENV"
+      - name: 'Extract Go version and cache platform key'
+        env:
+          PLATFORMS: ${{ inputs.platforms }}
+        run: |
+          echo "go_version=$(grep '^go ' go.mod | awk '{print $2}')" >> "$GITHUB_ENV"
+          # Cache keys cannot contain the commas in a multi-platform build list.
+          echo "go_cache_platforms=$(printf '%s' "$PLATFORMS" | sha256sum | cut -d ' ' -f1)" >> "$GITHUB_ENV"
       - name: 'Extract commit hash'
         run: echo "commit_hash=$(git rev-parse HEAD 2>/dev/null || echo '')" >> "$GITHUB_ENV"
       - name: 'Extract release tag'
@@ -150,16 +155,19 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       # ----
       # The layer cache does not preserve RUN cache mounts. Restore the Go module
-      # and compiler caches before the build, then extract them before actions/cache saves them.
+      # and compiler caches before the build, then extract them only when saving a new key.
       - name: 'Restore and save Go module and compiler caches'
+        id: go-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         continue-on-error: true
         with:
           path: ${{ runner.temp }}/docker-go-cache
-          # A new key lets each successful run save new modules and compiled packages.
+          # Reuse the cache across source changes; Go validates compiled packages.
+          # Refresh it when dependencies, target platforms, or the Dockerfile change.
           key: docker-go-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.go_version }}-${{ hashFiles('go.mod', 'go.sum') }}-${{
-            github.run_id }}-${{ github.run_attempt }}
+            env.go_cache_platforms }}-${{ hashFiles('Dockerfile') }}
           restore-keys: |
+            docker-go-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.go_version }}-${{ hashFiles('go.mod', 'go.sum') }}-${{ env.go_cache_platforms }}-
             docker-go-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.go_version }}-${{ hashFiles('go.mod', 'go.sum') }}-
             docker-go-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.go_version }}-
       - name: 'Restore and extract Go cache mounts'
@@ -170,6 +178,8 @@ jobs:
           dockerfile: Dockerfile
           cache-dir: ${{ runner.temp }}/docker-go-cache
           scratch-dir: ${{ runner.temp }}/buildkit-cache-dance
+          # Exact hits cannot be saved again, so avoid copying the cache back out.
+          skip-extraction: ${{ steps.go-cache.outputs.cache-hit == 'true' }}
       # ----
       # For single platform builds `index` annotations will fail - check and set levels accordingly.
       - name: 'Determine annotation levels'
