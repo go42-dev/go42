@@ -897,6 +897,8 @@ func TestRepository_UpdateTokenLastUsed(t *testing.T) {
 		t.Fatal(err)
 	}
 	when := time.Now().UTC().Truncate(time.Second)
+	east := time.FixedZone("UTC+3", 3*60*60)
+	west := time.FixedZone("UTC-3", -3*60*60)
 	if err := h.repo.UpdateTokenLastUsed(t.Context(), -1, when); !errors.Is(err, domain.ErrEntityNotFound) {
 		t.Fatalf("update missing token = %v, want not found", err)
 	}
@@ -905,11 +907,11 @@ func TestRepository_UpdateTokenLastUsed(t *testing.T) {
 		when time.Time
 		want time.Time
 	}{
-		{"first use", when, when},
-		{"newer use", when.Add(time.Hour), when.Add(time.Hour)},
-		{"delayed older flush", when, when.Add(time.Hour)},
-		{"repeated timestamp", when.Add(time.Hour), when.Add(time.Hour)},
-		{"later use", when.Add(2 * time.Hour), when.Add(2 * time.Hour)},
+		{"first use", when.In(east), when},
+		{"newer use", when.Add(time.Hour).In(west), when.Add(time.Hour)},
+		{"delayed older flush", when.In(east), when.Add(time.Hour)},
+		{"repeated timestamp", when.Add(time.Hour).In(east), when.Add(time.Hour)},
+		{"later use", when.Add(2 * time.Hour).In(west), when.Add(2 * time.Hour)},
 	} {
 		t.Run(step.name, func(t *testing.T) {
 			err := h.repo.WithTransaction(t.Context(), func(ctx context.Context) error {
@@ -1752,9 +1754,9 @@ func TestRepository_UserRoleQueries(t *testing.T) {
 		deleted bool
 	}{
 		{name: "shared", users: []int{h.user.ID, other.ID}, actions: []string{"read"}},
-		{name: "future", users: []int{h.user.ID}, actions: []string{"read", "write"}, expires: time.Now().Add(time.Hour)},
+		{name: "future", users: []int{h.user.ID}, actions: []string{"read", "write"}, expires: time.Now().UTC().Add(time.Hour)},
 		{name: "empty", users: []int{h.user.ID}},
-		{name: "expired", users: []int{h.user.ID}, actions: []string{"hidden"}, expires: time.Now().Add(-time.Hour)},
+		{name: "expired", users: []int{h.user.ID}, actions: []string{"hidden"}, expires: time.Now().UTC().Add(-time.Hour)},
 		{name: "deleted", users: []int{h.user.ID}, actions: []string{"hidden"}, deleted: true},
 		{name: "other", users: []int{other.ID}, actions: []string{"other"}},
 	} {
@@ -2172,8 +2174,9 @@ func TestRepository_UserHistoryIsIdempotent(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			h := newSessionHarness(t)
 			original := models.UserHistoryRecord{
-				ID: uuid.New(), UserID: h.user.ID, OccurredAt: time.Now().UTC().Truncate(time.Second),
-				EventType: "user.created", Data: []byte(`{"email":"original@example.com"}`),
+				ID: uuid.New(), UserID: h.user.ID,
+				OccurredAt: time.Now().Truncate(time.Second).In(time.FixedZone("UTC+3", 3*60*60)),
+				EventType:  "user.created", Data: []byte(`{"email":"original@example.com"}`),
 				Metadata: `{"request_id":"original-request"}`,
 			}
 			require.NoError(t, h.repo.SaveUserHistoryRecord(t.Context(), &original))

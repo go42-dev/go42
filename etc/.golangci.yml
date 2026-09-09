@@ -43,6 +43,7 @@ linters:
     - govet
     - ineffassign
     - nilerr
+    - revive
     - rowserrcheck
     - sqlclosecheck
     - staticcheck
@@ -60,6 +61,10 @@ linters:
         - (*database/sql.DB).Close
         - (*database/sql.Rows).Close
         - (*github.com/pressly/goose/v3.Provider).Close
+    revive:
+      confidence: 0.6 # Include capitalization-only violations.
+      rules:
+        - name: error-strings
     sloglint:
       attr-only: true
       key-naming-case: snake

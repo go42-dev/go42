@@ -2,10 +2,13 @@ package workers
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
+	"math/rand/v2"
 	"time"
 
 	"github.com/go42-dev/go42/internal/events"
@@ -15,13 +18,19 @@ import (
 	"github.com/go42-dev/go42/internal/tools"
 )
 
-const defaultPublishTimeout = 10 * time.Second
+const (
+	defaultPublishTimeout      = 10 * time.Second
+	defaultRetryInitialBackoff = 5 * time.Second
+	defaultRetryMaxBackoff     = 5 * time.Minute
+)
 
 type OutboxMessagePublisher struct {
-	logger         *slog.Logger
-	repository     repository
-	publisher      publisher
-	publishTimeout time.Duration
+	logger              *slog.Logger
+	repository          repository
+	publisher           publisher
+	publishTimeout      time.Duration
+	retryInitialBackoff time.Duration
+	retryMaxBackoff     time.Duration
 }
 
 func NewOutboxMessagePublisher(
@@ -30,9 +39,11 @@ func NewOutboxMessagePublisher(
 	opts ...OutboxMessagePublisherOption,
 ) *OutboxMessagePublisher {
 	pub := &OutboxMessagePublisher{
-		repository:     repository,
-		publisher:      publisher,
-		publishTimeout: defaultPublishTimeout,
+		repository:          repository,
+		publisher:           publisher,
+		publishTimeout:      defaultPublishTimeout,
+		retryInitialBackoff: defaultRetryInitialBackoff,
+		retryMaxBackoff:     defaultRetryMaxBackoff,
 	}
 	for _, opt := range opts {
 		opt(pub)
@@ -100,7 +111,7 @@ func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
 			}
 
 			publishCtx, publishCtxCancel := context.WithTimeout(messageCtx, p.publishTimeout)
-			err = p.publisher.Publish(publishCtx, message.Topic, jsonBytes)
+			err = p.publisher.Publish(publishCtx, message.Topic, message.ID.String(), jsonBytes)
 			publishCtxCancel()
 
 			// if parent context is canceled we should stop immediately,
@@ -110,12 +121,18 @@ func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
 			}
 
 			if err != nil {
-				message.RetryCount++
+				if message.RetryCount < math.MaxInt32 {
+					message.RetryCount++
+				}
 				message.LastError = err.Error()
 				result := "retry"
+				message.NextAttemptAt = sql.NullTime{
+					Time: time.Now().UTC().Add(p.retryDelay(message.RetryCount)), Valid: true,
+				}
 
-				if message.RetryCount >= message.MaxRetries {
+				if events.IsPermanent(err) {
 					message.Status = models.MessageStatusFailed
+					message.NextAttemptAt = sql.NullTime{}
 					result = "permanently_failed"
 				}
 
@@ -168,6 +185,20 @@ func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
 	return err
 }
 
+// retryDelay caps exponential growth and adds jitter without overflowing after long outages.
+func (p *OutboxMessagePublisher) retryDelay(attempt int) time.Duration {
+	delay := p.retryInitialBackoff
+	for n := 1; n < attempt && delay < p.retryMaxBackoff; n++ {
+		if delay > p.retryMaxBackoff/2 {
+			delay = p.retryMaxBackoff
+			break
+		}
+		delay *= 2
+	}
+	delay = min(delay, p.retryMaxBackoff)
+	return time.Duration(float64(delay) * (0.5 + rand.Float64()/2))
+}
+
 func observeDelivery(createdAt time.Time, result string) {
 	metrics.Counter("application_outbox_messages_total", map[string]interface{}{
 		"result": result,
@@ -183,6 +214,13 @@ func observeDelivery(createdAt time.Time, result string) {
 }
 
 type OutboxMessagePublisherOption func(*OutboxMessagePublisher)
+
+func OutboxMessagePublisherWithRetryBackoff(initial, maximum time.Duration) OutboxMessagePublisherOption {
+	return func(p *OutboxMessagePublisher) {
+		p.retryInitialBackoff = initial
+		p.retryMaxBackoff = maximum
+	}
+}
 
 func OutboxMessagePublisherWithLogger(logger *slog.Logger) OutboxMessagePublisherOption {
 	return func(o *OutboxMessagePublisher) {

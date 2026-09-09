@@ -9,6 +9,31 @@ import (
 
 type Option func(*AMQP, *amqp.Config)
 
+// WithAutoProvision allows declaring application queues, exchanges and bindings.
+func WithAutoProvision(enabled bool) Option {
+	return func(engine *AMQP, _ *amqp.Config) { engine.autoProvision = enabled }
+}
+
+func WithConnectTimeout(timeout time.Duration) Option {
+	return func(engine *AMQP, _ *amqp.Config) { engine.connectTimeout = timeout }
+}
+
+func WithTLSEnabled(enabled bool) Option {
+	return func(engine *AMQP, _ *amqp.Config) {
+		engine.tlsEnabled = enabled
+	}
+}
+
+// WithTLSConfig sets certificate files and server name, loaded by New when TLS is enabled.
+func WithTLSConfig(caFile, certFile, keyFile, serverName string) Option {
+	return func(engine *AMQP, _ *amqp.Config) {
+		engine.tls.CAFile = caFile
+		engine.tls.CertFile = certFile
+		engine.tls.KeyFile = keyFile
+		engine.tls.ServerName = serverName
+	}
+}
+
 func WithLogger(logger *slog.Logger) Option {
 	return func(amqp *AMQP, _ *amqp.Config) {
 		amqp.logger = logger

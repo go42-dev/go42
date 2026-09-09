@@ -21,9 +21,10 @@ type Message struct {
 	Payload       []byte
 	CreatedAt     time.Time
 	ProcessedAt   sql.NullTime
+	NextAttemptAt sql.NullTime
 	Status        string
 	RetryCount    int
-	MaxRetries    int
+	MaxRetries    int // Legacy field; transient publishing failures are retried without a limit.
 	LastError     string
 	Metadata      map[string]string `gorm:"serializer:json"`
 }

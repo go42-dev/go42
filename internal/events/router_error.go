@@ -25,3 +25,9 @@ func Permanent(err error) error {
 
 	return &permanentError{err: err}
 }
+
+// IsPermanent identifies invalid messages that retrying cannot repair.
+func IsPermanent(err error) bool {
+	_, ok := errors.AsType[*permanentError](err)
+	return ok
+}

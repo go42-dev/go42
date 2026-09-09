@@ -1,6 +1,7 @@
 package kafka
 
 import (
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -8,6 +9,29 @@ import (
 )
 
 type Option func(*Kafka, *sarama.Config, *sarama.Config)
+
+func WithTopicAutoCreation(enabled bool) Option {
+	return func(_ *Kafka, publisher, subscriber *sarama.Config) {
+		publisher.Metadata.AllowAutoTopicCreation = enabled
+		subscriber.Metadata.AllowAutoTopicCreation = enabled
+	}
+}
+
+func WithTLSEnabled(enabled bool) Option {
+	return func(engine *Kafka, _, _ *sarama.Config) {
+		engine.tlsEnabled = enabled
+	}
+}
+
+// WithTLSConfig sets certificate files and server name, loaded by New when TLS is enabled.
+func WithTLSConfig(caFile, certFile, keyFile, serverName string) Option {
+	return func(engine *Kafka, _, _ *sarama.Config) {
+		engine.tls.CAFile = caFile
+		engine.tls.CertFile = certFile
+		engine.tls.KeyFile = keyFile
+		engine.tls.ServerName = serverName
+	}
+}
 
 func WithLogger(logger *slog.Logger) Option {
 	return func(k *Kafka, pubCfg *sarama.Config, subCfg *sarama.Config) {
@@ -110,6 +134,8 @@ func WithProducerCompression(compression string) Option {
 			pubCfg.Producer.Compression = sarama.CompressionLZ4
 		case "zstd":
 			pubCfg.Producer.Compression = sarama.CompressionZSTD
+		default:
+			k.configErr = fmt.Errorf("unsupported Kafka compression %q", compression)
 		}
 	}
 }
@@ -159,6 +185,8 @@ func WithConsumerGroupRebalanceStrategy(strategy string) Option {
 			subCfg.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategyRoundRobin()
 		case "sticky":
 			subCfg.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategySticky()
+		default:
+			k.configErr = fmt.Errorf("unsupported Kafka rebalance strategy %q", strategy)
 		}
 	}
 }
@@ -176,6 +204,8 @@ func WithKafkaVersion(version string) Option {
 			if v, err := sarama.ParseKafkaVersion(version); err == nil {
 				pubCfg.Version = v
 				subCfg.Version = v
+			} else {
+				k.configErr = fmt.Errorf("invalid Kafka version: %w", err)
 			}
 		}
 	}

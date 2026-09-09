@@ -2,6 +2,7 @@ package nats
 
 import (
 	"log/slog"
+	"maps"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill-nats/v2/pkg/nats"
@@ -9,6 +10,52 @@ import (
 )
 
 type Option func(*NATS, *nats.PublisherConfig, *nats.SubscriberConfig)
+
+func WithConsumerBindings(bindings map[string]ConsumerBinding) Option {
+	return func(engine *NATS, _ *nats.PublisherConfig, _ *nats.SubscriberConfig) {
+		engine.consumerBindings = maps.Clone(bindings)
+	}
+}
+
+func WithConsumerBindingsJSON(bindings string) Option {
+	return func(engine *NATS, _ *nats.PublisherConfig, _ *nats.SubscriberConfig) {
+		engine.consumerBindingsJSON = bindings
+	}
+}
+
+func WithTLSEnabled(enabled bool) Option {
+	return func(engine *NATS, _ *nats.PublisherConfig, _ *nats.SubscriberConfig) {
+		engine.tlsEnabled = enabled
+	}
+}
+
+// WithTLSConfig sets certificate files and server name, loaded by New when TLS is enabled.
+func WithTLSConfig(caFile, certFile, keyFile, serverName string) Option {
+	return func(engine *NATS, _ *nats.PublisherConfig, _ *nats.SubscriberConfig) {
+		engine.tls.CAFile = caFile
+		engine.tls.CertFile = certFile
+		engine.tls.KeyFile = keyFile
+		engine.tls.ServerName = serverName
+	}
+}
+
+func WithCredentialsFile(path string) Option {
+	return func(_ *NATS, publisher *nats.PublisherConfig, subscriber *nats.SubscriberConfig) {
+		if len(path) > 0 {
+			publisher.NatsOptions = append(publisher.NatsOptions, natsgo.UserCredentials(path))
+			subscriber.NatsOptions = append(subscriber.NatsOptions, natsgo.UserCredentials(path))
+		}
+	}
+}
+
+func WithUserPassword(user, password string) Option {
+	return func(_ *NATS, publisher *nats.PublisherConfig, subscriber *nats.SubscriberConfig) {
+		if len(user) > 0 || len(password) > 0 {
+			publisher.NatsOptions = append(publisher.NatsOptions, natsgo.UserInfo(user, password))
+			subscriber.NatsOptions = append(subscriber.NatsOptions, natsgo.UserInfo(user, password))
+		}
+	}
+}
 
 func WithLogger(logger *slog.Logger) Option {
 	return func(n *NATS, pubCfg *nats.PublisherConfig, subCfg *nats.SubscriberConfig) {
@@ -25,6 +72,9 @@ func WithClientName(name string) Option {
 
 func WithClientToken(token string) Option {
 	return func(n *NATS, pubCfg *nats.PublisherConfig, subCfg *nats.SubscriberConfig) {
+		if len(token) == 0 {
+			return
+		}
 		pubCfg.NatsOptions = append(pubCfg.NatsOptions, natsgo.Token(token))
 		subCfg.NatsOptions = append(subCfg.NatsOptions, natsgo.Token(token))
 	}
@@ -80,8 +130,8 @@ func WithJetStreamAutoProvision(autoProvision bool) Option {
 
 // WithPublishAckTimeout limits the wait for a JetStream publish acknowledgement.
 func WithPublishAckTimeout(timeout time.Duration) Option {
-	return func(_ *NATS, pubCfg *nats.PublisherConfig, _ *nats.SubscriberConfig) {
-		pubCfg.JetStream.PublishOptions = append(pubCfg.JetStream.PublishOptions, natsgo.AckWait(timeout))
+	return func(engine *NATS, _ *nats.PublisherConfig, _ *nats.SubscriberConfig) {
+		engine.publishTimeout = timeout
 	}
 }
 
@@ -111,10 +161,6 @@ func WithSubTimeout(timeout time.Duration) Option {
 func WithSubAckTimeout(timeout time.Duration) Option {
 	return func(n *NATS, pubCfg *nats.PublisherConfig, subCfg *nats.SubscriberConfig) {
 		subCfg.AckWaitTimeout = timeout
-		subCfg.JetStream.SubscribeOptions = append(
-			subCfg.JetStream.SubscribeOptions,
-			natsgo.AckWait(timeout),
-		)
 	}
 }
 

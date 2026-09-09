@@ -7,13 +7,15 @@ create table if not exists transactional_outbox (
     payload text null,
     created_at timestamp default current_timestamp,
     processed_at timestamp null,
+    next_attempt_at datetime(6) null,
     status enum('pending', 'processed', 'failed') not null,
     retry_count int not null,
     max_retries int not null,
     last_error text not null,
     metadata text null,
     key transactional_outbox_publisher (status),
-    key transactional_outbox_cleanup (status, processed_at, id)
+    key transactional_outbox_cleanup (status, processed_at, id),
+    key transactional_outbox_retry_schedule (status, created_at, id, next_attempt_at)
 );
 
 -- +goose Down

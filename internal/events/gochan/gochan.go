@@ -9,6 +9,8 @@ import (
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
 )
 
+const defaultOutputChannelBuffer = 999
+
 type GoChan struct {
 	logger  *slog.Logger
 	channel *gochannel.GoChannel
@@ -27,7 +29,7 @@ func New(opts ...Option) *GoChan {
 
 	goch := gochannel.NewGoChannel(
 		gochannel.Config{
-			OutputChannelBuffer: 999,
+			OutputChannelBuffer: defaultOutputChannelBuffer,
 			Persistent:          true,
 			PreserveContext:     false,
 		},

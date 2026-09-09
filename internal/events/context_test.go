@@ -130,7 +130,7 @@ func TestSubscribersKeepCorrelationThroughRetriesAndDeadLetters(t *testing.T) {
 			})
 			producer := trace.ContextWithSpanContext(t.Context(), source)
 			producer = tools.SetRequestIDToContext(producer, "request-42")
-			require.NoError(t, router.Publish(producer, "failing", []byte("invalid JSON")))
+			require.NoError(t, router.Publish(producer, "failing", "failed-event", []byte("invalid JSON")))
 			deadLetter := waitForRouterMessage(t, deadLetters)
 			deadLetter.Ack()
 			require.NoError(t, router.Shutdown(t.Context()))
@@ -204,7 +204,7 @@ func TestSubscriberDoesNotInheritProducerCancellation(t *testing.T) {
 	startRouter(t, router, ctx)
 	producer, cancel := context.WithCancel(tools.SetRequestIDToContext(t.Context(), "request-42"))
 	defer cancel()
-	require.NoError(t, router.Publish(producer, "independent", []byte("event")))
+	require.NoError(t, router.Publish(producer, "independent", "event-id", []byte("event")))
 	cancel()
 	close(producerFinished)
 	select {
@@ -256,7 +256,7 @@ func TestConcurrentSubscriberRetriesKeepTheirOwnFields(t *testing.T) {
 	startRouter(t, router, ctx)
 	for i := range 16 {
 		id := fmt.Sprintf("request-%d", i)
-		require.NoError(t, router.Publish(tools.SetRequestIDToContext(t.Context(), id), "concurrent", []byte(id)))
+		require.NoError(t, router.Publish(tools.SetRequestIDToContext(t.Context(), id), "concurrent", id, []byte(id)))
 	}
 	for range 16 {
 		select {

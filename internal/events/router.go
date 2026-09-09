@@ -20,6 +20,15 @@ import (
 	"github.com/go42-dev/go42/internal/tools"
 )
 
+const (
+	defaultMaxRetries               = 3
+	defaultInitialBackoff           = 250 * time.Millisecond
+	defaultMaxBackoff               = 5 * time.Second
+	defaultRetryMultiplier          = 2
+	defaultRetryRandomizationFactor = 0.2
+	defaultDeadLetterTopicSuffix    = "_dlq"
+)
+
 type Router struct {
 	backend               Backend
 	publisher             message.Publisher
@@ -39,9 +48,13 @@ type Router struct {
 
 func NewRouter(backend Backend, opts ...Option) (*Router, error) {
 	r := &Router{
-		backend:            backend,
-		publishMaxInflight: defaultPublishMaxInflight,
-		errors:             make(chan error, 1),
+		backend:               backend,
+		publishMaxInflight:    defaultPublishMaxInflight,
+		maxRetries:            defaultMaxRetries,
+		initialBackoff:        defaultInitialBackoff,
+		maxBackoff:            defaultMaxBackoff,
+		deadLetterTopicSuffix: defaultDeadLetterTopicSuffix,
+		errors:                make(chan error, 1),
 	}
 	for _, opt := range opts {
 		opt(r)
@@ -70,6 +83,7 @@ func NewRouter(backend Backend, opts ...Option) (*Router, error) {
 // The caller must exit on error; failed startup does not roll back subscriptions.
 func (r *Router) Start(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
+
 	runErr := make(chan error, 1)
 	go func() {
 		runErr <- r.router.Run(runCtx)
@@ -143,14 +157,22 @@ func (r *Router) Shutdown(ctx context.Context) error {
 
 // ---
 
-func (r *Router) Publish(ctx context.Context, topic string, event []byte) error {
+// Publish requires an event ID. Reuse the same ID when retrying an event.
+func (r *Router) Publish(ctx context.Context, topic string, id string, event []byte) error {
+	if len(topic) == 0 || len(id) == 0 {
+		return Permanent(errors.New("event topic and ID are required"))
+	}
+
 	ctx, span := otel.Tracer("events").Start(ctx, "publish "+topic,
 		trace.WithSpanKind(trace.SpanKindProducer),
-		trace.WithAttributes(attribute.String("messaging.destination.name", topic)),
+		trace.WithAttributes(
+			attribute.String("messaging.destination.name", topic),
+			attribute.String("messaging.message.id", id),
+		),
 	)
 	defer span.End()
 
-	msg := message.NewMessageWithContext(ctx, watermill.NewUUID(), event)
+	msg := message.NewMessageWithContext(ctx, id, event)
 	msg.Metadata = PropagationFromContext(ctx)
 	err := r.publisher.Publish(topic, msg)
 
@@ -174,6 +196,9 @@ func (r *Router) Subscribe(
 	topic string,
 	handler func(ctx context.Context, event []byte) error,
 ) error {
+	if len(topic) == 0 {
+		return errors.New("event topic is required")
+	}
 	deadLetterTopic := topic + r.deadLetterTopicSuffix
 
 	if initializer, ok := r.backend.(TopicInitializer); ok {
@@ -201,8 +226,8 @@ func (r *Router) Subscribe(
 		MaxRetries:          r.maxRetries,
 		InitialInterval:     r.initialBackoff,
 		MaxInterval:         r.maxBackoff,
-		Multiplier:          2,
-		RandomizationFactor: 0.2,
+		Multiplier:          defaultRetryMultiplier,
+		RandomizationFactor: defaultRetryRandomizationFactor,
 		ResetContextOnRetry: true,
 		Logger:              r.watermillLogger,
 		ShouldRetry: func(params middleware.RetryParams) bool {

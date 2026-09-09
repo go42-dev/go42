@@ -71,10 +71,11 @@ func TestOutboxTimeoutRedeliveryIsIdempotent(t *testing.T) {
 			h.assertHistory(t, entry, 1)
 
 			// A timeout does not tell us whether the broker accepted the first attempt.
-			// Replay the same event ID to exercise deduplication even if that attempt was lost.
+			// Replay the business event with a fresh transport ID so the broker delivers it again
+			// and the handler's idempotence is exercised even when publish deduplication is enabled.
 			ctx, cancel := context.WithTimeout(t.Context(), outboxPublishTimeout)
 			defer cancel()
-			require.NoError(t, h.router.Publish(ctx, entry.Topic, outboxEventPayload(t, entry)))
+			require.NoError(t, h.router.Publish(ctx, entry.Topic, uuid.NewString(), outboxEventPayload(t, entry)))
 			h.assertHistory(t, entry, 2)
 		})
 	}
@@ -126,35 +127,32 @@ func TestOutboxCancellationPreservesPendingMessages(t *testing.T) {
 	}
 }
 
-func TestOutboxRetryExhaustionPreservesFailedMessages(t *testing.T) {
+func TestOutboxRetriesPastLegacyLimitAndRecovers(t *testing.T) {
 	for _, factory := range brokerDependencyFactories() {
 		t.Run(factory.name, func(t *testing.T) {
 			h := newOutboxResilienceHarness(t, factory)
 			entry := h.queue(t)
+			entry.MaxRetries = 3
+			require.NoError(t, h.repository.SaveFailedMessages(t.Context(), []models.Message{entry}))
 			h.disconnect(t)
 
-			for attempt := 1; attempt <= entry.MaxRetries; attempt++ {
+			for attempt := 1; attempt <= 5; attempt++ {
 				h.runBatch(t, 100*time.Millisecond)
-				status := models.MessageStatusPending
-				if attempt == entry.MaxRetries {
-					status = models.MessageStatusFailed
-				}
-				h.assertMessage(t, entry, status, attempt)
+				pending := h.assertMessage(t, entry, models.MessageStatusPending, attempt)
+				require.True(t, pending.NextAttemptAt.Valid)
+				time.Sleep(time.Until(pending.NextAttemptAt.Time) + time.Millisecond)
 			}
-			failed := h.assertMessage(t, entry, models.MessageStatusFailed, entry.MaxRetries)
 
 			setProxyEnabled(t, factory.proxy.Name, true)
 			h.waitForBroker(t)
-			healthy := h.queue(t)
 			h.runBatch(t, outboxPublishTimeout)
-			h.assertMessage(t, healthy, models.MessageStatusProcessed, 0)
-			h.assertHistory(t, healthy, 1)
-			stored := h.assertMessage(t, entry, models.MessageStatusFailed, entry.MaxRetries)
-			require.Equal(t, failed.LastError, stored.LastError)
+			stored := h.assertMessage(t, entry, models.MessageStatusProcessed, 5)
+			require.False(t, stored.NextAttemptAt.Valid)
+			h.assertHistory(t, entry, 1)
 			h.mu.Lock()
 			attempts := h.publishAttempts[entry.ID]
 			h.mu.Unlock()
-			require.Equal(t, entry.MaxRetries, attempts, "failed messages must not be selected again")
+			require.Equal(t, 6, attempts)
 		})
 	}
 }
@@ -176,9 +174,6 @@ type outboxResilienceHarness struct {
 
 func newOutboxResilienceHarness(t *testing.T, factory brokerFactory) *outboxResilienceHarness {
 	t.Helper()
-	if factory.raceSensitive && raceDetectorEnabled {
-		t.Skip("watermill-amqp reconnect has a known upstream data race")
-	}
 	db := newOutboxResilienceDatabase(t)
 	base := database.NewBaseRepository(db)
 	authRepo := authRepository.New(base, nil, 0)
@@ -251,7 +246,7 @@ func (h *outboxResilienceHarness) Subscribe(_ string, handler func(context.Conte
 }
 
 // Observe attempts without replacing the router or the broker publisher.
-func (h *outboxResilienceHarness) Publish(ctx context.Context, topic string, payload []byte) error {
+func (h *outboxResilienceHarness) Publish(ctx context.Context, topic, id string, payload []byte) error {
 	var event outboxDomain.Event
 	if err := json.Unmarshal(payload, &event); err != nil {
 		return err
@@ -263,7 +258,7 @@ func (h *outboxResilienceHarness) Publish(ctx context.Context, topic string, pay
 	case h.publishStarted <- event.ID:
 	default:
 	}
-	return h.router.Publish(ctx, topic, payload)
+	return h.router.Publish(ctx, topic, id, payload)
 }
 
 func (h *outboxResilienceHarness) queue(t *testing.T) models.Message {
@@ -312,7 +307,7 @@ func (h *outboxResilienceHarness) waitForBroker(t *testing.T) {
 	assertEventuallySucceeds(t, "publish through the healthy broker", func() error {
 		ctx, cancel := context.WithTimeout(t.Context(), outboxPublishTimeout)
 		defer cancel()
-		return h.router.Publish(ctx, h.topic, payload)
+		return h.router.Publish(ctx, h.topic, h.warmup.ID.String(), payload)
 	})
 }
 
@@ -394,7 +389,8 @@ func (h *outboxResilienceHarness) startBatch(
 		})
 	}
 	worker := outboxWorkers.NewOutboxMessagePublisher(repository, h,
-		outboxWorkers.OutboxMessagePublisherWithPublishTimeout(publishTimeout))
+		outboxWorkers.OutboxMessagePublisherWithPublishTimeout(publishTimeout),
+		outboxWorkers.OutboxMessagePublisherWithRetryBackoff(10*time.Millisecond, 20*time.Millisecond))
 	done := make(chan error, 1)
 	stopped := make(chan struct{})
 	t.Cleanup(func() {

@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -12,9 +15,84 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	httpAdapter "github.com/go42-dev/go42/internal/auth/adapters/http/v1"
 	"github.com/go42-dev/go42/internal/auth/domain"
 	"github.com/go42-dev/go42/internal/auth/models"
 )
+
+func TestRepository_Timezones(t *testing.T) {
+	executable, err := os.Executable()
+	require.NoError(t, err)
+	for _, zone := range []string{"UTC", "Etc/GMT-3", "Etc/GMT+3"} {
+		t.Run(zone, func(t *testing.T) {
+			// Separate processes avoid changing time.Local while database workers use it.
+			cmd := exec.CommandContext(
+				t.Context(),
+				executable,
+				"-test.run=^TestRepository_(UserRoleQueries|UpdateTokenLastUsed|UserHistoryIsIdempotent|TimestampsUseUTC|RoleExpiryAuthorization)$",
+				"-test.v",
+				"-test.timeout=1m",
+			)
+			cmd.Env = append(os.Environ(), "TZ="+zone)
+			output, err := cmd.CombinedOutput()
+			require.NoError(t, err, "%s", output)
+		})
+	}
+}
+
+func TestRepository_TimestampsUseUTC(t *testing.T) {
+	h := newSessionHarness(t)
+	assertTimestamp := func(value time.Time) {
+		t.Helper()
+		_, offset := value.Zone()
+		assert.Zero(t, offset, "stored timestamps must use UTC")
+		assert.WithinDuration(t, time.Now().UTC(), value, 5*time.Second)
+	}
+	assertTimestamp(h.user.CreatedAt)
+	assertTimestamp(h.user.UpdatedAt)
+	stored := loadStoredRepositoryUser(t, h, h.user.ID)
+	assertTimestamp(stored.CreatedAt)
+	assertTimestamp(stored.UpdatedAt)
+
+	h.user.Email = "utc-" + uuid.NewString() + "@example.com"
+	require.NoError(t, h.repo.UpdateUser(t.Context(), h.user))
+	assertTimestamp(h.user.UpdatedAt)
+	stored = loadStoredRepositoryUser(t, h, h.user.ID)
+	assertTimestamp(stored.UpdatedAt)
+	require.NoError(t, h.repo.DeleteUser(t.Context(), h.user))
+	require.NoError(t, h.db.Master().WithContext(t.Context()).Unscoped().First(&stored, h.user.ID).Error)
+	require.True(t, stored.DeletedAt.Valid)
+	assertTimestamp(stored.DeletedAt.Time)
+
+	// Omit timestamps to exercise SQL defaults instead of GORM's clock.
+	name := "utc-defaults-" + uuid.NewString()
+	require.NoError(t, h.db.Master().WithContext(t.Context()).Exec(
+		"INSERT INTO auth_roles (name) VALUES (?)", name).Error)
+	var role models.Role
+	require.NoError(t, h.db.Master().WithContext(t.Context()).Where("name = ?", name).First(&role).Error)
+	assertTimestamp(role.CreatedAt)
+	assertTimestamp(role.UpdatedAt)
+}
+
+func TestRepository_RoleExpiryAuthorization(t *testing.T) {
+	for _, duration := range []time.Duration{-time.Hour, time.Hour} {
+		t.Run(duration.String(), func(t *testing.T) {
+			h := newSessionHarness(t)
+			require.NoError(t, h.db.Master().WithContext(t.Context()).Exec(
+				"UPDATE auth_user_roles SET expires_at = ? WHERE user_id = ?",
+				time.Now().UTC().Add(duration), h.user.ID).Error)
+			tokens := h.login(t)
+			e := newTestEcho()
+			httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+			response := sessionHTTPRequest(t, e, http.MethodGet, "/api/v1/users/me", tokens.AccessToken, nil)
+			want := http.StatusOK
+			if duration < 0 {
+				want = http.StatusForbidden
+			}
+			assert.Equal(t, want, response.Code, "%s", response.Body.String())
+		})
+	}
+}
 
 func TestRepository_CreateUserPopulatesDefaultsAndCustomValues(t *testing.T) {
 	h := newSessionHarness(t)

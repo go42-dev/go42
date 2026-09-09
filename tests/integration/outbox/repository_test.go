@@ -98,6 +98,52 @@ func newOutboxRepository(t *testing.T) (database.Database, *repository.Repositor
 	return db, repository.New(database.NewBaseRepository(db)), migrations
 }
 
+func TestOutboxRetryScheduleSurvivesRepositoryRestart(t *testing.T) {
+	db, repo, migrations := newOutboxRepository(t)
+	first, future, last := newOutboxTestMessage(), newOutboxTestMessage(), newOutboxTestMessage()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	first.CreatedAt, future.CreatedAt, last.CreatedAt = now.Add(
+		-3*time.Minute,
+	), now.Add(
+		-2*time.Minute,
+	), now.Add(
+		-time.Minute,
+	)
+	first.NextAttemptAt = sql.NullTime{Time: now.Add(-time.Second), Valid: true}
+	future.NextAttemptAt = sql.NullTime{Time: now.Add(time.Hour), Valid: true}
+	future.RetryCount, future.MaxRetries = 50, 3
+	for _, entry := range []*models.Message{&last, &future, &first} {
+		require.NoError(t, repo.NewOutboxMessage(t.Context(), entry))
+	}
+	// Migration reruns must preserve the schedule, and a new repository has no in-memory timer state.
+	applied, err := migrations.Up(t.Context())
+	require.NoError(t, err)
+	require.Empty(t, applied)
+	repo = repository.New(database.NewBaseRepository(db))
+	due, err := repo.GetUnprocessedMessages(t.Context(), 10)
+	require.NoError(t, err)
+	require.Len(t, due, 2)
+	require.Equal(t, first.ID, due[0].ID)
+	require.Equal(t, last.ID, due[1].ID)
+	var stored models.Message
+	require.NoError(t, db.Master().WithContext(t.Context()).First(&stored, "id = ?", future.ID).Error)
+	require.True(t, future.NextAttemptAt.Time.Equal(stored.NextAttemptAt.Time))
+	require.Equal(t, 50, stored.RetryCount)
+
+	stored.NextAttemptAt = sql.NullTime{Time: now.Add(-time.Second), Valid: true}
+	require.NoError(t, repo.SaveFailedMessages(t.Context(), []models.Message{stored}))
+	due, err = repo.GetUnprocessedMessages(t.Context(), 2)
+	require.NoError(t, err)
+	require.Len(t, due, 2)
+	require.Equal(t, first.ID, due[0].ID)
+	require.Equal(t, future.ID, due[1].ID)
+	require.NoError(t, repo.SaveProcessedMessages(t.Context(), due))
+	stored = models.Message{}
+	require.NoError(t, db.Master().WithContext(t.Context()).First(&stored, "id = ?", future.ID).Error)
+	require.False(t, stored.NextAttemptAt.Valid)
+	require.Equal(t, models.MessageStatusProcessed, stored.Status)
+}
+
 func TestOutboxRollbackReleasesLockedMessages(t *testing.T) {
 	db, repo, _ := newOutboxRepository(t)
 	if db.Master().Name() == "sqlite" {
@@ -316,8 +362,15 @@ func TestOutboxMigrationIsReversibleAndIdempotent(t *testing.T) {
 	for _, up := range []bool{true, true, false, false, true} {
 		_, err := provider.ApplyVersion(t.Context(), 20250717175100, up)
 		require.NoError(t, err)
-		assert.Equal(t, up, db.Master().WithContext(t.Context()).Migrator().
-			HasIndex(&models.Message{}, "transactional_outbox_cleanup"))
+		migrator := db.Master().WithContext(t.Context()).Migrator()
+		assert.Equal(t, up, migrator.HasColumn(&models.Message{}, "next_attempt_at"))
+		for _, index := range []string{
+			"transactional_outbox_publisher",
+			"transactional_outbox_cleanup",
+			"transactional_outbox_retry_schedule",
+		} {
+			assert.Equal(t, up, migrator.HasIndex(&models.Message{}, index), index)
+		}
 	}
 }
 

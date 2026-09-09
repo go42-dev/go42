@@ -6,7 +6,8 @@ import (
 	"github.com/google/uuid"
 )
 
-const MaxRetries = 3
+// MaxRetries is stored as zero for new events. Transient delivery failures have no retry limit.
+const MaxRetries = 0
 
 type Message struct {
 	AggregateID   int    `v:"required,gte=1"`

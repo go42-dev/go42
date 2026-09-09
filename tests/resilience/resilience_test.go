@@ -239,6 +239,7 @@ func TestNATSReconnectsAfterNetworkInterruption(t *testing.T) {
 	backend, err := natsengine.New(
 		ctx,
 		envOrDefault(natsAddressEnv, defaultNATSAddress),
+		natsengine.WithJetStreamAutoProvision(true),
 		natsengine.WithLogger(slog.New(slog.DiscardHandler)),
 		natsengine.WithConnectTimeout(time.Second),
 		natsengine.WithConnectRetryTimeout(15*time.Second),
@@ -282,6 +283,7 @@ func TestKafkaReconnectsAfterNetworkInterruption(t *testing.T) {
 		ctx,
 		[]string{envOrDefault(kafkaAddressEnv, defaultKafkaAddress)},
 		"resilience",
+		kafkaengine.WithTopicAutoCreation(true),
 		kafkaengine.WithLogger(slog.New(slog.DiscardHandler)),
 		kafkaengine.WithConnectRetryTimeout(15*time.Second),
 		kafkaengine.WithConnectRetryBackoff(100*time.Millisecond, time.Second),
@@ -314,9 +316,6 @@ func TestKafkaReconnectsAfterNetworkInterruption(t *testing.T) {
 }
 
 func TestRabbitMQReconnectsAfterNetworkInterruption(t *testing.T) {
-	if raceDetectorEnabled {
-		t.Skip("watermill-amqp reconnect has a known upstream data race")
-	}
 	resetProxy(t, proxyConfig{
 		Name:     rabbitmqProxyName,
 		Listen:   "0.0.0.0:15673",
@@ -330,6 +329,7 @@ func TestRabbitMQReconnectsAfterNetworkInterruption(t *testing.T) {
 		ctx,
 		envOrDefault(rabbitmqAddressEnv, defaultRabbitMQAddress),
 		"resilience",
+		rabbitmqengine.WithAutoProvision(true),
 		rabbitmqengine.WithLogger(slog.New(slog.DiscardHandler)),
 		rabbitmqengine.WithConnectRetryTimeout(15*time.Second),
 		rabbitmqengine.WithConnectRetryBackoff(100*time.Millisecond, time.Second),
@@ -345,6 +345,10 @@ func TestRabbitMQReconnectsAfterNetworkInterruption(t *testing.T) {
 		defer shutdownCancel()
 		_ = backend.Shutdown(shutdownCtx)
 	})
+
+	if err := backend.InitializeTopic("resilience_events"); err != nil {
+		t.Fatalf("initialize RabbitMQ route: %v", err)
+	}
 
 	publish := func() error {
 		return backend.Publisher().Publish(

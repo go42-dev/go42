@@ -24,6 +24,7 @@ func New(baseRepository *database.BaseRepository) *Repository {
 }
 
 func (r *Repository) NewOutboxMessage(ctx context.Context, msg *models.Message) error {
+	normalizeMessageTimes(msg)
 	err := gorm.G[models.Message](r.GetTx(ctx)).Create(ctx, msg)
 	if err != nil {
 		return fmt.Errorf("error saving message: %w", err)
@@ -39,6 +40,9 @@ func (r *Repository) GetUnprocessedMessages(ctx context.Context, limit int) ([]m
 		},
 	).
 		Where("status = ?", models.MessageStatusPending).
+		Where("next_attempt_at IS NULL OR next_attempt_at <= ?", time.Now().UTC()).
+		Order("created_at ASC").
+		Order("id ASC").
 		Limit(limit).Find(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching messages: %w", err)
@@ -53,6 +57,7 @@ func (r *Repository) SaveProcessedMessages(ctx context.Context, messages []model
 	}
 	_, err := gorm.G[models.Message](r.GetTx(ctx)).
 		Where("id IN ?", ids).
+		Select("status", "processed_at", "next_attempt_at").
 		Updates(ctx, models.Message{
 			Status:      models.MessageStatusProcessed,
 			ProcessedAt: sql.NullTime{Time: time.Now().UTC(), Valid: true},
@@ -104,6 +109,7 @@ func (r *Repository) SaveFailedMessages(ctx context.Context, messages []models.M
 	db := r.GetTx(ctx)
 	// Select all fields so zero values also overwrite stored values.
 	for _, message := range messages {
+		normalizeMessageTimes(&message)
 		_, err := gorm.G[*models.Message](db).
 			Where("id = ?", message.ID).
 			Select("*").
@@ -113,4 +119,14 @@ func (r *Repository) SaveFailedMessages(ctx context.Context, messages []models.M
 		}
 	}
 	return nil
+}
+
+func normalizeMessageTimes(message *models.Message) {
+	message.CreatedAt = message.CreatedAt.UTC()
+	if message.ProcessedAt.Valid {
+		message.ProcessedAt.Time = message.ProcessedAt.Time.UTC()
+	}
+	if message.NextAttemptAt.Valid {
+		message.NextAttemptAt.Time = message.NextAttemptAt.Time.UTC()
+	}
 }

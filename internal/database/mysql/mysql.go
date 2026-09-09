@@ -165,6 +165,8 @@ func (w *Mysql) connect(ctx context.Context, dsn string, config *gorm.Config) (*
 		return nil, err
 	}
 
+	config.NowFunc = func() time.Time { return time.Now().UTC().Round(time.Millisecond) }
+
 	// this affects only the initial connection ping
 	config.DisableAutomaticPing = true
 

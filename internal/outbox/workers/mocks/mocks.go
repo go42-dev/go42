@@ -124,17 +124,17 @@ func (m *Mockpublisher) EXPECT() *MockpublisherMockRecorder {
 }
 
 // Publish mocks base method.
-func (m *Mockpublisher) Publish(ctx context.Context, topic string, event []byte) error {
+func (m *Mockpublisher) Publish(ctx context.Context, topic, id string, event []byte) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Publish", ctx, topic, event)
+	ret := m.ctrl.Call(m, "Publish", ctx, topic, id, event)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Publish indicates an expected call of Publish.
-func (mr *MockpublisherMockRecorder) Publish(ctx, topic, event any) *gomock.Call {
+func (mr *MockpublisherMockRecorder) Publish(ctx, topic, id, event any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Publish", reflect.TypeOf((*Mockpublisher)(nil).Publish), ctx, topic, event)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Publish", reflect.TypeOf((*Mockpublisher)(nil).Publish), ctx, topic, id, event)
 }
 
 // MockcleanupRepository is a mock of cleanupRepository interface.

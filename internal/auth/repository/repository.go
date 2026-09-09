@@ -125,7 +125,7 @@ func (r *Repository) ListUsers(ctx context.Context, limit, offset int) ([]*model
 		WHERE ur.user_id IN ?
 			AND (ur.expires_at IS NULL OR ur.expires_at > ?)
 			AND r.deleted_at IS NULL
-	`, userIDs, time.Now()).Find(ctx)
+	`, userIDs, time.Now().UTC()).Find(ctx)
 
 	if err != nil {
 		return nil, fmt.Errorf("error fetching user roles: %w", err)
@@ -207,7 +207,7 @@ func (r *Repository) getUser(ctx context.Context, filter string, args ...any) (*
 		WHERE ur.user_id = ?
 			AND (ur.expires_at IS NULL OR ur.expires_at > ?)
 			AND r.deleted_at IS NULL
-	`, user.ID, time.Now()).Find(ctx)
+	`, user.ID, time.Now().UTC()).Find(ctx)
 
 	if err != nil {
 		return nil, fmt.Errorf("error fetching roles: %w", err)
@@ -393,6 +393,7 @@ func (r *Repository) GetToken(ctx context.Context, hashedToken string) (*models.
 }
 
 func (r *Repository) UpdateTokenLastUsed(ctx context.Context, tokenID int, when time.Time) error {
+	when = when.UTC()
 	db := r.GetTx(ctx)
 	rows, err := gorm.G[models.Token](db).Where("id = ?", tokenID).
 		Where("last_used_at IS NULL OR last_used_at < ?", when).
@@ -419,6 +420,7 @@ func (r *Repository) UpdateTokenLastUsed(ctx context.Context, tokenID int, when 
 }
 
 func (r *Repository) SaveUserHistoryRecord(ctx context.Context, record *models.UserHistoryRecord) error {
+	record.OccurredAt = record.OccurredAt.UTC()
 	return gorm.G[models.UserHistoryRecord](r.GetTx(ctx), clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
 		DoNothing: true,

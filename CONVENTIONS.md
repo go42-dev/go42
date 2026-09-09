@@ -87,6 +87,7 @@ This file outlines conventions for the go42 project.
 * Migration files should be named with a timestamp prefix and a descriptive name, e.g., `20240101_create_users_table.sql`
 * Migrations should be idempotent
 * Migrations should use lowercase sql keywords and snake_case for table and column names.
+* Store and compare timestamps in UTC. Normalize incoming timestamps with `UTC()` at repository write boundaries, including future CLI writes. GORM clocks and database connection timezones must also use UTC.
 
 ## Miscellaneous
 

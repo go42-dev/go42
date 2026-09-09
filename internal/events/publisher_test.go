@@ -52,8 +52,8 @@ func TestPublisherTimeoutBoundsBlockedCallsAndAllowsRecovery(t *testing.T) {
 				})
 				successesBefore, failuresBefore := successes.Get(), failures.Get()
 				done := make(chan error, limit)
-				for range limit {
-					go func() { done <- router.Publish(ctx, topic, []byte("event")) }()
+				for i := range limit {
+					go func() { done <- router.Publish(ctx, topic, strconv.Itoa(i), []byte("event")) }()
 				}
 				synctest.Wait()
 				require.Len(t, entered, limit, "independent calls may use all configured capacity")
@@ -66,13 +66,13 @@ func TestPublisherTimeoutBoundsBlockedCallsAndAllowsRecovery(t *testing.T) {
 
 				for range 3 {
 					attemptCtx, attemptCancel := context.WithTimeout(t.Context(), time.Minute)
-					err = router.Publish(attemptCtx, topic, []byte("expired"))
+					err = router.Publish(attemptCtx, topic, "expired-event", []byte("expired"))
 					attemptCancel()
 					require.ErrorIs(t, err, context.DeadlineExceeded)
 				}
 				canceledCtx, canceledCancel := context.WithCancel(t.Context())
 				canceledCancel()
-				require.ErrorIs(t, router.Publish(canceledCtx, topic, nil), context.Canceled)
+				require.ErrorIs(t, router.Publish(canceledCtx, topic, "canceled-event", nil), context.Canceled)
 				require.EqualValues(t, limit, calls.Load(), "timeouts must not start more blocked broker calls")
 				assert.Equal(t, successesBefore, successes.Get())
 				assert.Equal(t, uint64(limit+4), failures.Get()-failuresBefore)
@@ -81,7 +81,7 @@ func TestPublisherTimeoutBoundsBlockedCallsAndAllowsRecovery(t *testing.T) {
 				synctest.Wait()
 				recoveryCtx, recoveryCancel := context.WithTimeout(t.Context(), time.Minute)
 				defer recoveryCancel()
-				require.NoError(t, router.Publish(recoveryCtx, topic, []byte("new")))
+				require.NoError(t, router.Publish(recoveryCtx, topic, "new-event", []byte("new")))
 				require.EqualValues(t, limit+1, calls.Load(), "expired waiting calls must not publish later")
 				assert.Equal(t, successesBefore+1, successes.Get(), "late completions must not report success")
 				assert.Equal(t, uint64(limit+4), failures.Get()-failuresBefore)
@@ -112,7 +112,7 @@ func TestPublisherOwnsPayloadAfterCancellation(t *testing.T) {
 		registerRouterCleanup(t, router, cancel)
 		payload := []byte("event")
 		done := make(chan error, 1)
-		go func() { done <- router.Publish(ctx, t.Name(), payload) }()
+		go func() { done <- router.Publish(ctx, t.Name(), "event-id", payload) }()
 		<-entered
 		cancel()
 		synctest.Wait()

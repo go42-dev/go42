@@ -2,7 +2,6 @@ package config
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -249,7 +248,7 @@ func mysqlDSN(host string, port int, user, password, name, charset string) strin
 	cfg.Addr = net.JoinHostPort(host, strconv.Itoa(port))
 	cfg.DBName = name
 	cfg.ParseTime = true
-	// Charset only assigns configuration fields and always returns nil.
+	cfg.Params = map[string]string{"time_zone": "'+00:00'"}
 	_ = cfg.Apply(mysql.Charset(charset, ""))
 	return cfg.FormatDSN()
 }
@@ -293,10 +292,11 @@ func pgsqlDSN(host string, port int, user, password, name string) string {
 		return ""
 	}
 	dsn := url.URL{
-		Scheme: "postgres",
-		User:   url.UserPassword(user, password),
-		Host:   net.JoinHostPort(host, strconv.Itoa(port)),
-		Path:   "/" + name,
+		Scheme:   "postgres",
+		User:     url.UserPassword(user, password),
+		Host:     net.JoinHostPort(host, strconv.Itoa(port)),
+		Path:     "/" + name,
+		RawQuery: "timezone=UTC",
 	}
 	return dsn.String()
 }
@@ -349,12 +349,21 @@ type Memcached struct {
 // ╰──────────────────────────────╯
 
 type Events struct {
-	Engine    string `env:"EVENTS_ENGINE" default:"gochan" v:"oneof=none gochan nats rabbitmq kafka"`
-	Publisher EventsPublisher
-	Consumer  EventsConsumer
-	NATS      EventsNATS
-	RabbitMQ  EventsRabbitMQ
-	Kafka     EventsKafka
+	Engine     string `env:"EVENTS_ENGINE"      default:"gochan" v:"oneof=none gochan nats rabbitmq kafka"`
+	TLSEnabled bool   `env:"EVENTS_TLS_ENABLED" default:"false"`
+	Publisher  EventsPublisher
+	Consumer   EventsConsumer
+	TLS        EventsTLS
+	NATS       EventsNATS
+	RabbitMQ   EventsRabbitMQ
+	Kafka      EventsKafka
+}
+
+type EventsTLS struct {
+	CAFile     string `env:"EVENTS_TLS_CA_FILE"     default:""`
+	CertFile   string `env:"EVENTS_TLS_CERT_FILE"   default:""`
+	KeyFile    string `env:"EVENTS_TLS_KEY_FILE"    default:""`
+	ServerName string `env:"EVENTS_TLS_SERVER_NAME" default:""`
 }
 
 type EventsPublisher struct {
@@ -370,20 +379,24 @@ type EventsConsumer struct {
 }
 
 type EventsNATS struct {
-	DSN         string        `env:"NATS_DSN"          default:"nats://localhost:4222"`
-	ClientName  string        `env:"NATS_CLIENT_NAME"  default:""`
-	Token       string        `env:"NATS_TOKEN"        default:""`
-	ConnTimeout time.Duration `env:"NATS_CONN_TIMEOUT" default:"5s"`
-	ConnRetry   bool          `env:"NATS_CONN_RETRY"   default:"false"`
-	MaxRetry    int           `env:"NATS_MAX_RETRY"    default:"-1"`
-	RetryDelay  time.Duration `env:"NATS_RETRY_DELAY"  default:"1s"`
-	JetStream   EventsNATSJetStream
-	Publisher   EventsNATSPublisher
-	Subscriber  EventsNATSSubscriber
+	DSN              string        `env:"NATS_DSN"               default:"nats://localhost:4222"`
+	ClientName       string        `env:"NATS_CLIENT_NAME"       default:""`
+	Token            string        `env:"NATS_TOKEN"             default:""`
+	User             string        `env:"NATS_USER"              default:""`
+	Password         string        `env:"NATS_PASSWORD"          default:""`
+	CredentialsFile  string        `env:"NATS_CREDENTIALS_FILE"  default:""`
+	ConsumerBindings string        `env:"NATS_CONSUMER_BINDINGS" default:""`
+	ConnTimeout      time.Duration `env:"NATS_CONN_TIMEOUT"      default:"5s"                    v:"gt=0"`
+	ConnRetry        bool          `env:"NATS_CONN_RETRY"        default:"false"`
+	MaxRetry         int           `env:"NATS_MAX_RETRY"         default:"-1"                    v:"gte=-1"`
+	RetryDelay       time.Duration `env:"NATS_RETRY_DELAY"       default:"1s"                    v:"gt=0"`
+	JetStream        EventsNATSJetStream
+	Publisher        EventsNATSPublisher
+	Subscriber       EventsNATSSubscriber
 }
 
 type EventsNATSJetStream struct {
-	AutoProvision bool `env:"NATS_JETSTREAM_AUTO_PROVISION" default:"true"`
+	AutoProvision bool `env:"NATS_JETSTREAM_AUTO_PROVISION" default:"false"`
 }
 
 type EventsNATSPublisher struct {
@@ -391,49 +404,55 @@ type EventsNATSPublisher struct {
 }
 
 type EventsNATSSubscriber struct {
-	WorkerCount  int           `env:"NATS_SUB_WORKER_COUNT"  default:"1"`
-	Timeout      time.Duration `env:"NATS_SUB_TIMEOUT"       default:"30s"`
-	AckTimeout   time.Duration `env:"NATS_SUB_ACK_TIMEOUT"   default:"30s"`
-	CloseTimeout time.Duration `env:"NATS_SUB_CLOSE_TIMEOUT" default:"30s"`
+	WorkerCount  int           `env:"NATS_SUB_WORKER_COUNT"  default:"1"   v:"gt=0"`
+	Timeout      time.Duration `env:"NATS_SUB_TIMEOUT"       default:"30s" v:"gt=0"`
+	AckTimeout   time.Duration `env:"NATS_SUB_ACK_TIMEOUT"   default:"30s" v:"gt=0"`
+	CloseTimeout time.Duration `env:"NATS_SUB_CLOSE_TIMEOUT" default:"30s" v:"gt=0"`
 }
 
 type EventsRabbitMQ struct {
 	DSN                      string        `env:"RABBITMQ_DSN"                        default:"amqp://guest:guest@localhost:5672/"`
-	ReconnectInitialInterval time.Duration `env:"RABBITMQ_RECONNECT_INITIAL_INTERVAL" default:"500ms"`
-	ReconnectMultiplier      float64       `env:"RABBITMQ_RECONNECT_MULTIPLIER"       default:"1.5"`
-	ReconnectMaxInterval     time.Duration `env:"RABBITMQ_RECONNECT_MAX_INTERVAL"     default:"30s"`
-	PublishMandatory         bool          `env:"RABBITMQ_PUBLISH_MANDATORY"          default:"false"`
+	AutoProvision            bool          `env:"RABBITMQ_AUTO_PROVISION"             default:"false"`
+	ConnectTimeout           time.Duration `env:"RABBITMQ_CONNECT_TIMEOUT"            default:"5s"                                 v:"gt=0"`
+	ReconnectInitialInterval time.Duration `env:"RABBITMQ_RECONNECT_INITIAL_INTERVAL" default:"500ms"                              v:"gt=0"`
+	ReconnectMultiplier      float64       `env:"RABBITMQ_RECONNECT_MULTIPLIER"       default:"1.5"                                v:"gte=1"`
+	ReconnectMaxInterval     time.Duration `env:"RABBITMQ_RECONNECT_MAX_INTERVAL"     default:"30s"                                v:"gt=0"`
+	PublishMandatory         bool          `env:"RABBITMQ_PUBLISH_MANDATORY"          default:"true"`
 	ConsumeNoRequeue         bool          `env:"RABBITMQ_CONSUME_NO_REQUEUE"         default:"false"`
 	ConsumeConsumerName      string        `env:"RABBITMQ_CONSUME_CONSUMER_NAME"      default:""`
 	ConsumeExclusive         bool          `env:"RABBITMQ_CONSUME_EXCLUSIVE"          default:"false"`
-	ConsumePrefetchCount     int           `env:"RABBITMQ_CONSUME_PREFETCH_COUNT"     default:"1"`
-	ConsumePrefetchSize      int           `env:"RABBITMQ_CONSUME_PREFETCH_SIZE"      default:"0"`
+	ConsumePrefetchCount     int           `env:"RABBITMQ_CONSUME_PREFETCH_COUNT"     default:"1"                                  v:"gt=0"`
+	ConsumePrefetchSize      int           `env:"RABBITMQ_CONSUME_PREFETCH_SIZE"      default:"0"                                  v:"gte=0"`
 	ConsumeQosGlobal         bool          `env:"RABBITMQ_CONSUME_QOS_GLOBAL"         default:"false"`
 	MessageUUIDHeader        string        `env:"RABBITMQ_MESSAGE_UUID_HEADER"        default:""`
 }
 
 type EventsKafka struct {
 	Brokers                   []string      `env:"KAFKA_BROKERS"                      default:"localhost:9092"`
+	TopicAutoCreation         bool          `env:"KAFKA_TOPIC_AUTO_CREATE"            default:"false"`
+	SASLMechanism             string        `env:"KAFKA_SASL_MECHANISM"               default:""               v:"omitempty,oneof=PLAIN SCRAM-SHA-256 SCRAM-SHA-512"`
+	SASLUser                  string        `env:"KAFKA_SASL_USER"                    default:""`
+	SASLPassword              string        `env:"KAFKA_SASL_PASSWORD"                default:""`
 	ClientID                  string        `env:"KAFKA_CLIENT_ID"                    default:""`
 	Version                   string        `env:"KAFKA_VERSION"                      default:"4.0.0"`
-	DialTimeout               time.Duration `env:"KAFKA_DIAL_TIMEOUT"                 default:"30s"`
-	ReadTimeout               time.Duration `env:"KAFKA_READ_TIMEOUT"                 default:"30s"`
-	WriteTimeout              time.Duration `env:"KAFKA_WRITE_TIMEOUT"                default:"30s"`
-	KeepAlive                 time.Duration `env:"KAFKA_KEEP_ALIVE"                   default:"0s"`
-	ProducerTimeout           time.Duration `env:"KAFKA_PRODUCER_TIMEOUT"             default:"10s"            v:"gt=0"`
-	ProducerMetadataTimeout   time.Duration `env:"KAFKA_PRODUCER_METADATA_TIMEOUT"    default:"10s"            v:"gt=0"`
-	ProducerRetryMax          int           `env:"KAFKA_PRODUCER_RETRY_MAX"           default:"10"             v:"gt=0"`
-	ProducerRetryBackoff      time.Duration `env:"KAFKA_PRODUCER_RETRY_BACKOFF"       default:"100ms"`
-	ProducerMaxMessageBytes   int           `env:"KAFKA_PRODUCER_MAX_MESSAGE_BYTES"   default:"1000000"`
-	ProducerCompression       string        `env:"KAFKA_PRODUCER_COMPRESSION"         default:"none"`
-	ConsumerRetryBackoff      time.Duration `env:"KAFKA_CONSUMER_RETRY_BACKOFF"       default:"2s"`
-	ConsumerMaxWaitTime       time.Duration `env:"KAFKA_CONSUMER_MAX_WAIT_TIME"       default:"250ms"`
-	ConsumerMaxProcessingTime time.Duration `env:"KAFKA_CONSUMER_MAX_PROCESSING_TIME" default:"100ms"`
-	ConsumerOffsetInitial     int64         `env:"KAFKA_CONSUMER_OFFSET_INITIAL"      default:"-1"`
-	ConsumerSessionTimeout    time.Duration `env:"KAFKA_CONSUMER_SESSION_TIMEOUT"     default:"10s"`
-	ConsumerHeartbeatInterval time.Duration `env:"KAFKA_CONSUMER_HEARTBEAT_INTERVAL"  default:"3s"`
-	ConsumerRebalanceStrategy string        `env:"KAFKA_CONSUMER_REBALANCE_STRATEGY"  default:"range"`
-	MetadataRefreshFrequency  time.Duration `env:"KAFKA_METADATA_REFRESH_FREQUENCY"   default:"10m"`
+	DialTimeout               time.Duration `env:"KAFKA_DIAL_TIMEOUT"                 default:"5s"             v:"gt=0"`
+	ReadTimeout               time.Duration `env:"KAFKA_READ_TIMEOUT"                 default:"5s"             v:"gt=0"`
+	WriteTimeout              time.Duration `env:"KAFKA_WRITE_TIMEOUT"                default:"5s"             v:"gt=0"`
+	KeepAlive                 time.Duration `env:"KAFKA_KEEP_ALIVE"                   default:"0s"             v:"gte=0"`
+	ProducerTimeout           time.Duration `env:"KAFKA_PRODUCER_TIMEOUT"             default:"5s"             v:"gt=0"`
+	ProducerMetadataTimeout   time.Duration `env:"KAFKA_PRODUCER_METADATA_TIMEOUT"    default:"5s"             v:"gt=0"`
+	ProducerRetryMax          int           `env:"KAFKA_PRODUCER_RETRY_MAX"           default:"3"              v:"gt=0"`
+	ProducerRetryBackoff      time.Duration `env:"KAFKA_PRODUCER_RETRY_BACKOFF"       default:"100ms"          v:"gt=0"`
+	ProducerMaxMessageBytes   int           `env:"KAFKA_PRODUCER_MAX_MESSAGE_BYTES"   default:"1000000"        v:"gt=0"`
+	ProducerCompression       string        `env:"KAFKA_PRODUCER_COMPRESSION"         default:"none"           v:"oneof=none gzip snappy lz4 zstd"`
+	ConsumerRetryBackoff      time.Duration `env:"KAFKA_CONSUMER_RETRY_BACKOFF"       default:"2s"             v:"gt=0"`
+	ConsumerMaxWaitTime       time.Duration `env:"KAFKA_CONSUMER_MAX_WAIT_TIME"       default:"250ms"          v:"gt=0"`
+	ConsumerMaxProcessingTime time.Duration `env:"KAFKA_CONSUMER_MAX_PROCESSING_TIME" default:"100ms"          v:"gt=0"`
+	ConsumerOffsetInitial     int64         `env:"KAFKA_CONSUMER_OFFSET_INITIAL"      default:"-2"             v:"oneof=-2 -1"`
+	ConsumerSessionTimeout    time.Duration `env:"KAFKA_CONSUMER_SESSION_TIMEOUT"     default:"10s"            v:"gt=0"`
+	ConsumerHeartbeatInterval time.Duration `env:"KAFKA_CONSUMER_HEARTBEAT_INTERVAL"  default:"3s"             v:"gt=0"`
+	ConsumerRebalanceStrategy string        `env:"KAFKA_CONSUMER_REBALANCE_STRATEGY"  default:"range"          v:"oneof=range roundrobin sticky"`
+	MetadataRefreshFrequency  time.Duration `env:"KAFKA_METADATA_REFRESH_FREQUENCY"   default:"10m"            v:"gt=0"`
 }
 
 // ╭──────────────────────────────╮
@@ -498,12 +517,14 @@ type GRPCRateLimiter struct {
 // ╰──────────────────────────────╯
 
 type Outbox struct {
-	WorkerRunInterval time.Duration `env:"OUTBOX_WORKER_INTERVAL"    default:"5s"   v:"gt=0"`
-	WorkerBatchSize   int           `env:"OUTBOX_WORKER_BATCH_SIZE"  default:"1000" v:"gt=0"`
-	PublishTimeout    time.Duration `env:"OUTBOX_PUBLISH_TIMEOUT"    default:"10s"  v:"gt=0"`
-	CleanupInterval   time.Duration `env:"OUTBOX_CLEANUP_INTERVAL"   default:"1h"   v:"gt=0"`
-	CleanupBatchSize  int           `env:"OUTBOX_CLEANUP_BATCH_SIZE" default:"1000" v:"gt=0"`
-	CleanupRetention  time.Duration `env:"OUTBOX_CLEANUP_RETENTION"  default:"168h" v:"gt=0"`
+	WorkerRunInterval   time.Duration `env:"OUTBOX_WORKER_INTERVAL"       default:"5s"   v:"gt=0"`
+	WorkerBatchSize     int           `env:"OUTBOX_WORKER_BATCH_SIZE"     default:"1000" v:"gt=0"`
+	PublishTimeout      time.Duration `env:"OUTBOX_PUBLISH_TIMEOUT"       default:"10s"  v:"gt=0"`
+	RetryInitialBackoff time.Duration `env:"OUTBOX_RETRY_INITIAL_BACKOFF" default:"5s"   v:"gt=0"`
+	RetryMaxBackoff     time.Duration `env:"OUTBOX_RETRY_MAX_BACKOFF"     default:"5m"   v:"gt=0"`
+	CleanupInterval     time.Duration `env:"OUTBOX_CLEANUP_INTERVAL"      default:"1h"   v:"gt=0"`
+	CleanupBatchSize    int           `env:"OUTBOX_CLEANUP_BATCH_SIZE"    default:"1000" v:"gt=0"`
+	CleanupRetention    time.Duration `env:"OUTBOX_CLEANUP_RETENTION"     default:"168h" v:"gt=0"`
 }
 
 // ╭──────────────────────────────╮
@@ -560,12 +581,6 @@ func New() (*Config, error) {
 	if err := tools.ValidateStructCompact(cfg); err != nil {
 		return nil, err
 	}
-	if cfg.Core.StartupRetryMaxBackoff < cfg.Core.StartupRetryInitialBackoff {
-		return nil, errors.New(
-			"startup retry maximum backoff must not be less than initial backoff",
-		)
-	}
-
 	return cfg, nil
 }
 

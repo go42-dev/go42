@@ -121,6 +121,7 @@ func startTestApplication(t *testing.T, httpAddress string, grpcAddress string) 
 		"CACHE_REDIS_READ_TIMEOUT=200ms",
 		"CACHE_REDIS_WRITE_TIMEOUT=200ms",
 		"EVENTS_ENGINE=nats",
+		"NATS_JETSTREAM_AUTO_PROVISION=true",
 		"NATS_DSN=" + envOrDefault(natsAddressEnv, defaultNATSAddress),
 		"NATS_CONN_TIMEOUT=200ms",
 		"NATS_MAX_RETRY=-1",

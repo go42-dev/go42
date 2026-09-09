@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	slogGorm "github.com/orandin/slog-gorm"
@@ -61,6 +62,7 @@ func Open(dbPath string, opts ...Option) (*Sqlite, error) {
 		&gorm.Config{
 			PrepareStmt: true,
 			Logger:      slogGorm.New(slogGormOpts...),
+			NowFunc:     func() time.Time { return time.Now().UTC() },
 		})
 	if err != nil {
 		return nil, err

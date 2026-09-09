@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"math"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -44,13 +46,14 @@ func TestOutboxPublisherRestoresContextFromMetadata(t *testing.T) {
 	expectOutboxTransaction(repository)
 	repository.EXPECT().GetUnprocessedMessages(gomock.Any(), 10).Return([]models.Message{first, second}, nil)
 	var contexts []context.Context
-	publisher.EXPECT().Publish(gomock.Any(), first.Topic, gomock.Any()).Times(2).
-		DoAndReturn(func(ctx context.Context, _ string, payload []byte) error {
+	publisher.EXPECT().Publish(gomock.Any(), first.Topic, gomock.Any(), gomock.Any()).Times(2).
+		DoAndReturn(func(ctx context.Context, _ string, id string, payload []byte) error {
 			var event domain.Event
 			if err := json.Unmarshal(payload, &event); err != nil {
 				t.Errorf("published event is invalid: %v", err)
 				return err
 			}
+			assert.Equal(t, event.ID.String(), id)
 			assert.Equal(t, "transaction", ctx.Value(outboxWorkerContextKey{}))
 			assert.NoError(t, ctx.Err())
 			if event.ID == first.ID {
@@ -82,13 +85,14 @@ func TestOutboxPublisherMarksPublishedMessageProcessed(t *testing.T) {
 	expectOutboxTransaction(repository)
 	repository.EXPECT().GetUnprocessedMessages(gomock.Any(), 10).
 		Return([]models.Message{message}, nil)
-	publisher.EXPECT().Publish(gomock.Any(), message.Topic, gomock.Any()).
-		DoAndReturn(func(_ context.Context, _ string, payload []byte) error {
+	publisher.EXPECT().Publish(gomock.Any(), message.Topic, message.ID.String(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, id string, payload []byte) error {
 			var event domain.Event
 			if err := json.Unmarshal(payload, &event); err != nil {
 				t.Errorf("published event is invalid: %v", err)
 				return err
 			}
+			assert.Equal(t, event.ID.String(), id)
 			if event.ID != message.ID || event.AggregateID != message.AggregateID ||
 				event.AggregateType != message.AggregateType {
 				t.Errorf("published event = %#v, want message identity", event)
@@ -112,14 +116,24 @@ func TestOutboxPublisherPersistsRetryState(t *testing.T) {
 	assertOutboxPublishFailure(t, 0, models.MessageStatusPending, 1, errors.New("broker unavailable"))
 }
 
-func TestOutboxPublisherMarksMessageFailedAfterLastRetry(t *testing.T) {
-	assertOutboxPublishFailure(t, domain.MaxRetries-1, models.MessageStatusFailed, domain.MaxRetries,
+func TestOutboxPublisherRetriesBeyondLegacyLimit(t *testing.T) {
+	assertOutboxPublishFailure(t, 3, models.MessageStatusPending, 4,
 		errors.New("broker unavailable"))
 }
 
-func TestOutboxPublisherTimeoutExhaustsRetries(t *testing.T) {
-	assertOutboxPublishFailure(t, domain.MaxRetries-1, models.MessageStatusFailed, domain.MaxRetries,
+func TestOutboxPublisherTimeoutRemainsRetryable(t *testing.T) {
+	assertOutboxPublishFailure(t, 100, models.MessageStatusPending, 101,
 		context.DeadlineExceeded)
+}
+
+func TestOutboxPublisherPermanentlyInvalidMessageFailsImmediately(t *testing.T) {
+	assertOutboxPublishFailure(t, 0, models.MessageStatusFailed, 1,
+		fmt.Errorf("publish: %w", events.Permanent(errors.New("invalid payload"))))
+}
+
+func TestOutboxPublisherRetryCountDoesNotOverflow(t *testing.T) {
+	assertOutboxPublishFailure(t, math.MaxInt32, models.MessageStatusPending, math.MaxInt32,
+		errors.New("broker unavailable"))
 }
 
 func TestOutboxPublisherReturnsRepositoryReadError(t *testing.T) {
@@ -149,10 +163,10 @@ func TestOutboxPublisherRunsOneBatchPerTick(t *testing.T) {
 			DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) }).Times(3)
 		gomock.InOrder(
 			repository.EXPECT().GetUnprocessedMessages(ctx, 1).Return([]models.Message{first}, nil),
-			publisher.EXPECT().Publish(gomock.Any(), first.Topic, gomock.Any()).Return(nil),
+			publisher.EXPECT().Publish(gomock.Any(), first.Topic, first.ID.String(), gomock.Any()).Return(nil),
 			repository.EXPECT().SaveProcessedMessages(ctx, []models.Message{first}).Return(nil),
 			repository.EXPECT().GetUnprocessedMessages(ctx, 1).Return([]models.Message{second}, nil),
-			publisher.EXPECT().Publish(gomock.Any(), second.Topic, gomock.Any()).Return(nil),
+			publisher.EXPECT().Publish(gomock.Any(), second.Topic, second.ID.String(), gomock.Any()).Return(nil),
 			repository.EXPECT().SaveProcessedMessages(ctx, []models.Message{second}).Return(nil),
 			repository.EXPECT().GetUnprocessedMessages(ctx, 1).Return(nil, nil),
 		)
@@ -215,7 +229,9 @@ func TestOutboxPublisherRetriesFailedRunsAtNextInterval(t *testing.T) {
 						repository.EXPECT().GetUnprocessedMessages(ctx, 10).Return(nil, storageError)
 					case "commit transaction", "save processed messages":
 						repository.EXPECT().GetUnprocessedMessages(ctx, 10).Return([]models.Message{message}, nil)
-						publisher.EXPECT().Publish(gomock.Any(), message.Topic, gomock.Any()).Return(nil)
+						publisher.EXPECT().
+							Publish(gomock.Any(), message.Topic, message.ID.String(), gomock.Any()).
+							Return(nil)
 						var saveError error
 						if stage == "save processed messages" {
 							saveError = storageError
@@ -224,17 +240,29 @@ func TestOutboxPublisherRetriesFailedRunsAtNextInterval(t *testing.T) {
 					case "save failed messages":
 						brokerError := errors.New("broker unavailable")
 						repository.EXPECT().GetUnprocessedMessages(ctx, 10).Return([]models.Message{message}, nil)
-						publisher.EXPECT().Publish(gomock.Any(), message.Topic, gomock.Any()).Return(brokerError)
+						publisher.EXPECT().
+							Publish(gomock.Any(), message.Topic, message.ID.String(), gomock.Any()).
+							Return(brokerError)
 						failed := message
 						failed.RetryCount++
 						failed.LastError = brokerError.Error()
-						repository.EXPECT().SaveFailedMessages(ctx, []models.Message{failed}).Return(storageError)
+						repository.EXPECT().SaveFailedMessages(ctx, gomock.Any()).
+							DoAndReturn(func(_ context.Context, messages []models.Message) error {
+								require.Len(t, messages, 1)
+								require.True(t, messages[0].NextAttemptAt.Valid)
+								require.True(t, messages[0].NextAttemptAt.Time.After(time.Now()))
+								failed.NextAttemptAt = messages[0].NextAttemptAt
+								assert.Equal(t, failed, messages[0])
+								return storageError
+							})
 					}
 				}
 				repository.EXPECT().WithTransaction(ctx, gomock.Any()).After(firstTransaction).
 					DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) })
 				repository.EXPECT().GetUnprocessedMessages(ctx, 10).Return([]models.Message{message}, nil)
-				publisher.EXPECT().Publish(gomock.Any(), message.Topic, gomock.Any()).Return(nil)
+				publisher.EXPECT().
+					Publish(gomock.Any(), message.Topic, message.ID.String(), gomock.Any()).
+					Return(nil)
 				repository.EXPECT().SaveProcessedMessages(ctx, []models.Message{message}).Return(nil)
 				successes := metrics.Counter(
 					"application_outbox_worker_runs_total",
@@ -372,8 +400,8 @@ func TestOutboxPublisherCancelsActivePublishWithoutConsumingRetry(t *testing.T) 
 					})
 				repository.EXPECT().GetUnprocessedMessages(ctx, 10).Return([]models.Message{first, second}, nil)
 				publishing := make(chan context.Context, 1)
-				publisher.EXPECT().Publish(gomock.Any(), first.Topic, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, _ string, _ []byte) error {
+				publisher.EXPECT().Publish(gomock.Any(), first.Topic, first.ID.String(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, _ string, _ string, _ []byte) error {
 						publishing <- ctx
 						<-ctx.Done()
 						return ctx.Err()
@@ -432,12 +460,13 @@ func assertOutboxPublishFailure(
 	worker := NewOutboxMessagePublisher(repository, publisher)
 	message := newOutboxTestMessage()
 	message.RetryCount = retryCount
+	message.MaxRetries = 3 // Existing rows retain the old limit; it must not strand transient failures.
 	message.Metadata = map[string]string{"request_id": "request-42"}
 
 	expectOutboxTransaction(repository)
 	repository.EXPECT().GetUnprocessedMessages(gomock.Any(), 10).
 		Return([]models.Message{message}, nil)
-	publisher.EXPECT().Publish(gomock.Any(), message.Topic, gomock.Any()).Return(publishErr)
+	publisher.EXPECT().Publish(gomock.Any(), message.Topic, message.ID.String(), gomock.Any()).Return(publishErr)
 	repository.EXPECT().SaveFailedMessages(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, messages []models.Message) error {
 			if len(messages) != 1 {
@@ -454,6 +483,11 @@ func assertOutboxPublishFailure(
 				t.Errorf("stored last error = %q, want %q", stored.LastError, publishErr)
 			}
 			assert.Equal(t, message.Metadata, stored.Metadata)
+			assert.Equal(t, wantStatus == models.MessageStatusPending, stored.NextAttemptAt.Valid)
+			if stored.NextAttemptAt.Valid {
+				assert.True(t, stored.NextAttemptAt.Time.After(time.Now()))
+				assert.WithinDuration(t, time.Now(), stored.NextAttemptAt.Time, defaultRetryMaxBackoff)
+			}
 			return nil
 		})
 

@@ -77,7 +77,7 @@ func TestDeadLetterPublisherSharesCapacityAndRespectsCancellation(t *testing.T) 
 		<-entered
 
 		waitingCtx, cancelWaiting := context.WithTimeout(ctx, time.Minute)
-		err = router.Publish(waitingCtx, "waiting", []byte("expired"))
+		err = router.Publish(waitingCtx, "waiting", "expired-event", []byte("expired"))
 		cancelWaiting()
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		require.EqualValues(t, 1, calls.Load(), "normal publishing shares the dead-letter capacity limit")
@@ -110,7 +110,7 @@ func TestDeadLetterPublisherSharesCapacityAndRespectsCancellation(t *testing.T) 
 			t.Fatal("late completion must not ack the source message")
 		default:
 		}
-		require.NoError(t, router.Publish(ctx, "recovered", []byte("new")))
+		require.NoError(t, router.Publish(ctx, "recovered", "new-event", []byte("new")))
 		require.EqualValues(t, 2, calls.Load(), "capacity is released when the backend returns")
 	})
 }

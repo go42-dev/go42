@@ -168,6 +168,8 @@ func (w *Postgres) connect(ctx context.Context, dsn string, config *gorm.Config)
 		return nil, err
 	}
 
+	config.NowFunc = func() time.Time { return time.Now().UTC() }
+
 	// this affects only the initial connection ping
 	config.DisableAutomaticPing = true
 

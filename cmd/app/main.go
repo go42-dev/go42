@@ -325,9 +325,8 @@ func main() {
 	}
 
 	// events engine
-	var (
-		eventsBackend events.Backend
-	)
+	var eventsBackend events.Backend
+
 	switch cfg.Events.Engine {
 	case "gochan":
 		eventsBackend = gochan.New(
@@ -346,6 +345,14 @@ func main() {
 			),
 			nats.WithClientName(cfg.Events.NATS.ClientName),
 			nats.WithClientToken(cfg.Events.NATS.Token),
+			nats.WithUserPassword(cfg.Events.NATS.User, cfg.Events.NATS.Password),
+			nats.WithCredentialsFile(cfg.Events.NATS.CredentialsFile),
+			nats.WithTLSEnabled(cfg.Events.TLSEnabled),
+			nats.WithTLSConfig(
+				cfg.Events.TLS.CAFile, cfg.Events.TLS.CertFile,
+				cfg.Events.TLS.KeyFile, cfg.Events.TLS.ServerName,
+			),
+			nats.WithConsumerBindingsJSON(cfg.Events.NATS.ConsumerBindings),
 			nats.WithConnectTimeout(cfg.Events.NATS.ConnTimeout),
 			nats.WithConnectionRetry(cfg.Events.NATS.ConnRetry),
 			nats.WithMaxReconnects(cfg.Events.NATS.MaxRetry),
@@ -379,6 +386,13 @@ func main() {
 			rabbitmq.WithReconnectBackoffMultiplier(cfg.Events.RabbitMQ.ReconnectMultiplier),
 			rabbitmq.WithReconnectBackoffMaxInterval(cfg.Events.RabbitMQ.ReconnectMaxInterval),
 			rabbitmq.WithPublishMandatory(cfg.Events.RabbitMQ.PublishMandatory),
+			rabbitmq.WithAutoProvision(cfg.Events.RabbitMQ.AutoProvision),
+			rabbitmq.WithConnectTimeout(cfg.Events.RabbitMQ.ConnectTimeout),
+			rabbitmq.WithTLSEnabled(cfg.Events.TLSEnabled),
+			rabbitmq.WithTLSConfig(
+				cfg.Events.TLS.CAFile, cfg.Events.TLS.CertFile,
+				cfg.Events.TLS.KeyFile, cfg.Events.TLS.ServerName,
+			),
 			rabbitmq.WithConsumeConsumerName(cfg.Events.RabbitMQ.ConsumeConsumerName),
 			rabbitmq.WithConsumeNoRequeueOnNack(cfg.Events.RabbitMQ.ConsumeNoRequeue),
 			rabbitmq.WithConsumeExclusive(cfg.Events.RabbitMQ.ConsumeExclusive),
@@ -404,6 +418,13 @@ func main() {
 			),
 			kafka.WithClientID(cfg.Events.Kafka.ClientID),
 			kafka.WithKafkaVersion(cfg.Events.Kafka.Version),
+			kafka.WithTopicAutoCreation(cfg.Events.Kafka.TopicAutoCreation),
+			kafka.WithTLSEnabled(cfg.Events.TLSEnabled),
+			kafka.WithTLSConfig(
+				cfg.Events.TLS.CAFile, cfg.Events.TLS.CertFile,
+				cfg.Events.TLS.KeyFile, cfg.Events.TLS.ServerName,
+			),
+			kafka.WithSASL(cfg.Events.Kafka.SASLMechanism, cfg.Events.Kafka.SASLUser, cfg.Events.Kafka.SASLPassword),
 			kafka.WithDialTimeout(cfg.Events.Kafka.DialTimeout),
 			kafka.WithReadTimeout(cfg.Events.Kafka.ReadTimeout),
 			kafka.WithWriteTimeout(cfg.Events.Kafka.WriteTimeout),
@@ -465,6 +486,10 @@ func main() {
 			outboxRepository,
 			eventsEngine,
 			outboxWorkers.OutboxMessagePublisherWithPublishTimeout(cfg.Outbox.PublishTimeout),
+			outboxWorkers.OutboxMessagePublisherWithRetryBackoff(
+				cfg.Outbox.RetryInitialBackoff,
+				cfg.Outbox.RetryMaxBackoff,
+			),
 			outboxWorkers.OutboxMessagePublisherWithLogger(
 				slog.Default().With(slog.String("component", "outbox-publisher")),
 			),

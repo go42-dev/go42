@@ -2,6 +2,7 @@ package outbox_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"sync"
@@ -74,6 +75,8 @@ func TestOutboxPublisherTimeoutCommitsProgressAndReleasesConnection(t *testing.T
 			require.True(t, entry.ProcessedAt.Valid)
 		case timeoutID:
 			require.Equal(t, models.MessageStatusPending, entry.Status)
+			require.True(t, entry.NextAttemptAt.Valid)
+			require.True(t, entry.NextAttemptAt.Time.After(time.Now()))
 			require.Equal(t, 1, entry.RetryCount)
 			require.Equal(t, context.DeadlineExceeded.Error(), entry.LastError)
 		default:
@@ -91,13 +94,21 @@ func TestOutboxPublisherTimeoutCommitsProgressAndReleasesConnection(t *testing.T
 
 	done = startOutboxPublisher(t, t.Context(), repo, worker, 3)
 	require.NoError(t, waitForOutboxRun(t, done))
+	require.EqualValues(t, 3, calls.Load(), "future retry must not block an untouched message")
+	require.NotEqual(t, successID, <-published, "committed successes must not be sent again")
+
+	timedOut.NextAttemptAt = sql.NullTime{Time: time.Now().UTC().Add(-time.Second), Valid: true}
+	require.NoError(t, repo.SaveFailedMessages(t.Context(), []models.Message{timedOut}))
+	// A new worker uses the persisted schedule and the same event identity.
+	worker = workers.NewOutboxMessagePublisher(repo, router)
+	done = startOutboxPublisher(t, t.Context(), repo, worker, 3)
+	require.NoError(t, waitForOutboxRun(t, done))
 	require.EqualValues(t, 4, calls.Load())
-	for range 2 {
-		require.NotEqual(t, successID, <-published, "committed successes must not be sent again")
-	}
+	require.Equal(t, timeoutID, <-published)
 	require.NoError(t, db.Master().WithContext(t.Context()).Find(&stored).Error)
 	for _, entry := range stored {
 		require.Equal(t, models.MessageStatusProcessed, entry.Status)
+		require.False(t, entry.NextAttemptAt.Valid)
 	}
 }
 
@@ -161,8 +172,10 @@ func TestOutboxPublisherTimeoutPersistenceFailureRollsBackProgress(t *testing.T)
 	ctrl := gomock.NewController(t)
 	publisher := mocks.NewMockpublisher(ctrl)
 	gomock.InOrder(
-		publisher.EXPECT().Publish(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
-		publisher.EXPECT().Publish(gomock.Any(), gomock.Any(), gomock.Any()).Return(context.DeadlineExceeded),
+		publisher.EXPECT().Publish(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
+		publisher.EXPECT().
+			Publish(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(context.DeadlineExceeded),
 	)
 	worker := workers.NewOutboxMessagePublisher(repo, publisher)
 	done := startOutboxPublisher(t, t.Context(), repo, worker, 2)

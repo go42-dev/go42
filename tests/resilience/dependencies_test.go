@@ -36,10 +36,9 @@ type dependencyFactory struct {
 }
 
 type brokerFactory struct {
-	name          string
-	proxy         proxyConfig
-	raceSensitive bool
-	open          func(context.Context, time.Duration) (events.Backend, error)
+	name  string
+	proxy proxyConfig
+	open  func(context.Context, time.Duration) (events.Backend, error)
 }
 
 func dataDependencyFactories() []dependencyFactory {
@@ -117,8 +116,7 @@ func brokerDependencyFactories() []brokerFactory {
 				Upstream: "rabbitmq:5672",
 				Enabled:  true,
 			},
-			raceSensitive: true,
-			open:          openRabbitMQBackend,
+			open: openRabbitMQBackend,
 		},
 	}
 }
@@ -138,6 +136,11 @@ func allDependencyFactories() []dependencyFactory {
 				topic := uniqueTopic("startup")
 				return &resilienceClient{
 					operation: func(ctx context.Context) error {
+						if initializer, ok := backend.(events.TopicInitializer); ok {
+							if err := initializer.InitializeTopic(topic); err != nil {
+								return err
+							}
+						}
 						msg := message.NewMessage(watermill.NewUUID(), []byte("resilience check"))
 						msg.SetContext(ctx)
 						return backend.Publisher().Publish(topic, msg)
@@ -282,6 +285,7 @@ func openNATSBackend(ctx context.Context, retryTimeout time.Duration) (events.Ba
 	return natsengine.New(
 		ctx,
 		envOrDefault(natsAddressEnv, defaultNATSAddress),
+		natsengine.WithJetStreamAutoProvision(true),
 		natsengine.WithLogger(slog.New(slog.DiscardHandler)),
 		natsengine.WithConnectTimeout(200*time.Millisecond),
 		natsengine.WithConnectRetryTimeout(retryTimeout),
@@ -300,6 +304,7 @@ func openKafkaBackend(ctx context.Context, retryTimeout time.Duration) (events.B
 		ctx,
 		[]string{envOrDefault(kafkaAddressEnv, defaultKafkaAddress)},
 		"resilience_"+watermill.NewUUID(),
+		kafkaengine.WithTopicAutoCreation(true),
 		kafkaengine.WithLogger(slog.New(slog.DiscardHandler)),
 		kafkaengine.WithConnectRetryTimeout(retryTimeout),
 		kafkaengine.WithConnectRetryBackoff(50*time.Millisecond, 200*time.Millisecond),
@@ -320,6 +325,7 @@ func openRabbitMQBackend(ctx context.Context, retryTimeout time.Duration) (event
 		ctx,
 		envOrDefault(rabbitmqAddressEnv, defaultRabbitMQAddress),
 		"resilience_"+watermill.NewUUID(),
+		rabbitmqengine.WithAutoProvision(true),
 		rabbitmqengine.WithLogger(slog.New(slog.DiscardHandler)),
 		rabbitmqengine.WithConnectRetryTimeout(retryTimeout),
 		rabbitmqengine.WithConnectRetryBackoff(50*time.Millisecond, 200*time.Millisecond),
