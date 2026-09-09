@@ -77,7 +77,7 @@ func TestGRPCLogsRequestIDsForUnaryAndStreamCalls(t *testing.T) {
 			logger := slog.New(tools.SlogContextWrapper(slog.NewJSONHandler(&output, &slog.HandlerOptions{
 				Level: slog.LevelDebug,
 			})))
-			server := New(WithLogger(logger),
+			server, err := New(WithLogger(logger),
 				func(s *Server) {
 					s.rateLimiter = grpcContextTestLimiter(func(ctx context.Context, _ string) (bool, error) {
 						logger.InfoContext(ctx, "limiter")
@@ -105,6 +105,7 @@ func TestGRPCLogsRequestIDsForUnaryAndStreamCalls(t *testing.T) {
 					},
 				),
 			)
+			require.NoError(t, err)
 			testpb.RegisterTestServiceServer(server.grpcServer, grpcTestService{})
 			listener := bufconn.Listen(1024 * 1024)
 			served := make(chan error, 1)
@@ -217,7 +218,8 @@ func TestHealthMonitorOptionsAndCancellation(t *testing.T) {
 					}))
 				}
 
-				server := New(opts...)
+				server, err := New(opts...)
+				require.NoError(t, err)
 				defer server.grpcServer.Stop()
 				if server.healthMonitorCancel != nil {
 					defer server.healthMonitorCancel()
@@ -252,7 +254,7 @@ func TestHealthStatusTracksDependencyAvailability(t *testing.T) {
 	healthCtx, cancelHealth := context.WithCancel(context.Background())
 	defer cancelHealth()
 	dependencyUnavailable := new(atomic.Bool)
-	server := New(
+	server, err := New(
 		WithLogger(slog.New(slog.DiscardHandler)),
 		WitHealthCheckCtx(healthCtx),
 		WithReadinessCheck(func(context.Context) error {
@@ -263,6 +265,7 @@ func TestHealthStatusTracksDependencyAvailability(t *testing.T) {
 		}),
 		WithReadinessCheckInterval(5*time.Millisecond),
 	)
+	require.NoError(t, err)
 
 	waitForHealthStatus(t, server, healthpb.HealthCheckResponse_SERVING)
 
@@ -277,8 +280,9 @@ func TestHealthStatusTracksDependencyAvailability(t *testing.T) {
 }
 
 func TestPanicRecoveryDoesNotExposePanicDetails(t *testing.T) {
-	server := New(WithLogger(slog.New(slog.DiscardHandler)))
-	err := server.handlePanic(t.Context(), "database password: secret")
+	server, err := New(WithLogger(slog.New(slog.DiscardHandler)))
+	require.NoError(t, err)
+	err = server.handlePanic(t.Context(), "database password: secret")
 
 	if got := status.Code(err); got != codes.Internal {
 		t.Errorf("panic status code = %s, want %s", got, codes.Internal)
@@ -289,7 +293,8 @@ func TestPanicRecoveryDoesNotExposePanicDetails(t *testing.T) {
 }
 
 func TestShutdownForcesGRPCServerAfterDeadline(t *testing.T) {
-	server := New(WithLogger(slog.New(slog.DiscardHandler)))
+	server, err := New(WithLogger(slog.New(slog.DiscardHandler)))
+	require.NoError(t, err)
 	listener := bufconn.Listen(1024 * 1024)
 	serveResult := make(chan error, 1)
 	go func() {
@@ -339,7 +344,8 @@ func TestShutdownForcesGRPCServerAfterDeadline(t *testing.T) {
 }
 
 func TestShutdownGracefullyStopsIdleGRPCServer(t *testing.T) {
-	server := New(WithLogger(slog.New(slog.DiscardHandler)))
+	server, err := New(WithLogger(slog.New(slog.DiscardHandler)))
+	require.NoError(t, err)
 	listener := bufconn.Listen(1024 * 1024)
 	serveResult := make(chan error, 1)
 	go func() {
@@ -394,7 +400,7 @@ func TestHealthAndReflectionBypassApplicationRateLimiter(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			cache := local.New()
 			t.Cleanup(func() { require.NoError(t, cache.Shutdown(context.Background())) })
-			server := New(WithReflection(true), func(s *Server) {
+			server, err := New(WithReflection(true), func(s *Server) {
 				// Keep the single-token budget exhausted for the duration of the test.
 				s.rateLimiter = tools.NewRateLimiter(cache, "grpc", 1, 1, time.Hour,
 					tools.WithRateLimitWindow(time.Hour))
@@ -404,6 +410,7 @@ func TestHealthAndReflectionBypassApplicationRateLimiter(t *testing.T) {
 					})
 				}
 			})
+			require.NoError(t, err)
 			testpb.RegisterTestServiceServer(server.grpcServer, grpcTestService{})
 			conn := newHealthRateLimitTestClient(t, server)
 			client := testpb.NewTestServiceClient(conn)
@@ -420,7 +427,7 @@ func TestHealthAndReflectionBypassApplicationRateLimiter(t *testing.T) {
 				_, err := client.EmptyCall(ctx, &testpb.Empty{})
 				require.NoError(t, err, "health and reflection requests must not consume the application budget")
 			}
-			_, err := client.EmptyCall(ctx, &testpb.Empty{})
+			_, err = client.EmptyCall(ctx, &testpb.Empty{})
 			require.Equal(t, test.code, status.Code(err))
 			stream, err := client.StreamingOutputCall(ctx, &testpb.StreamingOutputCallRequest{})
 			if err == nil {
@@ -522,7 +529,7 @@ func TestHealthWaitsForInitialReadinessCheck(t *testing.T) {
 				result := make(chan error)
 				var checks atomic.Int32
 				started := time.Now()
-				server := New(WitHealthCheckCtx(ctx), WithReadinessCheck(func(ctx context.Context) error {
+				server, err := New(WitHealthCheckCtx(ctx), WithReadinessCheck(func(ctx context.Context) error {
 					checks.Add(1)
 					select {
 					case err := <-result:
@@ -531,6 +538,7 @@ func TestHealthWaitsForInitialReadinessCheck(t *testing.T) {
 						return ctx.Err()
 					}
 				}))
+				require.NoError(t, err)
 				defer server.grpcServer.Stop()
 
 				synctest.Wait()
@@ -555,7 +563,7 @@ func TestHealthRecoversFromInitialReadinessFailure(t *testing.T) {
 		unavailable.Store(true)
 		var checks atomic.Int32
 		const interval = time.Minute
-		server := New(
+		server, err := New(
 			WitHealthCheckCtx(ctx),
 			WithReadinessCheckInterval(interval),
 			WithReadinessCheck(func(context.Context) error {
@@ -566,6 +574,7 @@ func TestHealthRecoversFromInitialReadinessFailure(t *testing.T) {
 				return nil
 			}),
 		)
+		require.NoError(t, err)
 		defer server.grpcServer.Stop()
 
 		synctest.Wait()
@@ -596,12 +605,13 @@ func TestHealthRemainsNotServingWhenInitialCheckIsCanceled(t *testing.T) {
 				ctx, cancel := context.WithCancel(t.Context())
 				defer cancel()
 				var checks atomic.Int32
-				server := New(WitHealthCheckCtx(ctx), WithReadinessCheck(func(ctx context.Context) error {
+				server, err := New(WitHealthCheckCtx(ctx), WithReadinessCheck(func(ctx context.Context) error {
 					checks.Add(1)
 					<-ctx.Done()
 					// A dependency may finish successfully as shutdown starts.
 					return nil
 				}))
+				require.NoError(t, err)
 				defer server.grpcServer.Stop()
 
 				synctest.Wait()

@@ -14,7 +14,7 @@ import (
 
 type Option func(s *Server)
 
-// WithLogger sets the logger.
+// WithLogger sets the logger. A nil logger uses a discard logger.
 func WithLogger(logger *slog.Logger) Option {
 	return func(s *Server) {
 		s.l = logger
@@ -50,6 +50,7 @@ func WithGracefulTimeout(d time.Duration) Option {
 }
 
 // WithStaticRoot sets the root directory for static files.
+// An empty root disables static file serving, which is the default.
 func WithStaticRoot(root string) Option {
 	return func(s *Server) {
 		s.staticRoot = root
@@ -57,6 +58,7 @@ func WithStaticRoot(root string) Option {
 }
 
 // WithSwaggerRoot sets the root for swagger files.
+// An empty root disables Swagger, which is the default.
 // @note given directory should contain folders: v1, v2, etc.
 func WithSwaggerRoot(root string) Option {
 	return func(s *Server) {
@@ -97,6 +99,7 @@ func WithRateLimiter(cacheEngine cache.Engine, rate int, burst int, ttl time.Dur
 }
 
 // WithBodyLimit sets the maximum allowed size of the request body in bytes.
+// The default is 1 MiB. Zero allows only empty request bodies.
 func WithBodyLimit(limit int64) Option {
 	return func(s *Server) {
 		s.bodyLimit = limit
@@ -111,6 +114,8 @@ func WithSwaggerDarkStyle(enabled bool) Option {
 }
 
 // WithCORSAllowOrigins sets the allowed origins for CORS requests.
+// Nil or empty origins disable CORS, which is the default.
+// Any list containing "*" allows all origins without credentials.
 func WithCORSAllowOrigins(allowedOrigins []string) Option {
 	return func(s *Server) {
 		s.allowOrigins = allowedOrigins

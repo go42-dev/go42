@@ -17,8 +17,8 @@ import (
 	"github.com/avast/retry-go/v4"
 	natsgo "github.com/nats-io/nats.go"
 
-	"github.com/go42-dev/go42/internal/events"
 	"github.com/go42-dev/go42/internal/metrics"
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 const (
@@ -40,17 +40,18 @@ const (
 )
 
 type NATS struct {
+	mu     sync.Mutex
+	closed bool
+
 	logger               *slog.Logger
 	publisher            *wnats.Publisher
 	subscribers          []*wnats.Subscriber
 	subscriberConfig     wnats.SubscriberConfig
-	mu                   sync.Mutex
-	closed               bool
 	publishTimeout       time.Duration
 	consumerBindings     map[string]ConsumerBinding
 	consumerBindingsJSON string
 	tlsEnabled           bool
-	tls                  events.TLSOptions
+	tlsOpts              tools.TLSOptions
 
 	connectRetryTimeout        time.Duration
 	connectRetryInitialBackoff time.Duration
@@ -107,7 +108,7 @@ func New(ctx context.Context, dsn string, opts ...Option) (*NATS, error) {
 	for _, o := range opts {
 		o(engine, pubCfg, subCfg)
 	}
-	tlsConfig, err := engine.tls.LoadConfig(engine.tlsEnabled)
+	tlsConfig, err := engine.tlsOpts.LoadConfig(engine.tlsEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +294,7 @@ func validateConfig(engine *NATS, publisher *wnats.PublisherConfig, subscriber *
 				"NATS connection timeout and reconnect delay must be positive; reconnect limit must be at least -1",
 			)
 		}
-		if err := events.ValidateTLSConfig(config.TLSConfig); err != nil {
+		if err := tools.ValidateTLSConfig(config.TLSConfig); err != nil {
 			return err
 		}
 	}

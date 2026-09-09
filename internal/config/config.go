@@ -502,7 +502,15 @@ type GRPC struct {
 	MaxSendMsgSize       int    `env:"SERVER_GRPC_MAX_SEND_MSG_SIZE_BYTES" default:"4194304"`
 	ReflectionEnabled    bool   `env:"SERVER_GRPC_REFLECTION_ENABLED"      default:"false"`
 	AuthorisationEnabled bool   `env:"SERVER_GRPC_AUTHORIZATION_ENABLED"   default:"true"`
+	TLS                  GRPCTLS
 	RateLimiter          GRPCRateLimiter
+}
+
+type GRPCTLS struct {
+	Enabled      bool   `env:"SERVER_GRPC_TLS_ENABLED"        default:"false"`
+	CertFile     string `env:"SERVER_GRPC_TLS_CERT_FILE"      default:""`
+	KeyFile      string `env:"SERVER_GRPC_TLS_KEY_FILE"       default:""`
+	ClientCAFile string `env:"SERVER_GRPC_TLS_CLIENT_CA_FILE" default:""`
 }
 
 type GRPCRateLimiter struct {

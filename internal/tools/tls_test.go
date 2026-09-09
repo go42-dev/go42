@@ -1,4 +1,4 @@
-package events
+package tools_test
 
 import (
 	"crypto/ecdsa"
@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 func TestBrokerTLSVerifiesTrustAndServerIdentity(t *testing.T) {
@@ -29,8 +31,9 @@ func TestBrokerTLSVerifiesTrustAndServerIdentity(t *testing.T) {
 	require.NoError(t, os.WriteFile(caFile, pem.EncodeToMemory(&pem.Block{
 		Type: "CERTIFICATE", Bytes: server.Certificate().Raw,
 	}), 0600))
-	config, err := (TLSOptions{CAFile: caFile, ServerName: "example.com"}).LoadConfig(true)
+	config, err := (tools.TLSOptions{CAFile: caFile, ServerName: "example.com"}).LoadConfig(true)
 	require.NoError(t, err)
+	require.NotNil(t, config)
 	require.Equal(t, uint16(tls.VersionTLS12), config.MinVersion)
 	require.False(t, config.InsecureSkipVerify)
 	transport := &http.Transport{TLSClientConfig: config}
@@ -40,8 +43,9 @@ func TestBrokerTLSVerifiesTrustAndServerIdentity(t *testing.T) {
 	require.NoError(t, err)
 	_, _ = io.Copy(io.Discard, response.Body)
 	_ = response.Body.Close()
-	config, err = (TLSOptions{CAFile: caFile, ServerName: "wrong.example"}).LoadConfig(true)
+	config, err = (tools.TLSOptions{CAFile: caFile, ServerName: "wrong.example"}).LoadConfig(true)
 	require.NoError(t, err)
+	require.NotNil(t, config)
 	wrongHost := &http.Transport{TLSClientConfig: config}
 	defer wrongHost.CloseIdleConnections()
 	response, err = (&http.Client{Transport: wrongHost}).Get(server.URL)
@@ -49,8 +53,9 @@ func TestBrokerTLSVerifiesTrustAndServerIdentity(t *testing.T) {
 		_ = response.Body.Close()
 	}
 	require.ErrorContains(t, err, "certificate")
-	config, err = (TLSOptions{ServerName: "example.com"}).LoadConfig(true)
+	config, err = (tools.TLSOptions{ServerName: "example.com"}).LoadConfig(true)
 	require.NoError(t, err)
+	require.NotNil(t, config)
 	untrusted := &http.Transport{TLSClientConfig: config}
 	defer untrusted.CloseIdleConnections()
 	response, err = (&http.Client{Transport: untrusted}).Get(server.URL)
@@ -61,23 +66,23 @@ func TestBrokerTLSVerifiesTrustAndServerIdentity(t *testing.T) {
 }
 
 func TestBrokerTLSRejectsIncompleteOrUnsafeConfiguration(t *testing.T) {
-	config, err := (TLSOptions{}).LoadConfig(false)
+	config, err := (tools.TLSOptions{}).LoadConfig(false)
 	require.NoError(t, err)
 	require.Nil(t, config)
-	for _, options := range []TLSOptions{
+	for _, options := range []tools.TLSOptions{
 		{CAFile: "ca.pem"}, {CertFile: "client.pem"}, {KeyFile: "client.key"}, {ServerName: "example.com"},
 	} {
 		_, err := options.LoadConfig(false)
 		require.ErrorContains(t, err, "require TLS to be enabled")
 	}
-	_, err = (TLSOptions{CertFile: "client.pem"}).LoadConfig(true)
+	_, err = (tools.TLSOptions{CertFile: "client.pem"}).LoadConfig(true)
 	require.ErrorContains(t, err, "together")
 	invalidCA := filepath.Join(t.TempDir(), "bad-ca.pem")
 	require.NoError(t, os.WriteFile(invalidCA, []byte("invalid"), 0600))
-	_, err = (TLSOptions{CAFile: invalidCA}).LoadConfig(true)
+	_, err = (tools.TLSOptions{CAFile: invalidCA}).LoadConfig(true)
 	require.ErrorContains(t, err, "no valid certificates")
-	require.Error(t, ValidateTLSConfig(&tls.Config{InsecureSkipVerify: true}))
-	require.Error(t, ValidateTLSConfig(&tls.Config{MinVersion: tls.VersionTLS10}))
+	require.Error(t, tools.ValidateTLSConfig(&tls.Config{InsecureSkipVerify: true}))
+	require.Error(t, tools.ValidateTLSConfig(&tls.Config{MinVersion: tls.VersionTLS10}))
 }
 
 func TestBrokerTLSLoadsClientIdentityForMutualTLS(t *testing.T) {
@@ -97,8 +102,9 @@ func TestBrokerTLSLoadsClientIdentityForMutualTLS(t *testing.T) {
 	certFile, keyFile := filepath.Join(dir, "client.pem"), filepath.Join(dir, "client.key")
 	require.NoError(t, os.WriteFile(certFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0600))
 	require.NoError(t, os.WriteFile(keyFile, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}), 0600))
-	config, err := (TLSOptions{CAFile: certFile, CertFile: certFile, KeyFile: keyFile}).LoadConfig(true)
+	config, err := (tools.TLSOptions{CAFile: certFile, CertFile: certFile, KeyFile: keyFile}).LoadConfig(true)
 	require.NoError(t, err)
+	require.NotNil(t, config)
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if len(r.TLS.VerifiedChains) == 0 {
 			w.WriteHeader(http.StatusUnauthorized)

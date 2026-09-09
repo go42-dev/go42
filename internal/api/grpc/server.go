@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
@@ -51,24 +52,27 @@ type Server struct {
 	grpcServer *grpc.Server
 
 	maxRecvMsgSize int
+
 	maxSendMsgSize int
 	tracingEnabled bool
 	withReflection bool
 	healthServer   *health.Server
 	healthCheckCtx context.Context
+	readyCheck     func(context.Context) error
 
-	readyCheck          func(context.Context) error
 	readyCheckTimeout   time.Duration
 	readyCheckInterval  time.Duration
 	healthMonitorCancel context.CancelFunc
-
-	rateLimiter rateLimiterAccessor
+	rateLimiter         rateLimiterAccessor
 
 	extraUnaryInterceptors  map[int][]grpc.UnaryServerInterceptor
 	extraStreamInterceptors map[int][]grpc.StreamServerInterceptor
+
+	tlsEnabled bool
+	tlsOpts    tools.TLSOptions
 }
 
-func New(opts ...Option) *Server {
+func New(opts ...Option) (*Server, error) {
 	s := &Server{
 		extraUnaryInterceptors:  make(map[int][]grpc.UnaryServerInterceptor),
 		extraStreamInterceptors: make(map[int][]grpc.StreamServerInterceptor),
@@ -77,6 +81,10 @@ func New(opts ...Option) *Server {
 	}
 	for _, o := range opts {
 		o(s)
+	}
+	tlsConfig, err := s.tlsOpts.LoadServerConfig(s.tlsEnabled)
+	if err != nil {
+		return nil, err
 	}
 	if s.logger == nil {
 		s.logger = slog.New(slog.DiscardHandler)
@@ -137,6 +145,9 @@ func New(opts ...Option) *Server {
 		grpc.ChainStreamInterceptor(streamPriorityQueue.Extract()...),
 	}
 
+	if tlsConfig != nil {
+		serverOptions = append(serverOptions, grpc.Creds(credentials.NewTLS(tlsConfig)))
+	}
 	if s.maxRecvMsgSize > 0 {
 		serverOptions = append(serverOptions, grpc.MaxRecvMsgSize(s.maxRecvMsgSize))
 	}
@@ -164,7 +175,7 @@ func New(opts ...Option) *Server {
 	healthpb.RegisterHealthServer(s.grpcServer, s.healthServer)
 	s.startHealthMonitor()
 
-	return s
+	return s, nil
 }
 
 func (s *Server) handlePanic(ctx context.Context, p any) error {

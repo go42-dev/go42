@@ -200,6 +200,7 @@ func (p *OutboxMessagePublisher) retryDelay(attempt int) time.Duration {
 		delay *= 2
 	}
 	delay = min(delay, p.retryMaxBackoff)
+	// #nosec G404 -- Retry jitter does not require cryptographic randomness.
 	return time.Duration(float64(delay) * (0.5 + rand.Float64()/2))
 }
 

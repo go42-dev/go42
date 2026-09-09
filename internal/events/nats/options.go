@@ -32,10 +32,10 @@ func WithTLSEnabled(enabled bool) Option {
 // WithTLSConfig sets certificate files and server name, loaded by New when TLS is enabled.
 func WithTLSConfig(caFile, certFile, keyFile, serverName string) Option {
 	return func(engine *NATS, _ *nats.PublisherConfig, _ *nats.SubscriberConfig) {
-		engine.tls.CAFile = caFile
-		engine.tls.CertFile = certFile
-		engine.tls.KeyFile = keyFile
-		engine.tls.ServerName = serverName
+		engine.tlsOpts.CAFile = caFile
+		engine.tlsOpts.CertFile = certFile
+		engine.tlsOpts.KeyFile = keyFile
+		engine.tlsOpts.ServerName = serverName
 	}
 }
 

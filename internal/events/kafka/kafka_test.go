@@ -17,6 +17,7 @@ func TestKafkaDefaultsPreserveBacklogAndRequireDurablePublishing(t *testing.T) {
 		func(_ *Kafka, pub, sub *sarama.Config) { publisher, subscriber = pub, sub })
 	require.ErrorIs(t, err, context.Canceled)
 	require.NotNil(t, publisher)
+	require.NotNil(t, subscriber)
 	require.True(t, publisher.Producer.Idempotent)
 	require.Equal(t, sarama.WaitForAll, publisher.Producer.RequiredAcks)
 	require.Equal(t, 1, publisher.Net.MaxOpenRequests)

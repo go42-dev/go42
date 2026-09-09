@@ -45,6 +45,7 @@ func TestOutboxRecoversAfterBrokerDisconnection(t *testing.T) {
 
 			setProxyEnabled(t, factory.proxy.Name, true)
 			h.waitForBroker(t)
+			waitForOutboxRetry(t, failedAttempt)
 			h.runBatch(t, outboxPublishTimeout)
 			stored := h.assertMessage(t, entry, models.MessageStatusProcessed, 1)
 			require.Equal(t, failedAttempt.LastError, stored.LastError)
@@ -66,6 +67,7 @@ func TestOutboxTimeoutRedeliveryIsIdempotent(t *testing.T) {
 
 			removeToxic(t, factory.proxy.Name, brokerLatencyToxicName)
 			h.waitForBroker(t)
+			waitForOutboxRetry(t, stored)
 			h.runBatch(t, outboxPublishTimeout)
 			h.assertMessage(t, entry, models.MessageStatusProcessed, 1)
 			h.assertHistory(t, entry, 1)
@@ -139,8 +141,7 @@ func TestOutboxRetriesPastLegacyLimitAndRecovers(t *testing.T) {
 			for attempt := 1; attempt <= 5; attempt++ {
 				h.runBatch(t, 100*time.Millisecond)
 				pending := h.assertMessage(t, entry, models.MessageStatusPending, attempt)
-				require.True(t, pending.NextAttemptAt.Valid)
-				time.Sleep(time.Until(pending.NextAttemptAt.Time) + time.Millisecond)
+				waitForOutboxRetry(t, pending)
 			}
 
 			setProxyEnabled(t, factory.proxy.Name, true)
@@ -414,6 +415,12 @@ func (h *outboxResilienceHarness) runBatch(t *testing.T, publishTimeout time.Dur
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	require.NoError(t, waitForOutboxBatch(t, h.startBatch(t, ctx, publishTimeout), 5*time.Second))
+}
+
+func waitForOutboxRetry(t *testing.T, entry models.Message) {
+	t.Helper()
+	require.True(t, entry.NextAttemptAt.Valid, "failed publish must schedule a retry")
+	time.Sleep(time.Until(entry.NextAttemptAt.Time) + time.Millisecond)
 }
 
 func waitForOutboxBatch(t *testing.T, done <-chan error, timeout time.Duration) error {

@@ -104,7 +104,7 @@ func TestGRPCMetricsMatchRPCOutcome(t *testing.T) {
 				if priority == 0 {
 					priority = InterceptorPriorityBusinessLogic
 				}
-				server := New(func(s *Server) {
+				server, err := New(func(s *Server) {
 					s.rateLimiter = grpcContextTestLimiter(func(context.Context, string) (bool, error) {
 						if test.limiterPanic {
 							panic("limiter panic")
@@ -128,6 +128,7 @@ func TestGRPCMetricsMatchRPCOutcome(t *testing.T) {
 						return next(srv, stream)
 					},
 				))
+				require.NoError(t, err)
 				testpb.RegisterTestServiceServer(server.grpcServer, grpcTestService{})
 				client := testpb.NewTestServiceClient(newHealthRateLimitTestClient(t, server))
 				ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
@@ -135,7 +136,6 @@ func TestGRPCMetricsMatchRPCOutcome(t *testing.T) {
 
 				// Drain streaming calls to their terminal status, including successful EOF.
 				// Context cases return application errors while the client context is live.
-				var err error
 				if grpcType == "stream" {
 					var stream grpcpkg.ServerStreamingClient[testpb.StreamingOutputCallResponse]
 					stream, err = client.StreamingOutputCall(ctx, &testpb.StreamingOutputCallRequest{})

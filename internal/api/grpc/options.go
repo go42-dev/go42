@@ -20,6 +20,23 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
+// WithTLSEnabled enables or disables TLS.
+func WithTLSEnabled(enabled bool) Option {
+	return func(s *Server) {
+		s.tlsEnabled = enabled
+	}
+}
+
+// WithTLSConfig sets certificate files, loaded by New when TLS is enabled.
+// Providing a client CA file requires verified client certificates for mutual TLS.
+func WithTLSConfig(clientCAFile, certFile, keyFile string) Option {
+	return func(s *Server) {
+		s.tlsOpts.CAFile = clientCAFile
+		s.tlsOpts.CertFile = certFile
+		s.tlsOpts.KeyFile = keyFile
+	}
+}
+
 // WithTracing enables/disables tracing.
 func WithTracing(enabled bool) Option {
 	return func(s *Server) {

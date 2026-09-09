@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -23,7 +24,10 @@ const (
 	ReadyStatusShuttingDown
 )
 
-const defaultReadinessCheckTimeout = 2 * time.Second
+const (
+	defaultReadinessCheckTimeout       = 2 * time.Second
+	defaultBodyLimit             int64 = 1 << 20
+)
 
 //go:generate mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
 
@@ -72,7 +76,7 @@ func New(opts ...Option) *Server {
 
 	s := &Server{
 		e:                 echoServer,
-		allowOrigins:      make([]string, 0),
+		bodyLimit:         defaultBodyLimit,
 		serveDone:         make(chan struct{}),
 		shutdownCtx:       ctx,
 		shutdownCancel:    cancel,
@@ -80,7 +84,12 @@ func New(opts ...Option) *Server {
 	}
 
 	for _, opt := range opts {
-		opt(s)
+		if opt != nil {
+			opt(s)
+		}
+	}
+	if s.l == nil {
+		s.l = slog.New(slog.DiscardHandler)
 	}
 
 	// route echo's internal logs through the project's slog logger
@@ -147,43 +156,47 @@ func New(opts ...Option) *Server {
 		HSTSPreloadEnabled: true,
 	}))
 
-	// AllowOrigins: ["*"] with AllowCredentials: true is not allowed by CORS spec.
-	allowCredentials := true
-	if len(s.allowOrigins) > 0 && s.allowOrigins[0] == "*" {
-		allowCredentials = false
-		s.l.Warn("CORS is configured to allow all origins")
+	if len(s.allowOrigins) > 0 {
+		allowOrigins := s.allowOrigins
+		allowCredentials := !slices.Contains(allowOrigins, "*")
+		if !allowCredentials {
+			// A wildcard makes every other origin redundant.
+			allowOrigins = []string{"*"}
+			s.l.Warn("CORS is configured to allow all origins")
+		}
+
+		s.e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+			AllowOrigins: allowOrigins,
+			// allow all methods for CORS requests
+			AllowMethods: []string{
+				http.MethodOptions,
+				http.MethodGet,
+				http.MethodPost,
+				http.MethodPut,
+				http.MethodPatch,
+				http.MethodDelete,
+			},
+			// allowed headers for CORS requests
+			AllowHeaders: []string{"Authorization", "Content-Type", "X-API-Key"},
+			// allow javascript to read extra response headers
+			ExposeHeaders: []string{"Content-Length", "x-request-id"},
+			// allow credentialed browser requests for explicit origins
+			AllowCredentials: allowCredentials,
+			// caching of OPTIONS requests
+			MaxAge: 3600,
+		}))
 	}
 
-	s.e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: s.allowOrigins,
-		// allow all methods for CORS requests
-		AllowMethods: []string{
-			http.MethodOptions,
-			http.MethodGet,
-			http.MethodPost,
-			http.MethodPut,
-			http.MethodPatch,
-			http.MethodDelete,
-		},
-		// allowed headers for CORS requests
-		AllowHeaders: []string{"Authorization", "Content-Type", "X-API-Key"},
-		// allow javascript to read extra response headers
-		ExposeHeaders: []string{"Content-Length", "x-request-id"},
-		// allow JWT to be sent by cross-origin requests
-		AllowCredentials: allowCredentials,
-		// caching of OPTIONS requests
-		MaxAge: 3600,
-	}))
-
 	s.root = s.e.Group("")
-	s.root.Static("/static", s.staticRoot)
+	if s.staticRoot != "" {
+		s.root.Static("/static", s.staticRoot)
+	}
 
 	s.root.GET("/health", s.health)
 	s.root.GET("/ready", s.ready)
 
-	{
-		s.v1 = s.e.Group("/api/v1")
-
+	s.v1 = s.e.Group("/api/v1")
+	if s.swaggerRoot != "" {
 		// serve openapi specification files
 		s.v1.Static("", s.swaggerRoot+"/v1")
 

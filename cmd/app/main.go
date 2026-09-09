@@ -613,16 +613,6 @@ func main() {
 	authHttpAdapter := authHttpAdapterV1.New(authService)
 	httpServer.RegisterV1(authHttpAdapter)
 
-	// run server
-
-	go func() {
-		slog.Info("starting http server...", slog.String("port", cfg.Server.HTTP.Listen))
-		if err := httpServer.Start(cfg.Server.HTTP.Listen); err != nil &&
-			!errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("failed to start http server: %v\n", err)
-		}
-	}()
-
 	// grpc server
 
 	grpcServerOpts := []grpcAPI.Option{
@@ -635,6 +625,12 @@ func main() {
 		grpcAPI.WithMaxRecvMsgSize(cfg.Server.GRPC.MaxRecvMsgSize),
 		grpcAPI.WithMaxSendMsgSize(cfg.Server.GRPC.MaxSendMsgSize),
 		grpcAPI.WithReflection(cfg.Server.GRPC.ReflectionEnabled),
+		grpcAPI.WithTLSEnabled(cfg.Server.GRPC.TLS.Enabled),
+		grpcAPI.WithTLSConfig(
+			cfg.Server.GRPC.TLS.ClientCAFile,
+			cfg.Server.GRPC.TLS.CertFile,
+			cfg.Server.GRPC.TLS.KeyFile,
+		),
 	}
 
 	if cfg.Server.GRPC.RateLimiter.Enabled {
@@ -665,7 +661,10 @@ func main() {
 		)
 	}
 
-	grpcServer := grpcAPI.New(grpcServerOpts...)
+	grpcServer, err := grpcAPI.New(grpcServerOpts...)
+	if err != nil {
+		log.Fatalf("failed to initialize grpc server: %v\n", err)
+	}
 
 	// register grpc services
 
@@ -675,7 +674,15 @@ func main() {
 	)
 	grpcServer.Register(authGrpc)
 
-	// run server
+	// run servers
+
+	go func() {
+		slog.Info("starting http server...", slog.String("port", cfg.Server.HTTP.Listen))
+		if err := httpServer.Start(cfg.Server.HTTP.Listen); err != nil &&
+			!errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("failed to start http server: %v\n", err)
+		}
+	}()
 
 	go func() {
 		slog.Info("starting grpc server...", slog.String("port", cfg.Server.GRPC.Listen))
@@ -908,6 +915,9 @@ func initSentry(
 			"build_tag":    xBuildTag,
 			"build_commit": xBuildCommit,
 		},
+		// sentry-go v0.49.0's telemetry scheduler can lose its shutdown wakeup.
+		// Use the supported legacy transport until that race is fixed upstream.
+		DisableTelemetryBuffer: true,
 	})
 	sentry.CurrentHub().BindClient(client)
 

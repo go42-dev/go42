@@ -14,8 +14,8 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/avast/retry-go/v4"
 
-	"github.com/go42-dev/go42/internal/events"
 	"github.com/go42-dev/go42/internal/metrics"
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 const (
@@ -38,7 +38,7 @@ type Kafka struct {
 	client     sarama.Client
 	configErr  error
 	tlsEnabled bool
-	tls        events.TLSOptions
+	tlsOpts    tools.TLSOptions
 	closeOnce  sync.Once
 	closeDone  chan struct{}
 	closeErr   error
@@ -82,7 +82,7 @@ func New(ctx context.Context, brokers []string, group string, opts ...Option) (*
 	for _, opt := range opts {
 		opt(engine, pubCfg, subCfg)
 	}
-	tlsConfig, err := engine.tls.LoadConfig(engine.tlsEnabled)
+	tlsConfig, err := engine.tlsOpts.LoadConfig(engine.tlsEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -294,7 +294,7 @@ func validateConfig(engine *Kafka, brokers []string, group string, publisher, su
 			config.Net.WriteTimeout <= 0 {
 			return errors.New("kafka network and metadata timeouts must be positive")
 		}
-		if err := errors.Join(config.Validate(), events.ValidateTLSConfig(config.Net.TLS.Config)); err != nil {
+		if err := errors.Join(config.Validate(), tools.ValidateTLSConfig(config.Net.TLS.Config)); err != nil {
 			return err
 		}
 	}

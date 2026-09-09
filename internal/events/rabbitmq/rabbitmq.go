@@ -13,8 +13,8 @@ import (
 	"github.com/avast/retry-go/v4"
 	amqpgo "github.com/rabbitmq/amqp091-go"
 
-	"github.com/go42-dev/go42/internal/events"
 	"github.com/go42-dev/go42/internal/metrics"
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 const (
@@ -31,7 +31,7 @@ type AMQP struct {
 	autoProvision  bool
 	connectTimeout time.Duration
 	tlsEnabled     bool
-	tls            events.TLSOptions
+	tlsOpts        tools.TLSOptions
 
 	connectRetryTimeout        time.Duration
 	connectRetryInitialBackoff time.Duration
@@ -71,7 +71,7 @@ func New(ctx context.Context, dsn string, consumerGroup string, opts ...Option) 
 		amqpConfig.Connection.AmqpConfig = &amqpgo.Config{}
 	}
 	amqpConfig.Connection.AmqpConfig.Dial = amqpgo.DefaultDial(engine.connectTimeout)
-	tlsConfig, err := engine.tls.LoadConfig(engine.tlsEnabled)
+	tlsConfig, err := engine.tlsOpts.LoadConfig(engine.tlsEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +187,7 @@ func validateConfig(engine *AMQP, config amqp.Config) error {
 	if tlsConfig == nil && config.Connection.AmqpConfig != nil {
 		tlsConfig = config.Connection.AmqpConfig.TLSClientConfig
 	}
-	if err := events.ValidateTLSConfig(tlsConfig); err != nil {
+	if err := tools.ValidateTLSConfig(tlsConfig); err != nil {
 		return err
 	}
 	if tlsConfig != nil && uri.Scheme != "amqps" {

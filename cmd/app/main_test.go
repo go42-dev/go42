@@ -7,8 +7,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -65,6 +68,7 @@ type shutdownWrapTestCase struct {
 func TestInitLoggingEnrichesConsoleAndSentry(t *testing.T) {
 	entries := make(chan *sentry.Log, 1)
 	client, err := sentry.NewClient(sentry.ClientOptions{
+		DisableTelemetryBuffer: true,
 		BeforeSendLog: func(entry *sentry.Log) *sentry.Log {
 			entries <- entry
 			return nil
@@ -140,6 +144,59 @@ func TestInitLoggingEnrichesConsoleAndSentry(t *testing.T) {
 		assert.Equal(t, value, console[key], key)
 		assert.Equal(t, sentryattribute.StringValue(value), entry.Attributes[key], key)
 		assert.Equal(t, 1, bytes.Count(rawEntry, []byte(`"`+key+`":`)), key)
+	}
+}
+
+func TestInitSentryFlushesLogsAndEventsOnShutdown(t *testing.T) {
+	envelopes := make(chan string, 4)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if !assert.NoError(t, err) {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		assert.Equal(t, "/api/1/envelope/", r.URL.Path)
+		select {
+		case envelopes <- string(body):
+		default:
+			t.Error("unexpected extra Sentry envelope")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+	previousLogger := slog.Default()
+	previousOutput := log.Writer()
+	previousFlags := log.Flags()
+	previousClient := sentry.CurrentHub().Client()
+	t.Cleanup(func() {
+		slog.SetDefault(previousLogger)
+		log.SetOutput(previousOutput)
+		log.SetFlags(previousFlags)
+		sentry.CurrentHub().BindClient(previousClient)
+	})
+	cfg := &config.Config{}
+	cfg.Sentry.Enabled = true
+	cfg.Sentry.DSN = strings.Replace(server.URL, "://", "://public@", 1) + "/1"
+	closer := initSentry(t.Context(), cfg, func(handlers ...slog.Handler) *slog.Logger {
+		return slog.New(slog.NewMultiHandler(handlers...))
+	})
+	require.NotNil(t, closer)
+	client := sentry.CurrentHub().Client()
+	require.NotNil(t, client)
+	t.Cleanup(client.Close)
+	slog.ErrorContext(t.Context(), "flush this log")
+	require.NotNil(t, client.CaptureMessage("flush this event", nil, nil))
+	ctx, cancel := context.WithTimeout(t.Context(), appTestTimeout)
+	defer cancel()
+	require.NoError(t, closer.Shutdown(ctx))
+	var received string
+	for !strings.Contains(received, "flush this log") || !strings.Contains(received, "flush this event") {
+		select {
+		case envelope := <-envelopes:
+			received += envelope
+		case <-ctx.Done():
+			t.Fatalf("Sentry did not flush both logs and events: %s", received)
+		}
 	}
 }
 
