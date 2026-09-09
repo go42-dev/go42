@@ -123,8 +123,8 @@ func (r *Repository) ListUsers(ctx context.Context, limit, offset int) ([]*model
 		FROM auth_user_roles AS ur
 		JOIN auth_roles AS r ON r.id = ur.role_id
 		WHERE ur.user_id IN ?
-		  AND (ur.expires_at IS NULL OR ur.expires_at > ?)
-		  AND r.deleted_at IS NULL
+			AND (ur.expires_at IS NULL OR ur.expires_at > ?)
+			AND r.deleted_at IS NULL
 	`, userIDs, time.Now()).Find(ctx)
 
 	if err != nil {
@@ -205,8 +205,8 @@ func (r *Repository) getUser(ctx context.Context, filter string, args ...any) (*
 		FROM auth_roles AS r
 		JOIN auth_user_roles AS ur ON ur.role_id = r.id
 		WHERE ur.user_id = ?
-		  AND (ur.expires_at IS NULL OR ur.expires_at > ?)
-		  AND r.deleted_at IS NULL
+			AND (ur.expires_at IS NULL OR ur.expires_at > ?)
+			AND r.deleted_at IS NULL
 	`, user.ID, time.Now()).Find(ctx)
 
 	if err != nil {

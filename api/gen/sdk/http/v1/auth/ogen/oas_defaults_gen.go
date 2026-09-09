@@ -3,30 +3,6 @@
 package auth
 
 // setDefaults set default value of fields.
-func (s *CreateUserRequest) setDefaults() {
-	{
-		val := string("user@example.com")
-		s.Email = val
-	}
-	{
-		val := string("12#$abCD%$")
-		s.Password = val
-	}
-}
-
-// setDefaults set default value of fields.
-func (s *LoginRequest) setDefaults() {
-	{
-		val := string("user@example.com")
-		s.Email = val
-	}
-	{
-		val := string("12#$abCD%$")
-		s.Password = val
-	}
-}
-
-// setDefaults set default value of fields.
 func (s *LogoutRequest) setDefaults() {
 	{
 		val := string("")
@@ -47,18 +23,6 @@ func (s *RefreshRequest) setDefaults() {
 }
 
 // setDefaults set default value of fields.
-func (s *SignUpRequest) setDefaults() {
-	{
-		val := string("user@example.com")
-		s.Email = val
-	}
-	{
-		val := string("12#$abCD%$")
-		s.Password = val
-	}
-}
-
-// setDefaults set default value of fields.
 func (s *Tokens) setDefaults() {
 	{
 		val := string("")
@@ -71,30 +35,6 @@ func (s *Tokens) setDefaults() {
 	{
 		val := int(0)
 		s.ExpiresIn.SetTo(val)
-	}
-}
-
-// setDefaults set default value of fields.
-func (s *UpdateSelfRequest) setDefaults() {
-	{
-		val := string("user@example.com")
-		s.Email.SetTo(val)
-	}
-	{
-		val := string("12#$abCD%$")
-		s.Password.SetTo(val)
-	}
-}
-
-// setDefaults set default value of fields.
-func (s *UpdateUserRequest) setDefaults() {
-	{
-		val := string("user@example.com")
-		s.Email.SetTo(val)
-	}
-	{
-		val := string("12#$abCD%$")
-		s.Password.SetTo(val)
 	}
 }
 

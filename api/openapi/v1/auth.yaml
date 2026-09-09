@@ -536,7 +536,7 @@ components:
         email:
           type: string
           description: Trimmed, lowercased, then validated as an email address by the service.
-          default: "user@example.com"
+          example: "user@example.com"
         password:
           type: string
           minLength: 8
@@ -545,7 +545,7 @@ components:
             At least 8 Unicode characters and at most 72 UTF-8 bytes.
             Used exactly as supplied, including whitespace.
             New passwords must also meet the configured strength requirement.
-          default: "12#$abCD%$"
+          example: "12#$abCD%$"
     LoginRequest:
       type: object
       required:
@@ -555,7 +555,7 @@ components:
         email:
           type: string
           description: Trimmed, lowercased, then validated as an email address by the service.
-          default: "user@example.com"
+          example: "user@example.com"
         password:
           type: string
           minLength: 8
@@ -563,7 +563,7 @@ components:
           description: >-
             At least 8 Unicode characters and at most 72 UTF-8 bytes.
             Used exactly as supplied, including whitespace.
-          default: "12#$abCD%$"
+          example: "12#$abCD%$"
     RefreshRequest:
       type: object
       required:
@@ -593,7 +593,7 @@ components:
         email:
           type: string
           description: Trimmed, lowercased, then validated as an email address by the service.
-          default: "user@example.com"
+          example: "user@example.com"
         password:
           type: string
           minLength: 8
@@ -602,14 +602,14 @@ components:
             At least 8 Unicode characters and at most 72 UTF-8 bytes.
             Used exactly as supplied, including whitespace.
             New passwords must also meet the configured strength requirement.
-          default: "12#$abCD%$"
+          example: "12#$abCD%$"
     UpdateUserRequest:
       type: object
       properties:
         email:
           type: string
           description: Trimmed, lowercased, then validated as an email address by the service.
-          default: "user@example.com"
+          example: "user@example.com"
         password:
           type: string
           minLength: 8
@@ -618,7 +618,7 @@ components:
             At least 8 Unicode characters and at most 72 UTF-8 bytes.
             Used exactly as supplied, including whitespace.
             New passwords must also meet the configured strength requirement.
-          default: "12#$abCD%$"
+          example: "12#$abCD%$"
     UpdateSelfRequest:
       type: object
       description: current_password is required when email or password is supplied.
@@ -632,7 +632,7 @@ components:
         email:
           type: string
           description: Trimmed, lowercased, then validated as an email address by the service.
-          default: "user@example.com"
+          example: "user@example.com"
         password:
           type: string
           minLength: 8
@@ -641,4 +641,4 @@ components:
             At least 8 Unicode characters and at most 72 UTF-8 bytes.
             Used exactly as supplied, including whitespace.
             New passwords must also meet the configured strength requirement.
-          default: "12#$abCD%$"
+          example: "12#$abCD%$"

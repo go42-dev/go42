@@ -41,7 +41,6 @@ func (s *CreateUserRequest) Decode(d *jx.Decoder) error {
 		return errors.New("invalid: unable to decode CreateUserRequest to nil")
 	}
 	var requiredBitSet [1]uint8
-	s.setDefaults()
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
@@ -467,7 +466,6 @@ func (s *LoginRequest) Decode(d *jx.Decoder) error {
 		return errors.New("invalid: unable to decode LoginRequest to nil")
 	}
 	var requiredBitSet [1]uint8
-	s.setDefaults()
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
@@ -1204,7 +1202,6 @@ func (s *SignUpRequest) Decode(d *jx.Decoder) error {
 		return errors.New("invalid: unable to decode SignUpRequest to nil")
 	}
 	var requiredBitSet [1]uint8
-	s.setDefaults()
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
@@ -1578,7 +1575,6 @@ func (s *UpdateSelfRequest) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode UpdateSelfRequest to nil")
 	}
-	s.setDefaults()
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
@@ -1669,7 +1665,6 @@ func (s *UpdateUserRequest) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode UpdateUserRequest to nil")
 	}
-	s.setDefaults()
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {

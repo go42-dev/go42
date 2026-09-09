@@ -20,10 +20,10 @@ export MISE_CACHE_DIR := $(MISE_DATA_DIR)/cache
 export MISE_STATE_DIR := $(MISE_DATA_DIR)/state
 export PATH := $(MISE_DATA_DIR)/shims:$(PATH)
 
-.PHONY: help setup setup-common setup-linters setup-generators setup-mcp \
-	test-unit test-fuzz test-integration test-resilience test-load \
-	run run-docker debug build image lint lint-nilaway generate serve-docs \
-	check-env generate-migration-id generate-dep-graph grpcui show-asm
+.PHONY: help setup setup-common setup-linters setup-generators setup-mcp
+.PHONY: test-unit test-fuzz test-integration test-resilience test-load
+.PHONY: run run-docker debug build image lint lint-make lint-nilaway generate serve-docs
+.PHONY: check-env generate-migration-id generate-dep-graph grpcui show-asm
 
 help: Makefile
 	@sed -n 's/^##//p' $< | awk 'BEGIN {FS = "|"}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -45,6 +45,7 @@ setup-common:
 setup-linters:
 	@mise install --locked \
 		actionlint \
+		checkmake \
 		editorconfig-checker \
 		gitleaks \
 		golangci-lint \
@@ -224,16 +225,17 @@ image:
 ## lint | run all validation tools
 lint:
 	@golangci-lint run --config etc/.golangci.yml
-	@hadolint Dockerfile
-	@helm lint --strict infra/helm/app --set-string image.tag=ci-validation
-	@helm lint --strict infra/helm/app --set-string image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000
 	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/sqlite/*.sql --dialect sqlite
 	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/mysql/*.sql --dialect mysql
 	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/pgsql/*.sql --dialect postgres
+	@gosec -quiet -exclude-generated ./...
+	@checkmake --config etc/checkmake.ini Makefile
+	@hadolint Dockerfile
+	@helm lint --strict infra/helm/app --set-string image.tag=ci-validation
+	@helm lint --strict infra/helm/app --set-string image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000
 	@REDOCLY_SUPPRESS_UPDATE_NOTICE=true REDOCLY_TELEMETRY=false redocly lint --config etc/redocly.yaml --format stylish api/openapi/**/*.yaml
 	@oasdiff breaking --fail-on ERR origin/master:api/openapi/v1/.combined.yaml api/openapi/v1/.combined.yaml
-	@buf lint api || true
-	@gosec -quiet -exclude-generated ./...
+	@buf lint api
 	@gitleaks git --config etc/gitleaks.toml --no-banner --redact -v
 	@markdownlint-cli2 --config etc/.markdownlint.yaml README.md docs/**/*.md
 	@vale --no-exit --config etc/vale.ini README.md docs/**/*.md internal/ cmd/ pkg/ tests/

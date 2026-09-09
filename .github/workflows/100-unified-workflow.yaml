@@ -98,6 +98,17 @@ jobs:
       continue_on_error: false
       timeout_minutes: 10
 
+  make-lint:
+    uses: ./.github/workflows/110-make-lint.yaml
+    permissions:
+      contents: read
+    needs:
+      - gate-start
+    with:
+      runs_on: ubuntu-latest
+      continue_on_error: false
+      timeout_minutes: 10
+
   helm-lint:
     uses: ./.github/workflows/110-helm-lint.yaml
     permissions:
@@ -208,6 +219,7 @@ jobs:
       - golangci-lint
       - nilaway-lint
       - docker-lint
+      - make-lint
       - helm-lint
       - proto-lint
       - openapi-lint
@@ -231,6 +243,7 @@ jobs:
       - golangci-lint
       - nilaway-lint
       - docker-lint
+      - make-lint
       - helm-lint
       - proto-lint
       - openapi-lint
@@ -253,6 +266,7 @@ jobs:
       - golangci-lint
       - nilaway-lint
       - docker-lint
+      - make-lint
       - helm-lint
       - proto-lint
       - openapi-lint

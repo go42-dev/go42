@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -24,6 +25,7 @@ import (
 	"github.com/google/uuid"
 	protovalidateInterceptor "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/protovalidate"
 	"github.com/labstack/echo/v5"
+	"github.com/ogen-go/ogen/ogenerrors"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -384,6 +386,117 @@ func TestCredentials_HTTPClientsAcceptLongPasswords(t *testing.T) {
 	}
 	if oapiResponse.StatusCode() != http.StatusBadRequest || oapiResponse.ApplicationproblemJSON400 == nil {
 		t.Fatalf("oapi-codegen byte-limit status = %d, want BadRequest", oapiResponse.StatusCode())
+	}
+}
+
+func TestCredentials_HTTPClientsPreserveOmittedUpdateFields(t *testing.T) {
+	for _, sdk := range []string{"ogen", "oapi-codegen"} {
+		for _, target := range []string{"user", "self"} {
+			for name, fields := range map[string]map[string]string{
+				"email only":    {"email": "updated@example.com"},
+				"password only": {"password": testPassword + "!new"},
+				"empty":         {},
+			} {
+				t.Run(sdk+"/"+target+"/"+name, func(t *testing.T) {
+					h := newSessionHarness(t)
+					require.NoError(t, h.repo.AssignRoleToUser(t.Context(), h.user.ID, "admin"))
+					tokens := h.login(t)
+					e := newTestEcho()
+					httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+					server := httptest.NewServer(e)
+					t.Cleanup(server.Close)
+
+					input := maps.Clone(fields)
+					if target == "self" && len(fields) > 0 {
+						input["current_password"] = testPassword
+					}
+					body, err := json.Marshal(input)
+					require.NoError(t, err)
+					sendCredentialSDKUpdate(t, sdk, target, server.URL+"/api/v1", h.user.UUID, tokens.AccessToken, body)
+
+					stored, err := h.repo.GetUserByUUID(t.Context(), h.user.UUID.String())
+					require.NoError(t, err)
+					if email, supplied := fields["email"]; supplied {
+						assert.Equal(t, email, stored.Email)
+					} else {
+						assert.Equal(t, h.user.Email, stored.Email, "omitted email must remain unchanged")
+					}
+					if password, supplied := fields["password"]; supplied {
+						assert.NoError(t, bcrypt.CompareHashAndPassword([]byte(stored.Password.V), []byte(password)))
+					} else {
+						assert.Equal(t, h.user.Password, stored.Password, "omitted password must remain unchanged")
+					}
+					if len(fields) == 0 {
+						assert.Equal(t, h.user.CredentialVersion, stored.CredentialVersion)
+					}
+				})
+			}
+		}
+	}
+}
+
+type credentialSDKSecurity string
+
+func (credentialSDKSecurity) ApiKey(context.Context, ogen.OperationName, *ogen.Client) (ogen.ApiKey, error) {
+	return ogen.ApiKey{}, ogenerrors.ErrSkipClientSecurity
+}
+
+func (s credentialSDKSecurity) Jwt(context.Context, ogen.OperationName, *ogen.Client) (ogen.Jwt, error) {
+	return ogen.Jwt{Token: string(s)}, nil
+}
+
+func decodeCredentialSDKUpdate[T any](t *testing.T, body []byte) *T {
+	t.Helper()
+	request := new(T)
+	require.NoError(t, json.Unmarshal(body, request))
+	encoded, err := json.Marshal(request)
+	require.NoError(t, err)
+	require.JSONEq(t, string(body), string(encoded), "SDK decoding must preserve omitted fields")
+	return request
+}
+
+func sendCredentialSDKUpdate(
+	t *testing.T,
+	sdk, target, serverURL string,
+	userUUID uuid.UUID,
+	bearer string,
+	body []byte,
+) {
+	t.Helper()
+	if sdk == "ogen" {
+		client, err := ogen.NewClient(serverURL, credentialSDKSecurity(bearer))
+		require.NoError(t, err)
+		if target == "self" {
+			request := decodeCredentialSDKUpdate[ogen.UpdateSelfRequest](t, body)
+			response, err := client.UsersMeUpdate(t.Context(), request)
+			require.NoError(t, err)
+			require.IsType(t, &ogen.UsersMeUpdateOK{}, response)
+		} else {
+			request := decodeCredentialSDKUpdate[ogen.UpdateUserRequest](t, body)
+			response, err := client.UsersUpdate(t.Context(), request, ogen.UsersUpdateParams{UUID: userUUID})
+			require.NoError(t, err)
+			require.IsType(t, &ogen.UsersUpdateOK{}, response)
+		}
+		return
+	}
+
+	client, err := oapi.NewClientWithResponses(serverURL, oapi.WithRequestEditorFn(
+		func(_ context.Context, req *http.Request) error {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+			return nil
+		},
+	))
+	require.NoError(t, err)
+	if target == "self" {
+		request := decodeCredentialSDKUpdate[oapi.UpdateSelfRequest](t, body)
+		response, err := client.UsersMeUpdateWithResponse(t.Context(), *request)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, response.StatusCode(), "response: %s", response.Body)
+	} else {
+		request := decodeCredentialSDKUpdate[oapi.UpdateUserRequest](t, body)
+		response, err := client.UsersUpdateWithResponse(t.Context(), userUUID, *request)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, response.StatusCode(), "response: %s", response.Body)
 	}
 }
 

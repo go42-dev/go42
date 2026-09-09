@@ -24,9 +24,13 @@ import (
 // CreateUserRequest defines model for CreateUserRequest.
 type CreateUserRequest struct {
 	// Email Trimmed, lowercased, then validated as an email address by the service.
+	//
+	// Example: user@example.com
 	Email string `json:"email"`
 
 	// Password At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including whitespace. New passwords must also meet the configured strength requirement.
+	//
+	// Example: 12#$abCD%$
 	Password string `json:"password"`
 }
 
@@ -54,9 +58,13 @@ type Error struct {
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
 	// Email Trimmed, lowercased, then validated as an email address by the service.
+	//
+	// Example: user@example.com
 	Email string `json:"email"`
 
 	// Password At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including whitespace.
+	//
+	// Example: 12#$abCD%$
 	Password string `json:"password"`
 }
 
@@ -75,9 +83,13 @@ type RefreshRequest struct {
 // SignUpRequest defines model for SignUpRequest.
 type SignUpRequest struct {
 	// Email Trimmed, lowercased, then validated as an email address by the service.
+	//
+	// Example: user@example.com
 	Email string `json:"email"`
 
 	// Password At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including whitespace. New passwords must also meet the configured strength requirement.
+	//
+	// Example: 12#$abCD%$
 	Password string `json:"password"`
 }
 
@@ -94,18 +106,26 @@ type UpdateSelfRequest struct {
 	CurrentPassword *string `json:"current_password,omitempty"`
 
 	// Email Trimmed, lowercased, then validated as an email address by the service.
+	//
+	// Example: user@example.com
 	Email *string `json:"email,omitempty"`
 
 	// Password At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including whitespace. New passwords must also meet the configured strength requirement.
+	//
+	// Example: 12#$abCD%$
 	Password *string `json:"password,omitempty"`
 }
 
 // UpdateUserRequest defines model for UpdateUserRequest.
 type UpdateUserRequest struct {
 	// Email Trimmed, lowercased, then validated as an email address by the service.
+	//
+	// Example: user@example.com
 	Email *string `json:"email,omitempty"`
 
 	// Password At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including whitespace. New passwords must also meet the configured strength requirement.
+	//
+	// Example: 12#$abCD%$
 	Password *string `json:"password,omitempty"`
 }
 
@@ -2860,39 +2880,39 @@ func ParseUsersUpdateResponse(rsp *http.Response) (*UsersUpdateResponse, error) 
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 	"AA==",
 }
 
