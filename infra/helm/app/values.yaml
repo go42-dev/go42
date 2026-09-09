@@ -16,6 +16,12 @@ tolerations: {}
 
 replicaCount: 1
 
+# Configure volume ownership for storage drivers that support fsGroup.
+# Override the group for your cluster, or set this block to null to omit it.
+podSecurityContext:
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+
 # Allow more time than the startup probe budget for the rollout to make progress.
 # Set deployment tooling's wait timeout accordingly (for example, Helm --timeout 20m).
 progressDeadlineSeconds: 1200

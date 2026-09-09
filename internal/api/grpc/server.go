@@ -90,12 +90,12 @@ func New(opts ...Option) *Server {
 		logging.UnaryServerInterceptor(interceptorLogger(s.logger)))
 	unaryPriorityQueue.Enqueue(
 		InterceptorPriorityPreprocess,
+		interceptors.UnaryMetricsInterceptor())
+	unaryPriorityQueue.Enqueue(
+		InterceptorPriorityPreprocess,
 		recovery.UnaryServerInterceptor(recovery.WithRecoveryHandlerContext(s.handlePanic)))
 	unaryPriorityQueue.Enqueue(
 		InterceptorPriorityPreprocess, interceptors.UnaryServerRateLimiterInterceptor(s.rateLimiter))
-	unaryPriorityQueue.Enqueue(
-		InterceptorPriorityObservability,
-		interceptors.UnaryMetricsInterceptor())
 	unaryPriorityQueue.Enqueue(
 		InterceptorPriorityBusinessLogic,
 		protovalidateInterceptor.UnaryServerInterceptor(protovalidate.GlobalValidator))
@@ -109,13 +109,13 @@ func New(opts ...Option) *Server {
 		logging.StreamServerInterceptor(interceptorLogger(s.logger)))
 	streamPriorityQueue.Enqueue(
 		InterceptorPriorityPreprocess,
+		interceptors.StreamMetricsInterceptor())
+	streamPriorityQueue.Enqueue(
+		InterceptorPriorityPreprocess,
 		recovery.StreamServerInterceptor(recovery.WithRecoveryHandlerContext(s.handlePanic)))
 	streamPriorityQueue.Enqueue(
 		InterceptorPriorityPreprocess,
 		interceptors.StreamServerRateLimiterInterceptor(s.rateLimiter))
-	streamPriorityQueue.Enqueue(
-		InterceptorPriorityObservability,
-		interceptors.StreamMetricsInterceptor())
 	streamPriorityQueue.Enqueue(
 		InterceptorPriorityBusinessLogic,
 		protovalidateInterceptor.StreamServerInterceptor(protovalidate.GlobalValidator))

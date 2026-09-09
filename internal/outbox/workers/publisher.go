@@ -121,6 +121,10 @@ func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
 			}
 
 			if err != nil {
+				if errors.Is(err, events.ErrPublishCapacity) {
+					// Leave this message due for the next run and commit earlier progress.
+					break
+				}
 				if message.RetryCount < math.MaxInt32 {
 					message.RetryCount++
 				}

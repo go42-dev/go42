@@ -2,12 +2,17 @@ package events
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"golang.org/x/sync/semaphore"
 )
 
 const defaultPublishMaxInflight = 1 << 5
+
+// ErrPublishCapacity means waiting for an available publisher slot failed.
+var ErrPublishCapacity = errors.New("publish capacity unavailable")
 
 // boundedPublisher limits active broker calls and returns when a message's context is canceled.
 type boundedPublisher struct {
@@ -34,7 +39,7 @@ func (p *boundedPublisher) Publish(topic string, messages ...*message.Message) e
 func (p *boundedPublisher) publish(topic string, msg *message.Message) error {
 	ctx := msg.Context()
 	if err := p.slots.Acquire(ctx, 1); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrPublishCapacity, err)
 	}
 
 	// The backend may still read the message after the caller returns and reuses it.

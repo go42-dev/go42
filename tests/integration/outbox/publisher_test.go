@@ -52,9 +52,10 @@ func TestOutboxPublisherTimeoutCommitsProgressAndReleasesConnection(t *testing.T
 			close(finished)
 		}
 		return nil
-	})
+	}, events.WithPublishMaxInflight(1))
 	worker := workers.NewOutboxMessagePublisher(repo, router,
-		workers.OutboxMessagePublisherWithPublishTimeout(50*time.Millisecond))
+		workers.OutboxMessagePublisherWithPublishTimeout(50*time.Millisecond),
+		workers.OutboxMessagePublisherWithRetryBackoff(time.Hour, time.Hour))
 	done := startOutboxPublisher(t, t.Context(), repo, worker, 3)
 	waitForOutboxPublishSignal(t, entered)
 	require.NoError(t, waitForOutboxRun(t, done))
@@ -84,6 +85,15 @@ func TestOutboxPublisherTimeoutCommitsProgressAndReleasesConnection(t *testing.T
 			require.Zero(t, entry.RetryCount)
 			require.Empty(t, entry.LastError)
 		}
+	}
+	// The untouched row cannot acquire capacity while the timed-out broker call holds the only slot.
+	for range 3 {
+		done = startOutboxPublisher(t, t.Context(), repo, worker, 3)
+		require.NoError(t, waitForOutboxRun(t, done))
+		var after []models.Message
+		require.NoError(t, db.Master().WithContext(t.Context()).Find(&after).Error)
+		require.ElementsMatch(t, stored, after, "waiting for capacity must not change any stored message")
+		require.EqualValues(t, 2, calls.Load(), "no additional broker calls may start while capacity is full")
 	}
 	release()
 	waitForOutboxPublishSignal(t, finished)
@@ -353,10 +363,12 @@ func (b *outboxTestBackend) Publish(topic string, messages ...*message.Message) 
 	return b.publish(topic, messages...)
 }
 
-func newOutboxTestRouter(t *testing.T, publish func(string, ...*message.Message) error) *events.Router {
+func newOutboxTestRouter(
+	t *testing.T, publish func(string, ...*message.Message) error, opts ...events.Option,
+) *events.Router {
 	t.Helper()
 	backend := &outboxTestBackend{NoopEngine: events.NewNoop(), publish: publish}
-	router, err := events.NewRouter(backend, events.WithCloseTimeout(time.Second))
+	router, err := events.NewRouter(backend, append([]events.Option{events.WithCloseTimeout(time.Second)}, opts...)...)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)

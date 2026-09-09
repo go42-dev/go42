@@ -61,7 +61,9 @@ func TestPublisherTimeoutBoundsBlockedCallsAndAllowsRecovery(t *testing.T) {
 				synctest.Wait()
 				require.Len(t, done, limit)
 				for range limit {
-					require.ErrorIs(t, <-done, context.DeadlineExceeded)
+					publishErr := <-done
+					require.ErrorIs(t, publishErr, context.DeadlineExceeded)
+					require.NotErrorIs(t, publishErr, events.ErrPublishCapacity, "the broker call already started")
 				}
 
 				for range 3 {
@@ -69,10 +71,13 @@ func TestPublisherTimeoutBoundsBlockedCallsAndAllowsRecovery(t *testing.T) {
 					err = router.Publish(attemptCtx, topic, "expired-event", []byte("expired"))
 					attemptCancel()
 					require.ErrorIs(t, err, context.DeadlineExceeded)
+					require.ErrorIs(t, err, events.ErrPublishCapacity)
 				}
 				canceledCtx, canceledCancel := context.WithCancel(t.Context())
 				canceledCancel()
-				require.ErrorIs(t, router.Publish(canceledCtx, topic, "canceled-event", nil), context.Canceled)
+				err = router.Publish(canceledCtx, topic, "canceled-event", nil)
+				require.ErrorIs(t, err, context.Canceled)
+				require.ErrorIs(t, err, events.ErrPublishCapacity)
 				require.EqualValues(t, limit, calls.Load(), "timeouts must not start more blocked broker calls")
 				assert.Equal(t, successesBefore, successes.Get())
 				assert.Equal(t, uint64(limit+4), failures.Get()-failuresBefore)

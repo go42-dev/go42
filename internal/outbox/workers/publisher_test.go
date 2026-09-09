@@ -126,6 +126,49 @@ func TestOutboxPublisherTimeoutRemainsRetryable(t *testing.T) {
 		context.DeadlineExceeded)
 }
 
+func TestOutboxPublisherCapacityTimeoutPreservesProgress(t *testing.T) {
+	for _, cancelParent := range []bool{false, true} {
+		name := "commit earlier success"
+		if cancelParent {
+			name = "parent cancellation rolls back"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			ctrl := gomock.NewController(t)
+			repository := mocks.NewMockrepository(ctrl)
+			publisher := mocks.NewMockpublisher(ctrl)
+			worker := NewOutboxMessagePublisher(repository, publisher)
+			first, second, third := newOutboxTestMessage(), newOutboxTestMessage(), newOutboxTestMessage()
+			expectOutboxTransaction(repository)
+			repository.EXPECT().GetUnprocessedMessages(ctx, 3).Return([]models.Message{first, second, third}, nil)
+			gomock.InOrder(
+				publisher.EXPECT().Publish(gomock.Any(), first.Topic, first.ID.String(), gomock.Any()).Return(nil),
+				publisher.EXPECT().Publish(gomock.Any(), second.Topic, second.ID.String(), gomock.Any()).
+					DoAndReturn(func(publishCtx context.Context, _ string, _ string, _ []byte) error {
+						if cancelParent {
+							cancel()
+							return errors.Join(events.ErrPublishCapacity, publishCtx.Err())
+						}
+						return errors.Join(events.ErrPublishCapacity, context.DeadlineExceeded)
+					}),
+			)
+			if !cancelParent {
+				repository.EXPECT().SaveProcessedMessages(ctx, []models.Message{first}).Return(nil)
+			}
+			retries := metrics.Counter("application_outbox_messages_total", map[string]any{"result": "retry"})
+			retriesBefore := retries.Get()
+			err := worker.run(ctx, 3)
+			if cancelParent {
+				require.ErrorIs(t, err, context.Canceled)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, retriesBefore, retries.Get())
+		})
+	}
+}
+
 func TestOutboxPublisherPermanentlyInvalidMessageFailsImmediately(t *testing.T) {
 	assertOutboxPublishFailure(t, 0, models.MessageStatusFailed, 1,
 		fmt.Errorf("publish: %w", events.Permanent(errors.New("invalid payload"))))

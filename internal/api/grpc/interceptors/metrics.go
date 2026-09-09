@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/go42-dev/go42/internal/metrics"
@@ -24,23 +25,13 @@ func UnaryMetricsInterceptor() grpc.UnaryServerInterceptor {
 
 		metrics.Counter("application_grpc_requests_count", labels).Inc()
 
-		var (
-			grpcStatusCode int
-			grpcStatusMsg  string
-			reqDuration    float64
-		)
-
 		start := time.Now()
 		resp, err := handler(ctx, req)
-		reqDuration = time.Since(start).Seconds()
+		reqDuration := time.Since(start).Seconds()
 
-		if s, ok := status.FromError(err); ok {
-			grpcStatusCode = int(s.Code())
-			grpcStatusMsg = s.Code().String()
-		}
-
-		labels["code"] = grpcStatusCode
-		labels["status"] = grpcStatusMsg
+		code := grpcStatusCode(err)
+		labels["code"] = int(code)
+		labels["status"] = code.String()
 		labels["is_error"] = toStringBool(err != nil)
 
 		metrics.Counter("application_grpc_responses_count", labels).Inc()
@@ -64,23 +55,13 @@ func StreamMetricsInterceptor() grpc.StreamServerInterceptor {
 
 		metrics.Counter("application_grpc_requests_count", labels).Inc()
 
-		var (
-			grpcStatusCode int
-			grpcStatusMsg  string
-			reqDuration    float64
-		)
-
 		start := time.Now()
 		err := handler(srv, ss)
-		reqDuration = time.Since(start).Seconds()
+		reqDuration := time.Since(start).Seconds()
 
-		if s, ok := status.FromError(err); ok {
-			grpcStatusCode = int(s.Code())
-			grpcStatusMsg = s.Code().String()
-		}
-
-		labels["code"] = grpcStatusCode
-		labels["status"] = grpcStatusMsg
+		code := grpcStatusCode(err)
+		labels["code"] = int(code)
+		labels["status"] = code.String()
 		labels["is_error"] = toStringBool(err != nil)
 
 		metrics.Counter("application_grpc_responses_count", labels).Inc()
@@ -88,6 +69,15 @@ func StreamMetricsInterceptor() grpc.StreamServerInterceptor {
 
 		return err
 	}
+}
+
+// grpcStatusCode matches grpc-go's conversion of application errors.
+func grpcStatusCode(err error) codes.Code {
+	s, ok := status.FromError(err)
+	if !ok {
+		s = status.FromContextError(err)
+	}
+	return s.Code()
 }
 
 func toStringBool(is bool) string {
