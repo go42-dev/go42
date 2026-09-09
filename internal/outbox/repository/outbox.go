@@ -2,11 +2,13 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"github.com/go42-dev/go42/internal/database"
@@ -22,7 +24,7 @@ func New(baseRepository *database.BaseRepository) *Repository {
 }
 
 func (r *Repository) NewOutboxMessage(ctx context.Context, msg *models.Message) error {
-	err := r.GetTx(ctx).Create(msg).Error
+	err := gorm.G[models.Message](r.GetTx(ctx)).Create(ctx, msg)
 	if err != nil {
 		return fmt.Errorf("error saving message: %w", err)
 	}
@@ -30,33 +32,33 @@ func (r *Repository) NewOutboxMessage(ctx context.Context, msg *models.Message) 
 }
 
 func (r *Repository) GetUnprocessedMessages(ctx context.Context, limit int) ([]models.Message, error) {
-	var messages []models.Message
-	result := r.
-		GetTx(ctx).
-		Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate, Options: clause.LockingOptionsSkipLocked}).
+	messages, err := gorm.G[models.Message](r.GetTx(ctx),
+		clause.Locking{
+			Strength: clause.LockingStrengthUpdate,
+			Options:  clause.LockingOptionsSkipLocked,
+		},
+	).
 		Where("status = ?", models.MessageStatusPending).
-		Limit(limit).Find(&messages)
-	if result.Error != nil {
-		return nil, fmt.Errorf("error fetching messages: %w", result.Error)
+		Limit(limit).Find(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching messages: %w", err)
 	}
 	return messages, nil
 }
 
 func (r *Repository) SaveProcessedMessages(ctx context.Context, messages []models.Message) error {
-	var ids []uuid.UUID
-	for _, message := range messages {
-		ids = append(ids, message.ID)
+	ids := make([]uuid.UUID, len(messages))
+	for i, message := range messages {
+		ids[i] = message.ID
 	}
-	result := r.
-		GetTx(ctx).
-		Model(&models.Message{}).
+	_, err := gorm.G[models.Message](r.GetTx(ctx)).
 		Where("id IN ?", ids).
-		Updates(map[string]interface{}{
-			"status":       models.MessageStatusProcessed,
-			"processed_at": time.Now().UTC(),
+		Updates(ctx, models.Message{
+			Status:      models.MessageStatusProcessed,
+			ProcessedAt: sql.NullTime{Time: time.Now().UTC(), Valid: true},
 		})
-	if result.Error != nil {
-		return fmt.Errorf("error updating processed messages: %w", result.Error)
+	if err != nil {
+		return fmt.Errorf("error updating processed messages: %w", err)
 	}
 	return nil
 }
@@ -67,32 +69,47 @@ func (r *Repository) DeleteProcessedMessages(ctx context.Context, before time.Ti
 	if limit <= 0 {
 		return 0, errors.New("outbox cleanup batch size must be positive")
 	}
-	before = before.UTC()
-	var ids []uuid.UUID
-	err := r.GetTx(ctx).Model(&models.Message{}).
-		Where("status = ? AND processed_at < ?", models.MessageStatusProcessed, before).
-		Order("processed_at ASC").Order("id ASC").Limit(limit).
-		Pluck("id", &ids).Error
+
+	var (
+		ids          []uuid.UUID
+		deleteBefore = before.UTC()
+	)
+
+	db := r.GetTx(ctx)
+	err := gorm.G[models.Message](db).Select("id").
+		Where("status = ? AND processed_at < ?", models.MessageStatusProcessed, deleteBefore).
+		Order("processed_at ASC").
+		Order("id ASC").
+		Limit(limit).
+		Scan(ctx, &ids)
 	if err != nil {
 		return 0, fmt.Errorf("error selecting processed messages for cleanup: %w", err)
 	}
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	result := r.GetTx(ctx).
-		Where("id IN ? AND status = ? AND processed_at < ?", ids, models.MessageStatusProcessed, before).
-		Delete(&models.Message{})
-	if result.Error != nil {
-		return 0, fmt.Errorf("error deleting processed messages: %w", result.Error)
+
+	rows, err := gorm.G[models.Message](db).
+		Where("id IN ?", ids).
+		Where("status = ? AND processed_at < ?", models.MessageStatusProcessed, deleteBefore).
+		Delete(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("error deleting processed messages: %w", err)
 	}
-	return result.RowsAffected, nil
+
+	return int64(rows), nil
 }
 
 func (r *Repository) SaveFailedMessages(ctx context.Context, messages []models.Message) error {
+	db := r.GetTx(ctx)
+	// Select all fields so zero values also overwrite stored values.
 	for _, message := range messages {
-		result := r.GetTx(ctx).Save(&message)
-		if result.Error != nil {
-			return fmt.Errorf("error saving message with ID %s: %w", message.ID, result.Error)
+		_, err := gorm.G[*models.Message](db).
+			Where("id = ?", message.ID).
+			Select("*").
+			Updates(ctx, &message)
+		if err != nil {
+			return fmt.Errorf("error updating message with ID %s: %w", message.ID, err)
 		}
 	}
 	return nil

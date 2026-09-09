@@ -40,7 +40,7 @@ func New(
 }
 
 func (r *Repository) CreateUser(ctx context.Context, user *models.User) error {
-	err := r.GetTx(ctx).Create(user).Error
+	err := gorm.G[models.User](r.GetTx(ctx)).Create(ctx, user)
 	if err != nil {
 		if r.IsDuplicateKeyError(err) {
 			return domain.ErrUserAlreadyExists
@@ -53,40 +53,58 @@ func (r *Repository) CreateUser(ctx context.Context, user *models.User) error {
 func (r *Repository) UpdateUser(ctx context.Context, user *models.User) error {
 	updated := *user
 	updated.CredentialVersion++
-	result := r.GetTx(ctx).Model(user).
+
+	rows, err := gorm.G[*models.User](r.GetTx(ctx)).
+		Where("id = ?", user.ID).
 		Where("credential_version = ?", user.CredentialVersion).
-		Updates(&updated)
-	if result.Error != nil {
-		if r.IsDuplicateKeyError(result.Error) {
+		Updates(ctx, &updated)
+	if err != nil {
+		if r.IsDuplicateKeyError(err) {
 			return domain.ErrUserAlreadyExists
 		}
-		return fmt.Errorf("error updating user: %w", result.Error)
+		return fmt.Errorf("error updating user: %w", err)
 	}
-	if result.RowsAffected == 0 {
+
+	if rows == 0 {
 		// A concurrent credential change makes the caller's password proof stale.
 		return domain.ErrInvalidCredentials
 	}
+
 	user.CredentialVersion = updated.CredentialVersion
+	user.UpdatedAt = updated.UpdatedAt
+
 	return nil
 }
 
 func (r *Repository) DeleteUser(ctx context.Context, user *models.User) error {
-	result := r.GetTx(ctx).Delete(user)
-	if result.Error != nil {
-		return fmt.Errorf("error deleting user: %w", result.Error)
+	rows, err := gorm.G[models.User](r.GetTx(ctx)).
+		Where("id = ?", user.ID).
+		Delete(ctx)
+	if err != nil {
+		return fmt.Errorf("error deleting user: %w", err)
 	}
-	if result.RowsAffected == 0 {
+	if rows == 0 {
 		return domain.ErrEntityNotFound
 	}
 	return nil
 }
 
-func (r *Repository) ListUsers(ctx context.Context, limit, offset int) ([]*models.User, error) {
-	var users []*models.User
+type userRoleProjection struct {
+	UserID int
+	Role   models.Role `gorm:"embedded"`
+}
 
-	result := r.GetReadDB(ctx).Limit(limit).Offset(offset).Order("id ASC").Find(&users)
-	if result.Error != nil {
-		return nil, fmt.Errorf("error listing users: %w", result.Error)
+type rolePermissionProjection struct {
+	RoleID     int
+	Permission models.Permission `gorm:"embedded"`
+}
+
+func (r *Repository) ListUsers(ctx context.Context, limit, offset int) ([]*models.User, error) {
+	db := r.GetReadDB(ctx)
+
+	users, err := gorm.G[*models.User](db).Limit(limit).Offset(offset).Order("id ASC").Find(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error listing users: %w", err)
 	}
 
 	if len(users) == 0 {
@@ -100,19 +118,14 @@ func (r *Repository) ListUsers(ctx context.Context, limit, offset int) ([]*model
 		userMap[user.ID] = users[i]
 	}
 
-	var userRoles []struct {
-		UserID int
-		Role   models.Role `gorm:"embedded;embeddedPrefix:role_"`
-	}
-
-	err := r.GetReadDB(ctx).
-		Table("auth_user_roles").
-		Select("auth_user_roles.user_id, auth_roles.id as role_id, auth_roles.name as role_name, auth_roles.description as role_description, auth_roles.is_system as role_is_system, auth_roles.created_at as role_created_at, auth_roles.updated_at as role_updated_at").
-		Joins("JOIN auth_roles ON auth_roles.id = auth_user_roles.role_id").
-		Where("auth_user_roles.user_id IN ?", userIDs).
-		Where("auth_user_roles.expires_at IS NULL OR auth_user_roles.expires_at > ?", time.Now()).
-		Where("auth_roles.deleted_at IS NULL").
-		Scan(&userRoles).Error
+	userRoles, err := gorm.G[userRoleProjection](db).Raw(`
+		SELECT ur.user_id, r.*
+		FROM auth_user_roles AS ur
+		JOIN auth_roles AS r ON r.id = ur.role_id
+		WHERE ur.user_id IN ?
+		  AND (ur.expires_at IS NULL OR ur.expires_at > ?)
+		  AND r.deleted_at IS NULL
+	`, userIDs, time.Now()).Find(ctx)
 
 	if err != nil {
 		return nil, fmt.Errorf("error fetching user roles: %w", err)
@@ -128,17 +141,7 @@ func (r *Repository) ListUsers(ctx context.Context, limit, offset int) ([]*model
 	}
 
 	if len(roleIDs) > 0 {
-		var rolePermissions []struct {
-			RoleID     int
-			Permission models.Permission `gorm:"embedded"`
-		}
-
-		err = r.GetReadDB(ctx).
-			Table("auth_permissions").
-			Select("auth_role_permissions.role_id, auth_permissions.*").
-			Joins("JOIN auth_role_permissions ON auth_role_permissions.permission_id = auth_permissions.id").
-			Where("auth_role_permissions.role_id IN ?", roleIDs).
-			Scan(&rolePermissions).Error
+		rolePermissions, err := loadRolePermissions(ctx, db, roleIDs)
 
 		if err != nil {
 			return nil, fmt.Errorf("error fetching permissions: %w", err)
@@ -166,7 +169,7 @@ func (r *Repository) GetUserByID(ctx context.Context, id int) (*models.User, err
 	return tools.TraceReturnTWithErr[*models.User](
 		ctx, "auth", "auth.repository.GetUserByID",
 		func(ctx context.Context) (*models.User, error) {
-			return r.getUser(ctx, map[string]any{"id": id})
+			return r.getUser(ctx, "id = ?", id)
 		})
 }
 
@@ -174,7 +177,7 @@ func (r *Repository) GetUserByUUID(ctx context.Context, uuid string) (*models.Us
 	return tools.TraceReturnTWithErr[*models.User](
 		ctx, "auth", "auth.repository.GetUserByUUID",
 		func(ctx context.Context) (*models.User, error) {
-			return r.getUser(ctx, map[string]any{"uuid": uuid})
+			return r.getUser(ctx, "uuid = ?", uuid)
 		})
 }
 
@@ -182,19 +185,14 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*models.
 	return tools.TraceReturnTWithErr[*models.User](
 		ctx, "auth", "auth.repository.GetUserByEmail",
 		func(ctx context.Context) (*models.User, error) {
-			return r.getUser(ctx, map[string]any{"email": email})
+			return r.getUser(ctx, "email = ?", email)
 		})
 }
 
-func (r *Repository) getUser(ctx context.Context, filter map[string]any) (*models.User, error) {
-	// Authentication must observe current credentials, status and permissions.
-	tx := r.GetTx(ctx)
-	for key, value := range filter {
-		tx = tx.Where(fmt.Sprintf("%s = ?", key), value)
-	}
+func (r *Repository) getUser(ctx context.Context, filter string, args ...any) (*models.User, error) {
+	db := r.GetTx(ctx)
 
-	var user models.User
-	err := tx.First(&user).Error
+	user, err := gorm.G[models.User](db).Where(filter, args...).First(ctx)
 	if r.IsNotFoundError(err) {
 		return nil, domain.ErrEntityNotFound
 	}
@@ -202,35 +200,26 @@ func (r *Repository) getUser(ctx context.Context, filter map[string]any) (*model
 		return nil, err
 	}
 
-	var roles []models.Role
-	err = r.GetTx(ctx).
-		Distinct().
-		Select("auth_roles.*").
-		Joins("JOIN auth_user_roles ON auth_user_roles.role_id = auth_roles.id").
-		Where("auth_user_roles.user_id = ?", user.ID).
-		Where("auth_user_roles.expires_at IS NULL OR auth_user_roles.expires_at > ?", time.Now()).
-		Find(&roles).Error
+	roles, err := gorm.G[models.Role](db).Raw(`
+		SELECT DISTINCT r.*
+		FROM auth_roles AS r
+		JOIN auth_user_roles AS ur ON ur.role_id = r.id
+		WHERE ur.user_id = ?
+		  AND (ur.expires_at IS NULL OR ur.expires_at > ?)
+		  AND r.deleted_at IS NULL
+	`, user.ID, time.Now()).Find(ctx)
 
 	if err != nil {
 		return nil, fmt.Errorf("error fetching roles: %w", err)
 	}
+
 	if len(roles) > 0 {
 		roleIDs := make([]int, len(roles))
 		for i, role := range roles {
 			roleIDs[i] = role.ID
 		}
 
-		var permissions []struct {
-			RoleID     int
-			Permission models.Permission `gorm:"embedded"`
-		}
-
-		err = r.GetTx(ctx).
-			Table("auth_permissions").
-			Select("auth_role_permissions.role_id, auth_permissions.*").
-			Joins("JOIN auth_role_permissions ON auth_role_permissions.permission_id = auth_permissions.id").
-			Where("auth_role_permissions.role_id IN ?", roleIDs).
-			Scan(&permissions).Error
+		permissions, err := loadRolePermissions(ctx, db, roleIDs)
 
 		if err != nil {
 			return nil, fmt.Errorf("error fetching permissions: %w", err)
@@ -250,26 +239,34 @@ func (r *Repository) getUser(ctx context.Context, filter map[string]any) (*model
 	return &user, nil
 }
 
+func loadRolePermissions(ctx context.Context, db *gorm.DB, roleIDs []int) ([]rolePermissionProjection, error) {
+	return gorm.G[rolePermissionProjection](db).Raw(`
+		SELECT rp.role_id, p.*
+		FROM auth_permissions AS p
+		JOIN auth_role_permissions AS rp ON rp.permission_id = p.id
+		WHERE rp.role_id IN ?
+	`, roleIDs).Find(ctx)
+}
+
 func (r *Repository) CreateSession(ctx context.Context, session *models.Session) error {
 	session.ExpiresAt = session.ExpiresAt.UTC()
-	return r.GetTx(ctx).Create(session).Error
+	return gorm.G[models.Session](r.GetTx(ctx)).Create(ctx, session)
 }
 
 // activeSessionQuery always uses the primary, including the credential-version
 // comparison. Missing, expired, revoked and obsolete sessions all fail closed.
-func (r *Repository) activeSessionQuery(ctx context.Context, sessionID, userUUID string) *gorm.DB {
-	return r.GetTx(ctx).Model(&models.Session{}).
-		Where("auth_sessions.id = ?", sessionID).
-		Where("auth_sessions.revoked_at IS NULL AND auth_sessions.expires_at > ?", time.Now().UTC()).
-		Where(`auth_sessions.user_id IN (
-			SELECT id FROM auth_users WHERE uuid = ? AND status = ? AND deleted_at IS NULL
-			AND credential_version = auth_sessions.credential_version
-		)`, userUUID, domain.UserStatusActive)
+func activeSessionQuery(db *gorm.DB, sessionID, userUUID string) *gorm.DB {
+	owner := db.Model(&models.User{}).Select("id").
+		Where("uuid = ? AND status = ?", userUUID, domain.UserStatusActive).
+		Where("credential_version = auth_sessions.credential_version")
+	return db.Model(&models.Session{}).
+		Where("id = ? AND revoked_at IS NULL AND expires_at > ?", sessionID, time.Now().UTC()).
+		Where("user_id IN (?)", owner)
 }
 
 func (r *Repository) GetActiveSession(ctx context.Context, sessionID, userUUID string) (*models.Session, error) {
 	var session models.Session
-	err := r.activeSessionQuery(ctx, sessionID, userUUID).First(&session).Error
+	err := activeSessionQuery(r.GetTx(ctx), sessionID, userUUID).First(&session).Error
 	if r.IsNotFoundError(err) {
 		return nil, domain.ErrInvalidToken
 	}
@@ -285,16 +282,22 @@ func (r *Repository) GetActiveSession(ctx context.Context, sessionID, userUUID s
 func (r *Repository) RotateSession(
 	ctx context.Context, sessionID, userUUID, previousTokenID, nextTokenID string, expiresAt time.Time,
 ) (bool, error) {
-	result := r.activeSessionQuery(ctx, sessionID, userUUID).
+	result := activeSessionQuery(r.GetTx(ctx), sessionID, userUUID).
 		Where("refresh_token_id = ?", previousTokenID).
-		Updates(map[string]any{"refresh_token_id": nextTokenID, "expires_at": expiresAt.UTC()})
+		Updates(map[string]any{
+			"refresh_token_id": nextTokenID,
+			"expires_at":       expiresAt.UTC(),
+		})
 	return result.RowsAffected == 1, result.Error
 }
 
 func (r *Repository) RevokeSession(ctx context.Context, sessionID, userUUID string) error {
-	return r.GetTx(ctx).Model(&models.Session{}).
+	db := r.GetTx(ctx)
+	// Revocation must also reach sessions owned by a soft-deleted user.
+	owner := db.Model(&models.User{}).Unscoped().Select("id").Where("uuid = ?", userUUID)
+	return db.Model(&models.Session{}).
 		Where("id = ? AND revoked_at IS NULL", sessionID).
-		Where("user_id IN (SELECT id FROM auth_users WHERE uuid = ?)", userUUID).
+		Where("user_id IN (?)", owner).
 		Update("revoked_at", time.Now().UTC()).Error
 }
 
@@ -303,24 +306,27 @@ func (r *Repository) RevokeSession(ctx context.Context, sessionID, userUUID stri
 // started before expiry committed after the selection.
 func (r *Repository) DeleteExpiredSessions(ctx context.Context) (int64, error) {
 	cutoff := time.Now().UTC()
+	db := r.GetTx(ctx)
+
 	var ids []string
-	if err := r.GetTx(ctx).Model(&models.Session{}).
+	if err := gorm.G[models.Session](db).Select("id").
 		Where("expires_at <= ?", cutoff).Order("expires_at ASC").Limit(1000).
-		Pluck("id", &ids).Error; err != nil {
+		Scan(ctx, &ids); err != nil {
 		return 0, err
 	}
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	result := r.GetTx(ctx).Where("id IN ? AND expires_at <= ?", ids, cutoff).Delete(&models.Session{})
-	return result.RowsAffected, result.Error
+
+	rows, err := gorm.G[models.Session](db).
+		Where("id IN ? AND expires_at <= ?", ids, cutoff).Delete(ctx)
+
+	return int64(rows), err
 }
 
 func (r *Repository) AssignRoleToUser(ctx context.Context, userID int, roleName string) error {
-	var role models.Role
-	err := r.GetTx(ctx).
-		Where("name = ?", roleName).
-		First(&role).Error
+	db := r.GetTx(ctx)
+	role, err := gorm.G[models.Role](db).Where("name = ?", roleName).First(ctx)
 	if err != nil {
 		return fmt.Errorf("error retrieving role: %w", err)
 	}
@@ -330,7 +336,7 @@ func (r *Repository) AssignRoleToUser(ctx context.Context, userID int, roleName 
 		RoleID: role.ID,
 	}
 
-	err = r.GetTx(ctx).Create(&userRole).Error
+	err = gorm.G[models.UserRole](db).Create(ctx, &userRole)
 	if err != nil {
 		return fmt.Errorf("error assigning role to user: %w", err)
 	}
@@ -353,10 +359,8 @@ func (r *Repository) GetToken(ctx context.Context, hashedToken string) (*models.
 		return cachedToken, nil
 	}
 
-	var apiToken models.Token
-	err = r.GetReadDB(ctx).
-		Where("token = ?", hashedToken).
-		First(&apiToken).Error
+	db := r.GetReadDB(ctx)
+	apiToken, err := gorm.G[models.Token](db).Where("token = ?", hashedToken).First(ctx)
 
 	if r.IsNotFoundError(err) {
 		return nil, domain.ErrEntityNotFound
@@ -365,12 +369,12 @@ func (r *Repository) GetToken(ctx context.Context, hashedToken string) (*models.
 		return nil, fmt.Errorf("error fetching api token: %w", err)
 	}
 
-	err = r.GetReadDB(ctx).
-		Table("auth_permissions").
-		Select("auth_permissions.*").
-		Joins("JOIN auth_api_tokens_permissions ON auth_api_tokens_permissions.permission_id = auth_permissions.id").
-		Where("auth_api_tokens_permissions.token_id = ?", apiToken.ID).
-		Scan(&apiToken.Permissions).Error
+	apiToken.Permissions, err = gorm.G[models.Permission](db).Raw(`
+		SELECT p.*
+		FROM auth_permissions AS p
+		JOIN auth_api_tokens_permissions AS tp ON tp.permission_id = p.id
+		WHERE tp.token_id = ?
+	`, apiToken.ID).Find(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching api token permissions: %w", err)
 	}
@@ -385,41 +389,38 @@ func (r *Repository) GetToken(ctx context.Context, hashedToken string) (*models.
 		)
 	}
 
-	return &apiToken, err
+	return &apiToken, nil
 }
 
 func (r *Repository) UpdateTokenLastUsed(ctx context.Context, tokenID int, when time.Time) error {
-	result := r.GetTx(ctx).
-		Model(&models.Token{}).
-		Where("id = ?", tokenID).
+	db := r.GetTx(ctx)
+	rows, err := gorm.G[models.Token](db).Where("id = ?", tokenID).
 		Where("last_used_at IS NULL OR last_used_at < ?", when).
-		Update("last_used_at", when)
+		Update(ctx, "last_used_at", when)
 
-	if result.Error != nil {
-		return fmt.Errorf("error updating api token: %w", result.Error)
+	if err != nil {
+		return fmt.Errorf("error updating api token: %w", err)
 	}
-	if result.RowsAffected > 0 {
+	if rows > 0 {
 		return nil
 	}
 
 	// An older or repeated timestamp is a successful no-op for an existing token.
 	// Use the current transaction/primary so replica lag cannot report it missing.
-	var count int64
-	if err := r.GetTx(ctx).Model(&models.Token{}).Where("id = ?", tokenID).Count(&count).Error; err != nil {
+	count, err := gorm.G[models.Token](db).Where("id = ?", tokenID).Count(ctx, "*")
+	if err != nil {
 		return fmt.Errorf("error checking api token after update: %w", err)
 	}
 	if count == 0 {
 		return domain.ErrEntityNotFound
 	}
+
 	return nil
 }
 
 func (r *Repository) SaveUserHistoryRecord(ctx context.Context, record *models.UserHistoryRecord) error {
-	return r.GetTx(ctx).
-		Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "id"}},
-			DoNothing: true,
-		}).
-		Create(record).
-		Error
+	return gorm.G[models.UserHistoryRecord](r.GetTx(ctx), clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoNothing: true,
+	}).Create(ctx, record)
 }

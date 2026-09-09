@@ -454,6 +454,34 @@ func TestSaveFailedMessagesPersistsRetryState(t *testing.T) {
 	}
 }
 
+func TestSaveFailedMessagesOnlyUpdatesExistingRows(t *testing.T) {
+	db, repo, _ := newOutboxRepository(t)
+	before := insertOutboxPersistenceMessages(t, db, repo, "pending", "pending")
+	existing := before[0]
+	existing.RetryCount++
+	existing.LastError = "retry existing row"
+	missing := newOutboxTestMessage()
+	withoutID := newOutboxTestMessage()
+	withoutID.ID = uuid.Nil
+	updates, inserts := 0, 0
+	updateCallbacks, createCallbacks := db.Master().Callback().Update(), db.Master().Callback().Create()
+	require.NoError(t, updateCallbacks.Before("gorm:update").Register("test:retry_update", func(*gorm.DB) {
+		updates++
+	}))
+	require.NoError(t, createCallbacks.Before("gorm:create").Register("test:retry_create", func(*gorm.DB) {
+		inserts++
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, updateCallbacks.Remove("test:retry_update"))
+		require.NoError(t, createCallbacks.Remove("test:retry_create"))
+	})
+	messages := []models.Message{existing, missing, withoutID, before[1]}
+	require.NoError(t, repo.SaveFailedMessages(t.Context(), messages))
+	assert.Equal(t, len(messages), updates, "each message must invoke update callbacks")
+	assert.Zero(t, inserts, "missing IDs and unchanged rows must never trigger an insert")
+	assert.ElementsMatch(t, []models.Message{existing, before[1]}, storedOutboxMessages(t, db))
+}
+
 func TestOutboxRepositoryCancellationPreservesRows(t *testing.T) {
 	for _, operation := range []string{"insert", "select", "processed", "failed"} {
 		t.Run(operation, func(t *testing.T) {
