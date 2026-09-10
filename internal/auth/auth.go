@@ -131,7 +131,7 @@ func NewService(
 		refreshSessionRequests: 30,
 		refreshWindow:          time.Minute,
 		jwtSecrets:             make([]jwtSecret, 0, 2),
-		tokensUsedChan:         make(chan domain.TokenWasUsed, tools.BufferSize4096),
+		tokensUsedChan:         make(chan domain.TokenWasUsed, tools.BufferSize8192),
 	}
 	for _, opt := range opts {
 		opt(s)

@@ -31,10 +31,10 @@ func NewTokenLastUsedUpdater(
 		repository:  repository,
 		authService: authService,
 		activeBuffer: &buffer{
-			data: make(map[int]time.Time, tools.BufferSize4096),
+			data: make(map[int]time.Time, tools.BufferSize8192),
 		},
 		sleeperBuffer: &buffer{
-			data: make(map[int]time.Time, tools.BufferSize4096),
+			data: make(map[int]time.Time, tools.BufferSize8192),
 		},
 	}
 	for _, o := range opts {

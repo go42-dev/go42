@@ -79,7 +79,7 @@ jobs:
       timeout_minutes: 10
 
   fuzz-tests:
-    uses: ./.github/workflows/125-fuzz-tests.yaml
+    uses: ./.github/workflows/120-fuzz-tests.yaml
     permissions:
       contents: read
     needs:
@@ -89,7 +89,7 @@ jobs:
       fuzz_time: 30s
 
   resilience-tests:
-    uses: ./.github/workflows/150-resilience-tests.yaml
+    uses: ./.github/workflows/120-resilience-tests.yaml
     permissions:
       contents: read
     needs:
@@ -232,7 +232,7 @@ jobs:
 
   load-tests-report:
     if: ${{ !cancelled() && needs.load-tests.result != 'skipped' }}
-    uses: ./.github/workflows/150-load-tests-report.yaml
+    uses: ./.github/workflows/160-load-tests-report.yaml
     permissions:
       contents: read
     needs:
@@ -242,7 +242,7 @@ jobs:
       timeout_minutes: 10
 
   coverage:
-    uses: ./.github/workflows/150-coverage-report.yaml
+    uses: ./.github/workflows/160-coverage-report.yaml
     permissions:
       actions: read
       contents: read
