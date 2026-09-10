@@ -22,14 +22,10 @@ This file outlines conventions for the go42 project.
 
 ## VCS
 
-* Branch names must match `^[A-Za-z0-9/_.-]+$`.
 * Use Conventional Commits with the types and rules configured in `etc/.commitlintrc.yaml`.
-* PR titles summarize the resulting change. Descriptions explain the problem, resulting behavior, relevant compatibility or
-  migration impact, and validation performed.
-* tag naming
-* sub-module tags
-* always prefer merge commits to rebase (disable rebase)
-* .gitignore -> current dir / .gitkeep
+* Branch names must match `^[A-Za-z0-9/_.-]+$`, be descriptive, and include task code identifier if applicable.
+* Always prefer merge commits to rebase (disable rebase).
+* Use .gitkeep to preserve empty directories in git.
 
 ## CI/CD
 

@@ -173,7 +173,7 @@ jobs:
       - name: 'Run golangci-lint'
         run: golangci-lint run --config etc/.golangci.yml --verbose
 
-  # Detect potential nil panics with the standalone NilAway checker.
+  # Detect potential nil panics with NilAway through Go's cached vet driver.
   # @see https://github.com/uber-go/nilaway
   nilaway-lint:
     name: nilaway-lint
@@ -194,9 +194,12 @@ jobs:
         with:
           persist-credentials: false
       - name: 'Setup Go'
+        id: setup-go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
+          # Save Go build outputs and NilAway facts in the dedicated cache below.
+          cache: false
       - name: 'Install pinned NilAway'
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
@@ -204,14 +207,40 @@ jobs:
           install_args: --locked go:go.uber.org/nilaway/cmd/nilaway
           # Rebuild the cached binary when the project's Go version changes.
           cache_key_prefix: mise-nilaway-v1-${{ hashFiles('go.mod') }}
-      - name: 'Run NilAway'
+      - name: 'Get NilAway cache metadata'
+        id: nilaway-cache
+        shell: bash
         run: |-
-          nilaway \
-          -include-pkgs=github.com/go42-dev/go42 \
-          -exclude-file-docstrings='Code generated' \
-          -pretty-print=false \
-          -print-full-file-path=true \
-          ./...
+          {
+            echo "go-build=$(go env GOCACHE)"
+            echo "go-mod=$(go env GOMODCACHE)"
+            echo "nilaway-version=$(mise current go:go.uber.org/nilaway/cmd/nilaway)"
+          } >> "$GITHUB_OUTPUT"
+      - name: 'Restore and save Go and NilAway caches'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        env:
+          NILAWAY_CACHE_PREFIX: nilaway-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup-go.outputs.go-version }}-${{
+            steps.nilaway-cache.outputs.nilaway-version }}
+        with:
+          # go vet stores both compiled packages and analysis facts in GOCACHE.
+          path: |-
+            ${{ steps.nilaway-cache.outputs.go-build }}
+            ${{ steps.nilaway-cache.outputs.go-mod }}
+          # Refresh per commit; reuse compatible entries after dependency/config changes.
+          key: ${{ env.NILAWAY_CACHE_PREFIX }}-${{ hashFiles('Makefile', 'go.mod', 'go.sum') }}-${{ github.sha }}
+          restore-keys: |-
+            ${{ env.NILAWAY_CACHE_PREFIX }}-${{ hashFiles('Makefile', 'go.mod', 'go.sum') }}-
+            ${{ env.NILAWAY_CACHE_PREFIX }}-
+      - name: 'Run NilAway'
+        shell: bash
+        run: |-
+          go vet -vettool="$(mise which nilaway)" \
+            -include-pkgs=github.com/go42-dev/go42 \
+            -exclude-file-docstrings='Code generated' \
+            -include-errors-in-files="$(pwd -P)" \
+            -pretty-print=false \
+            -print-full-file-path=true \
+            ./...
 
   # Linter for Dockerfile.
   # @see https://github.com/hadolint/hadolint

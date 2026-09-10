@@ -180,6 +180,16 @@ version = "0.19.1"
 backend = "go:github.com/go42-dev/go42x"
 specifiers = ["0.19.1"]
 
+[[tools."go:github.com/google/capslock/cmd/..."]]
+version = "0.3.3"
+backend = "go:github.com/google/capslock/cmd/..."
+specifiers = ["0.3.3"]
+
+[[tools."go:github.com/google/go-licenses"]]
+version = "1.6.0"
+backend = "go:github.com/google/go-licenses"
+specifiers = ["1.6.0"]
+
 [[tools."go:github.com/google/yamlfmt/cmd/yamlfmt"]]
 version = "0.21.0"
 backend = "go:github.com/google/yamlfmt/cmd/yamlfmt"

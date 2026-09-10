@@ -22,7 +22,7 @@ export PATH := $(MISE_DATA_DIR)/shims:$(PATH)
 
 .PHONY: help setup setup-common setup-linters setup-generators setup-mcp
 .PHONY: test-unit test-fuzz test-integration test-resilience test-load
-.PHONY: run run-docker debug build image lint lint-make lint-nilaway generate serve-docs
+.PHONY: run run-docker debug build image lint generate serve-docs
 .PHONY: check-env generate-migration-id generate-dep-graph grpcui show-asm
 
 help: Makefile
@@ -62,6 +62,8 @@ setup-linters:
 		github:oasdiff/oasdiff \
 		go:github.com/daixiang0/gci \
 		go:github.com/caarlos0/jsonfmt \
+		go:github.com/google/capslock/cmd/... \
+		go:github.com/google/go-licenses \
 		go:github.com/google/yamlfmt/cmd/yamlfmt \
 		go:github.com/securego/gosec/v2/cmd/gosec \
 		go:go.uber.org/nilaway/cmd/nilaway \
@@ -236,7 +238,14 @@ lint:
 	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/sqlite/*.sql --dialect sqlite
 	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/mysql/*.sql --dialect mysql
 	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/pgsql/*.sql --dialect postgres
-	@gosec -quiet -exclude-generated ./...
+	@gosec -terse -exclude-generated ./...
+	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 govulncheck ./cmd/app
+	@CGO_ENABLED=0 GOOS=linux GOARCH=arm64 govulncheck ./cmd/app
+	@go-licenses check --include_tests --confidence_threshold=0.9 --disallowed_types=forbidden,restricted ./...
+	@mise exec -- capslock-git-diff -granularity=package -capabilities= \
+		"$$(git rev-parse origin/master)" . ./...
+	@mise exec -- capslock-git-diff -granularity=package -capabilities= \
+		. "$$(git rev-parse origin/master)" ./...
 	@checkmake --config etc/checkmake.ini Makefile
 	@hadolint --failure-threshold info Dockerfile
 	@helm lint --strict infra/helm/app --set-string image.tag=ci-validation
@@ -254,9 +263,10 @@ lint:
 	@actionlint -oneline --config-file etc/actionlint.yaml
 	@zizmor -q --persona regular --min-severity high --min-confidence high --offline --format plain --color never --no-progress .
 	@ec
-	@nilaway \
+	@go vet -vettool="$$(mise which nilaway)" \
 		-include-pkgs=github.com/go42-dev/go42 \
 		-exclude-file-docstrings='Code generated' \
+		-include-errors-in-files="$$(pwd -P)" \
 		-pretty-print=false \
 		-print-full-file-path=true \
 		./... || true

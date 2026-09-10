@@ -68,29 +68,11 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
-    # -----
-    steps:
-      - name: 'Checkout repository'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: 'Extract Go version'
-        run: echo "go_version=$(grep '^go ' go.mod | awk '{print $2}')" >> "$GITHUB_ENV"
-      - name: 'Run Gosec security scanner'
-        uses: securego/gosec@598d6146b91b2370c6f11f7d3cb256119d8cbfc4 # master
-        env:
-          GO111MODULE: on # will download go modules
-          GOSECGOVERSION: ${{ env.go_version }}
-        with:
-          args: -exclude-generated ./...
-
-  govulncheck:
-    name: govulncheck
-    runs-on: ${{ inputs.runs_on }}
-    continue-on-error: ${{ inputs.continue_on_error }}
-    timeout-minutes: ${{ inputs.timeout_minutes }}
-    permissions:
-      contents: read
+    env:
+      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
+      MISE_DATA_DIR: ${{ github.workspace }}/.tools
+      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
+      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     # -----
     steps:
       - name: 'Checkout repository'
@@ -101,13 +83,53 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
-          cache: false
-      - name: 'Install govulncheck'
-        # Keep in sync with etc/mise.toml.
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
-      - name: 'Run Go vulnerability check'
-        # Match the production entry point built by Dockerfile.
-        run: govulncheck ./cmd/app
+      - name: 'Install pinned Gosec'
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: '2026.9.1'
+          install_args: --locked go:github.com/securego/gosec/v2/cmd/gosec
+          # Rebuild the cached binary when the project's Go version changes.
+          cache_key_prefix: mise-gosec-v1-${{ hashFiles('go.mod') }}
+      - name: 'Run Gosec security scanner'
+        shell: bash
+        run: gosec -terse -exclude-generated ./...
+
+  govulncheck:
+    name: govulncheck
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    env:
+      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
+      MISE_DATA_DIR: ${{ github.workspace }}/.tools
+      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
+      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
+    # -----
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 'Setup Go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+      - name: 'Install pinned govulncheck'
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: '2026.9.1'
+          install_args: --locked go:golang.org/x/vuln/cmd/govulncheck
+          # Rebuild the cached binary when the project's Go version changes.
+          cache_key_prefix: mise-govulncheck-v1-${{ hashFiles('go.mod') }}
+      # Match the production entry point and image build settings.
+      - name: 'Run Go vulnerability check (linux/amd64)'
+        shell: bash
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 govulncheck ./cmd/app
+      - name: 'Run Go vulnerability check (linux/arm64)'
+        shell: bash
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 govulncheck ./cmd/app
 
   codeql:
     name: codeql
@@ -144,18 +166,35 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
+    env:
+      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
+      MISE_DATA_DIR: ${{ github.workspace }}/.tools
+      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
+      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     # -----
     steps:
       - name: 'Checkout repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: 'Check Go licenses'
-        uses: joeig/go-licenses-action@14ffdafa825ad1c78cb30af8d8cb8e242c2fd36e # v1.2
+      - name: 'Setup Go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          # some packages may miss license files, or they are linked to outside libraries
-          # for stricter checks, add `unknown` to this list
-          disallowed-types: "forbidden,restricted"
+          go-version-file: 'go.mod'
+      - name: 'Install pinned go-licenses'
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: '2026.9.1'
+          install_args: --locked go:github.com/google/go-licenses
+          # Rebuild the cached binary when the project's Go version changes.
+          cache_key_prefix: mise-go-licenses-v1-${{ hashFiles('go.mod') }}
+      - name: 'Check Go licenses'
+        # Some packages may miss license files or link to external libraries.
+        # Add `unknown` to disallowed_types for stricter checks.
+        shell: bash
+        run: >-
+          go-licenses check --include_tests --confidence_threshold=0.9
+          --disallowed_types=forbidden,restricted ./...
 
   # Keep pull request analysis OIDC-free. Master publishing is isolated in
   # 205-scorecard-publish.yaml to satisfy the Scorecard workflow restrictions.
@@ -190,27 +229,36 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
+    env:
+      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
+      MISE_DATA_DIR: ${{ github.workspace }}/.tools
+      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
+      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     # -----
     steps:
-      - name: 'Checkout master branch'
+      - name: 'Checkout repository with full history'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
-          ref: master
       - name: 'Setup Go'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
-      - name: 'Install capslock'
-        run: go install github.com/google/capslock/cmd/capslock@v0.3.3
-      - name: 'Generate master branch capabilities'
-        run: capslock -packages ./... -output=json > capabilities.json
-      - name: 'Save master capabilities'
-        run: mv capabilities.json /tmp/capabilities.json
-      # -----
-      - name: 'Checkout current branch'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: 'Install pinned Capslock tools'
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
-          persist-credentials: false
-      - name: 'Compare capabilities with master'
-        run: capslock -packages ./... -output=compare /tmp/capabilities.json
+          version: '2026.9.1'
+          install_args: --locked go:github.com/google/capslock/cmd/...
+          # Rebuild the cached binaries when the project's Go version changes.
+          cache_key_prefix: mise-capslock-v1-${{ hashFiles('go.mod') }}
+      - name: 'Check for capabilities added since master'
+        shell: bash
+        run: >-
+          mise exec -- capslock-git-diff -granularity=package -capabilities=
+          "$(git rev-parse origin/master)" . ./...
+      - name: 'Check for capabilities removed since master'
+        shell: bash
+        run: >-
+          mise exec -- capslock-git-diff -granularity=package -capabilities=
+          . "$(git rev-parse origin/master)" ./...
