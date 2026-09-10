@@ -43,7 +43,8 @@ This file outlines conventions for the go42 project.
 * Prefer `any` instead of `interface{}`.
 * Name `context.Context` -> `ctx` but `echo.Context` -> `c`.
 * Put technical phrases in backticks in comments to avoid linting issues
-* `fmt.Errorf` vs `errors.Wrap` (collides vs std errors)
+* For general error wrapping in handwritten Go, use `fmt.Errorf` with `%w`. Inspect errors using the standard `errors`
+  package, matching identity or type rather than message text. Generated code follows its generator's conventions.
 * Prefer the shared `tools.BufferSize*` constants for buffer capacities when their values fit the requirement.
 * Never use anonymous interfaces unless in tests.
 * Never use casting to anonymous interfaces unless in tests.
@@ -68,7 +69,8 @@ This file outlines conventions for the go42 project.
 ## Testing
 
 * Prefer `make test-*` to manually invoking tests.
-* When implementing tests, always name test file after the file being tested, e.g., `foo_test.go` for `foo.go`.
+* Prefer `foo_test.go` for tests focused on `foo.go`. Split larger suites into `foo_<behavior>_test.go` when useful.
+  Use descriptive names for package-wide, integration, and fuzz tests.
 
 ## Observability
 
@@ -82,8 +84,11 @@ This file outlines conventions for the go42 project.
 ## SQL
 
 * Migration files should be in migrate/{engine} directory.
-* Migration files should be named with a timestamp prefix and a descriptive name, e.g., `20240101_create_users_table.sql`.
-* Migrations should be idempotent and reversible, with both up and down scripts included in the same file.
+* Name migrations `YYYYMMDDHHMMSS_description.sql`. Generate the prefix once with `make generate-migration-id` and use the
+  same filename for the corresponding migration across database engines.
+* Repeated migration runs through Goose must preserve existing schema and application data. Require raw SQL replay safety
+  only when a documented recovery procedure depends on it. Include `Up` and `Down` sections in the same file. Rollback must
+  target only changes introduced by that migration; document any data loss or irreversible changes.
 * Migrations should use lowercase sql keywords and snake_case for table and column names.
 * Store and compare timestamps in UTC. Normalize incoming timestamps with `UTC()` at repository write boundaries, including future CLI writes.
 

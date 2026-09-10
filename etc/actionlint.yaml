@@ -33,7 +33,7 @@ paths:
       # recognize the `queue` key.
       # Serialize every cleanup without replacing an older pending run.
       - 'unexpected key "queue" for "concurrency" section.+'
-  .github/workflows/150-resilience-tests.yaml:
+  .github/workflows/120-resilience-tests.yaml:
     ignore:
       # actionlint does not support service container commands yet
       - 'unexpected key "command" for "services" section.+'
