@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,6 +31,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace"
 
+	grpcAPI "github.com/go42-dev/go42/internal/api/grpc"
+	httpAPI "github.com/go42-dev/go42/internal/api/http"
 	"github.com/go42-dev/go42/internal/config"
 	"github.com/go42-dev/go42/internal/tools"
 )
@@ -200,11 +203,136 @@ func TestInitSentryFlushesLogsAndEventsOnShutdown(t *testing.T) {
 	}
 }
 
-func TestWatchReadinessRecordsFailureFromAnyChannel(t *testing.T) {
+func TestServerBindFailuresFailLiveness(t *testing.T) {
+	for _, name := range []string{"http", "grpc"} {
+		t.Run(name, func(t *testing.T) {
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+			t.Cleanup(func() { assert.NoError(t, listener.Close()) })
+
+			var serve func(string) error
+			var server ShutMeDown
+			var serverErrors <-chan error
+			if name == "http" {
+				httpServer := httpAPI.New()
+				serve, server = httpServer.Start, httpServer
+				serverErrors = httpServer.Errors()
+			} else {
+				grpcServer, err := grpcAPI.New()
+				require.NoError(t, err)
+				serve, server = grpcServer.Serve, grpcServer
+				serverErrors = grpcServer.Errors()
+			}
+			t.Cleanup(func() {
+				ctx, cancel := context.WithTimeout(context.Background(), appTestTimeout)
+				defer cancel()
+				assert.NoError(t, server.Shutdown(ctx))
+			})
+
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			livenessCtx, markUnhealthy := context.WithCancel(t.Context())
+			defer markUnhealthy()
+			err = serve(listener.Addr().String())
+			var listenError *net.OpError
+			require.ErrorAs(t, err, &listenError)
+			require.Equal(t, "listen", listenError.Op)
+			done := startLivenessWatcher(ctx, markUnhealthy, serverErrors)
+
+			waitForTestSignal(t, livenessCtx.Done(), "server failure")
+			require.ErrorIs(t, livenessCtx.Err(), context.Canceled)
+			require.NoError(t, ctx.Err())
+			cancel()
+			waitForTestSignal(t, done, "server watcher shutdown")
+		})
+	}
+}
+
+func TestWatchLivenessCancelsOnceOnConcurrentFailures(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		livenessCtx, markUnhealthy := context.WithCancel(t.Context())
+		defer markUnhealthy()
+		httpFailure := errors.New("http accept failed")
+		grpcFailure := errors.New("grpc accept failed")
+		httpErrors := make(chan error, 1)
+		grpcErrors := make(chan error, 1)
+		var calls int
+		done := startLivenessWatcher(ctx, func() {
+			calls++
+			markUnhealthy()
+		}, httpErrors, grpcErrors)
+		go func() { httpErrors <- httpFailure }()
+		go func() { grpcErrors <- grpcFailure }()
+		waitForTestSignal(t, done, "liveness failure")
+		synctest.Wait()
+
+		require.Equal(t, 1, calls)
+		require.ErrorIs(t, livenessCtx.Err(), context.Canceled)
+		require.NoError(t, ctx.Err())
+	})
+}
+
+func TestWatchLivenessSkipsNilErrorsAndClosedChannels(t *testing.T) {
+	ctx := t.Context()
+	livenessCtx, markUnhealthy := context.WithCancel(ctx)
+	defer markUnhealthy()
+	closed := make(chan error)
+	close(closed)
+	failure := errors.New("http accept failed")
+	serverErrors := make(chan error, 2)
+	serverErrors <- nil
+	serverErrors <- failure
+	close(serverErrors)
+
+	watchLiveness(ctx, markUnhealthy, nil, closed, serverErrors)
+
+	require.Empty(t, serverErrors, "watcher must skip the nil error and consume the failure")
+	require.ErrorIs(t, livenessCtx.Err(), context.Canceled)
+	require.NoError(t, ctx.Err())
+}
+
+func TestWatchLivenessMarksFailureWhenAlreadyUnready(t *testing.T) {
+	ctx := t.Context()
+	readinessCtx, markUnready := context.WithCancel(ctx)
+	defer markUnready()
+	livenessCtx, markUnhealthy := context.WithCancel(ctx)
+	defer markUnhealthy()
+	markUnready()
+	require.NoError(t, livenessCtx.Err(), "readiness failure must not affect liveness")
+	serverFailure := errors.New("grpc accept failed")
+	serverErrors := make(chan error, 2)
+	serverErrors <- serverFailure
+
+	watchLiveness(ctx, markUnhealthy, serverErrors)
+
+	require.ErrorIs(t, readinessCtx.Err(), context.Canceled)
+	require.ErrorIs(t, livenessCtx.Err(), context.Canceled)
+	require.NoError(t, ctx.Err())
+}
+
+func TestWatchLivenessStopsDuringShutdown(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		serverErrors := make(chan error, 2)
+		markFailed := func() {
+			t.Error("application shutdown was reported as a server failure")
+		}
+		done := startLivenessWatcher(ctx, markFailed, serverErrors)
+		synctest.Wait()
+		cancel()
+		waitForTestSignal(t, done, "server watcher shutdown")
+	})
+}
+
+func TestWatchReadinessCancelsOnFailureFromAnyChannel(t *testing.T) {
 	for failedChannel := range 3 {
 		t.Run(fmt.Sprintf("channel_%d", failedChannel), func(t *testing.T) {
 			ctx := t.Context()
-			readinessCtx, markUnready := context.WithCancelCause(ctx)
+			readinessCtx, markUnready := context.WithCancel(ctx)
+			defer markUnready()
 			failure := errors.New("component failed")
 			observables := make([]<-chan error, 3)
 			for i := range observables {
@@ -218,8 +346,8 @@ func TestWatchReadinessRecordsFailureFromAnyChannel(t *testing.T) {
 			done := startReadinessWatcher(ctx, markUnready, observables...)
 			waitForReadinessWatcher(t, done)
 
-			if err := context.Cause(readinessCtx); !errors.Is(err, failure) {
-				t.Fatalf("readiness error = %v, want component failure", err)
+			if err := readinessCtx.Err(); !errors.Is(err, context.Canceled) {
+				t.Fatalf("readiness error = %v, want cancellation", err)
 			}
 			if err := ctx.Err(); err != nil {
 				t.Fatalf("component failure canceled the application context: %v", err)
@@ -240,11 +368,12 @@ func TestWatchReadinessReturnsWithoutActiveChannels(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := t.Context()
-			readinessCtx, markUnready := context.WithCancelCause(ctx)
+			readinessCtx, markUnready := context.WithCancel(ctx)
+			defer markUnready()
 			done := startReadinessWatcher(ctx, markUnready, test.observables...)
 			waitForReadinessWatcher(t, done)
 
-			if err := context.Cause(readinessCtx); err != nil {
+			if err := readinessCtx.Err(); err != nil {
 				t.Fatalf("readiness failed without a component error: %v", err)
 			}
 		})
@@ -253,7 +382,8 @@ func TestWatchReadinessReturnsWithoutActiveChannels(t *testing.T) {
 
 func TestWatchReadinessContinuesAfterCleanStopsAndNilErrors(t *testing.T) {
 	ctx := t.Context()
-	readinessCtx, markUnready := context.WithCancelCause(ctx)
+	readinessCtx, markUnready := context.WithCancel(ctx)
+	defer markUnready()
 	closed := make(chan error)
 	close(closed)
 	failure := errors.New("component failed")
@@ -265,14 +395,16 @@ func TestWatchReadinessContinuesAfterCleanStopsAndNilErrors(t *testing.T) {
 	done := startReadinessWatcher(ctx, markUnready, closed, nil, failures)
 	waitForReadinessWatcher(t, done)
 
-	if err := context.Cause(readinessCtx); !errors.Is(err, failure) {
-		t.Fatalf("readiness error = %v, want component failure", err)
+	require.Empty(t, failures, "watcher must skip the nil error and consume the failure")
+	if err := readinessCtx.Err(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("readiness error = %v, want cancellation", err)
 	}
 }
 
-func TestWatchReadinessReportsOnlyOneConcurrentFailure(t *testing.T) {
+func TestWatchReadinessCancelsOnceOnConcurrentFailures(t *testing.T) {
 	ctx := t.Context()
-	readinessCtx, markUnready := context.WithCancelCause(ctx)
+	readinessCtx, markUnready := context.WithCancel(ctx)
+	defer markUnready()
 	firstFailure := errors.New("first component failed")
 	secondFailure := errors.New("second component failed")
 	first := make(chan error, 1)
@@ -281,25 +413,25 @@ func TestWatchReadinessReportsOnlyOneConcurrentFailure(t *testing.T) {
 	second <- secondFailure
 	var calls atomic.Int32
 
-	done := startReadinessWatcher(ctx, func(err error) {
+	done := startReadinessWatcher(ctx, func() {
 		calls.Add(1)
-		markUnready(err)
+		markUnready()
 	}, first, second)
 	waitForReadinessWatcher(t, done)
 
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("readiness failure calls = %d, want 1", got)
 	}
-	if err := context.Cause(readinessCtx); !errors.Is(err, firstFailure) && !errors.Is(err, secondFailure) {
-		t.Fatalf("readiness error = %v, want one of the component failures", err)
+	if err := readinessCtx.Err(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("readiness error = %v, want cancellation", err)
 	}
 }
 
 func TestWatchReadinessStopsWithApplicationContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	done := startReadinessWatcher(ctx, func(err error) {
-		t.Errorf("application shutdown reported a component failure: %v", err)
+	done := startReadinessWatcher(ctx, func() {
+		t.Error("application shutdown reported a component failure")
 	}, make(chan error), nil, make(chan error))
 
 	cancel()
@@ -312,7 +444,8 @@ func TestWatchReadinessTracksRemainingOpenChannels(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				ctx, cancel := context.WithCancel(t.Context())
 				defer cancel()
-				readinessCtx, readinessCancel := context.WithCancelCause(ctx)
+				readinessCtx, readinessCancel := context.WithCancel(ctx)
+				defer readinessCancel()
 				first := make(chan error)
 				second := make(chan error)
 				done := startReadinessWatcher(ctx, readinessCancel, first, second)
@@ -329,14 +462,14 @@ func TestWatchReadinessTracksRemainingOpenChannels(t *testing.T) {
 
 				var want error
 				if outcome == "failure" {
-					want = errors.New("remaining component failed")
-					second <- want
+					want = context.Canceled
+					second <- errors.New("remaining component failed")
 				} else {
 					close(second)
 				}
 				synctest.Wait()
 				waitForReadinessWatcher(t, done)
-				if err := context.Cause(readinessCtx); !errors.Is(err, want) {
+				if err := readinessCtx.Err(); !errors.Is(err, want) {
 					t.Errorf("readiness error = %v, want %v", err, want)
 				}
 			})
@@ -345,10 +478,10 @@ func TestWatchReadinessTracksRemainingOpenChannels(t *testing.T) {
 }
 
 func TestWatchReadinessIgnoresQueuedFailuresAfterCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancelCause(t.Context())
-	readinessCtx, readinessCancel := context.WithCancelCause(ctx)
-	parentFailure := errors.New("application stopped")
-	cancel(parentFailure)
+	ctx, cancel := context.WithCancel(t.Context())
+	readinessCtx, readinessCancel := context.WithCancel(ctx)
+	defer readinessCancel()
+	cancel()
 
 	observables := make([]<-chan error, 32)
 	for i := range observables {
@@ -358,17 +491,17 @@ func TestWatchReadinessIgnoresQueuedFailuresAfterCancellation(t *testing.T) {
 		observables[i] = observable
 	}
 	var calls atomic.Int32
-	done := startReadinessWatcher(ctx, func(err error) {
+	done := startReadinessWatcher(ctx, func() {
 		calls.Add(1)
-		readinessCancel(err)
+		readinessCancel()
 	}, observables...)
 	waitForReadinessWatcher(t, done)
 
 	if got := calls.Load(); got != 0 {
 		t.Errorf("readiness cancellation called %d times after application cancellation", got)
 	}
-	if err := context.Cause(readinessCtx); !errors.Is(err, parentFailure) {
-		t.Errorf("readiness cause = %v, want application cancellation cause", err)
+	if err := readinessCtx.Err(); !errors.Is(err, context.Canceled) {
+		t.Errorf("readiness error = %v, want application cancellation", err)
 	}
 }
 
@@ -376,11 +509,12 @@ func TestWatchReadinessStopsAtParentDeadline(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 		defer cancel()
-		readinessCtx, readinessCancel := context.WithCancelCause(ctx)
+		readinessCtx, readinessCancel := context.WithCancel(ctx)
+		defer readinessCancel()
 		var calls atomic.Int32
-		done := startReadinessWatcher(ctx, func(err error) {
+		done := startReadinessWatcher(ctx, func() {
 			calls.Add(1)
-			readinessCancel(err)
+			readinessCancel()
 		}, make(chan error), make(chan error))
 		synctest.Wait()
 		assertReadinessWatcherRunning(t, done, readinessCtx)
@@ -391,8 +525,8 @@ func TestWatchReadinessStopsAtParentDeadline(t *testing.T) {
 		if got := calls.Load(); got != 0 {
 			t.Errorf("parent deadline reported %d component failures", got)
 		}
-		if err := context.Cause(readinessCtx); !errors.Is(err, context.DeadlineExceeded) {
-			t.Errorf("readiness cause = %v, want parent deadline", err)
+		if err := readinessCtx.Err(); !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("readiness error = %v, want parent deadline", err)
 		}
 	})
 }
@@ -457,13 +591,50 @@ func TestShutdownAcceptsSignals(t *testing.T) {
 	}
 }
 
+func TestShutdownWaitsForSignalAfterServerFailure(t *testing.T) {
+	if runShutdownSubprocess(t, 0) {
+		return
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	livenessCtx, markUnhealthy := context.WithCancel(t.Context())
+	defer markUnhealthy()
+	failure := errors.New("grpc accept failed")
+	serverErrors := make(chan error, 2)
+	serverErrors <- failure
+	watchDone := startLivenessWatcher(ctx, markUnhealthy, serverErrors)
+	var closed atomic.Bool
+	started, done := startTestShutdown(shutdownTestConfig(), cancel, shutdownTestFunc(func(context.Context) error {
+		closed.Store(true)
+		return nil
+	}))
+	waitForTestSignal(t, livenessCtx.Done(), "liveness failure")
+	assert.ErrorIs(t, livenessCtx.Err(), context.Canceled)
+
+	select {
+	case <-started:
+		t.Error("shutdown started before an OS signal")
+	case <-done:
+		t.Error("shutdown returned before an OS signal")
+	case <-time.After(20 * time.Millisecond):
+	}
+	assert.NoError(t, ctx.Err())
+	assert.False(t, closed.Load(), "cleanup started before a termination signal")
+
+	signalTestShutdown(t, syscall.SIGTERM, started)
+	waitForTestSignal(t, done, "shutdown completion")
+	waitForTestSignal(t, watchDone, "server watcher shutdown")
+	assert.True(t, closed.Load(), "component was not closed after the OS signal")
+}
+
 func TestShutdownWaitsForSignalAfterReadinessFailure(t *testing.T) {
 	if runShutdownSubprocess(t, 0) {
 		return
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	readinessCtx, readinessCancel := context.WithCancelCause(ctx)
+	readinessCtx, readinessCancel := context.WithCancel(ctx)
+	defer readinessCancel()
 	failure := errors.New("component failed")
 	observable := make(chan error, 1)
 	observable <- failure
@@ -474,8 +645,8 @@ func TestShutdownWaitsForSignalAfterReadinessFailure(t *testing.T) {
 		return nil
 	}))
 	waitForReadinessWatcher(t, watchDone)
-	if err := context.Cause(readinessCtx); !errors.Is(err, failure) {
-		t.Errorf("readiness cause = %v, want component failure", err)
+	if err := readinessCtx.Err(); !errors.Is(err, context.Canceled) {
+		t.Errorf("readiness error = %v, want cancellation", err)
 	}
 
 	select {
@@ -945,13 +1116,24 @@ func assertReadinessWatcherRunning(t *testing.T, done <-chan struct{}, readiness
 		t.Fatal("readiness watcher stopped with an active channel")
 	default:
 	}
-	if err := context.Cause(readinessCtx); err != nil {
+	if err := readinessCtx.Err(); err != nil {
 		t.Fatalf("readiness failed without a component error: %v", err)
 	}
 }
 
+func startLivenessWatcher(
+	ctx context.Context, livenessCancel context.CancelFunc, observables ...<-chan error,
+) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		watchLiveness(ctx, livenessCancel, observables...)
+	}()
+	return done
+}
+
 func startReadinessWatcher(
-	ctx context.Context, markUnready context.CancelCauseFunc, observables ...<-chan error,
+	ctx context.Context, markUnready context.CancelFunc, observables ...<-chan error,
 ) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {

@@ -14,9 +14,11 @@ This file outlines conventions for the go42 project.
 
 ## Project Management
 
-* tooling versions
-* .versions.yaml
-* release process
+* Declare Go's version in `go.mod` and development-tool versions in `etc/mise.toml`. Update tool pins and corresponding
+  `etc/mise.lock` entries together, preserving supported platform coverage. Install tools through the Make setup targets
+  and keep any duplicate CI pins aligned.
+* Record vendored dependencies' versions and upstream sources in adjacent `.versions.yaml` files. Update these records
+  together with the vendored files, retain upstream license notices, and regenerate affected outputs.
 
 ## SVC
 
@@ -37,12 +39,13 @@ This file outlines conventions for the go42 project.
 
 * Use tools provided by mise (.tools).
 * Use `cmd/cfg2env` to regenerate .env.example
-* Use `make generate` to regenerate code, e.g., mocks, protobufs, etc.
+* Edit source definitions or generator configuration, then regenerate derived files with `make generate` using the pinned
+  tools. Commit source changes and corresponding tracked generated outputs together. After setup, running `make generate`
+  from a clean checkout must produce no changes.
 * Use `v` for validation tag as configured in `validator` package.
 * Prefer `len(string)` == 0 vs `string == ""`.
 * Prefer `any` instead of `interface{}`.
 * Name `context.Context` -> `ctx` but `echo.Context` -> `c`.
-* Put technical phrases in backticks in comments to avoid linting issues
 * For general error wrapping in handwritten Go, use `fmt.Errorf` with `%w`. Inspect errors using the standard `errors`
   package, matching identity or type rather than message text. Generated code follows its generator's conventions.
 * Prefer the shared `tools.BufferSize*` constants for buffer capacities when their values fit the requirement.
@@ -53,6 +56,9 @@ This file outlines conventions for the go42 project.
 
 ## Code Architecture
 
+* `cmd/app` composes dependencies and owns process lifecycle. Feature services own business operations. Within each
+  feature, `domain/` contains service inputs, domain errors, and shared concepts; `models/` contains persistence models;
+  `repository/` owns persistence operations; versioned HTTP and gRPC adapters own transport conversion and registration.
 * Define DI interfaces in the consuming package, containing only the methods it needs. Keep them beside their consumer
   or group them in `accessors.go`. Keep mock-generation directives with the interface definitions and generate mocks
   into the package's `mocks/` directory.
@@ -60,6 +66,9 @@ This file outlines conventions for the go42 project.
 * Services and worker handlers own transaction boundaries. Call the shared `WithTransaction` helper there and propagate
   its `txCtx` to all participating database operations. Repository data-access methods use the supplied context and
   must not manage transactions themselves.
+* Use `GetTx(ctx)` for writes and reads that require primary consistency. Use `GetReadDB(ctx)` only when replica lag is
+  acceptable. Persist required outbox events using the same `txCtx` as the business change, so both commit or roll back
+  together. Document operations where event recording is best effort.
 
 ## Linting
 
@@ -69,15 +78,18 @@ This file outlines conventions for the go42 project.
 ## Testing
 
 * Prefer `make test-*` to manually invoking tests.
-* Prefer `foo_test.go` for tests focused on `foo.go`. Split larger suites into `foo_<behavior>_test.go` when useful.
-  Use descriptive names for package-wide, integration, and fuzz tests.
+* Keep unit tests for `foo.go` together in `foo_test.go` in the same directory, regardless of suite size. Do not split them
+  into separate files by behavior. Use descriptive names for package-wide, integration, and fuzz tests.
 
 ## Observability
 
 * Pass logger as dependency injection with component field, but can be used globally where needed.
 * Use `snake_case` for structured log field names and metric label names.
 * Logger should be passed as option, if not passed, must default to noop logger.
-* `log.fatal` can be used only during init phase in main functions.
+* Use fatal logging only for initialization failures in command entrypoints. Report terminal HTTP/gRPC server failures
+  through a buffered `Errors()` channel owned by each server. Close it when serving ends; normal shutdown must not emit
+  an error. Fail both readiness and liveness so Kubernetes can restart the container. Keep dependency availability checks
+  in readiness. Run graceful shutdown when a termination signal is received.
 * Use `slog.Any("error", err)` for slog errors.
 * Prefer `xContext()` version of slog methods where context is available.
 
@@ -98,5 +110,6 @@ This file outlines conventions for the go42 project.
 * Use tags `@see` `@todo` `@fixme` `@note` etc. in comments for better visibility.
 * Tool configuration files should be in etc directory.
 * Use `// ---` comments to separate sections in code files.
-* Never expose IDs -> expose UUIDs.
+* Use UUIDs for entity references in public APIs and events intended for consumers outside this application. Keep numeric
+  database IDs internal. Authorization must be enforced independently of identifier format.
 * Always leave trailing newline for text files.

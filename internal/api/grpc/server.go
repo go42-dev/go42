@@ -2,9 +2,12 @@ package grpc
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"runtime/debug"
+	"sync/atomic"
 	"time"
 
 	"buf.build/go/protovalidate"
@@ -48,22 +51,24 @@ type rateLimiterAccessor interface {
 }
 
 type Server struct {
-	logger     *slog.Logger
-	grpcServer *grpc.Server
+	logger       *slog.Logger
+	grpcServer   *grpc.Server
+	errors       chan error
+	shuttingDown atomic.Bool
 
 	maxRecvMsgSize int
-
 	maxSendMsgSize int
 	tracingEnabled bool
 	withReflection bool
 	healthServer   *health.Server
-	healthCheckCtx context.Context
-	readyCheck     func(context.Context) error
+	readinessCtx   context.Context
 
+	readyCheck          func(context.Context) error
 	readyCheckTimeout   time.Duration
 	readyCheckInterval  time.Duration
 	healthMonitorCancel context.CancelFunc
-	rateLimiter         rateLimiterAccessor
+
+	rateLimiter rateLimiterAccessor
 
 	extraUnaryInterceptors  map[int][]grpc.UnaryServerInterceptor
 	extraStreamInterceptors map[int][]grpc.StreamServerInterceptor
@@ -78,6 +83,7 @@ func New(opts ...Option) (*Server, error) {
 		extraStreamInterceptors: make(map[int][]grpc.StreamServerInterceptor),
 		readyCheckTimeout:       defaultReadinessCheckTimeout,
 		readyCheckInterval:      defaultReadinessCheckInterval,
+		errors:                  make(chan error, 1),
 	}
 	for _, o := range opts {
 		o(s)
@@ -189,15 +195,43 @@ func (s *Server) handlePanic(ctx context.Context, p any) error {
 	return status.Error(codes.Internal, "internal server error")
 }
 
+// Serve serves requests until the server stops. Call it once after registering adapters.
+// Unexpected termination is also logged and reported through Errors.
 func (s *Server) Serve(listen string) error {
 	lis, err := net.Listen("tcp", listen)
 	if err != nil {
+		s.reportServeError(err)
 		return err
 	}
-	return s.grpcServer.Serve(lis)
+	err = s.grpcServer.Serve(lis)
+	s.reportServeError(err)
+	return err
+}
+
+// Errors reports at most one unexpected termination, including startup failures.
+// It closes when serving ends; shutdown requested through Shutdown closes it without an error.
+func (s *Server) Errors() <-chan error {
+	return s.errors
+}
+
+func (s *Server) reportServeError(err error) {
+	defer close(s.errors)
+	if s.shuttingDown.Load() {
+		return
+	}
+	if err == nil {
+		err = errors.New("stopped without a shutdown request")
+	}
+	err = fmt.Errorf("grpc server: %w", err)
+	s.errors <- err
+	s.logger.Error("server stopped unexpectedly",
+		slog.String("server", "grpc"),
+		slog.Any("error", err),
+	)
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	s.shuttingDown.Store(true)
 	if s.healthMonitorCancel != nil {
 		s.healthMonitorCancel()
 	}
@@ -223,11 +257,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 func (s *Server) startHealthMonitor() {
-	if s.healthCheckCtx == nil && s.readyCheck == nil {
+	if s.readinessCtx == nil && s.readyCheck == nil {
 		return
 	}
 
-	parent := s.healthCheckCtx
+	parent := s.readinessCtx
 	if parent == nil {
 		parent = context.Background()
 	}

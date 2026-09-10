@@ -52,10 +52,12 @@ setup-linters:
 		golines \
 		hadolint \
 		markdownlint-cli2 \
+		shellcheck \
 		vale \
 		zizmor \
 		npm:@commitlint/cli \
 		npm:@commitlint/config-conventional \
+		pipx:pyflakes \
 		pipx:sqlfluff \
 		github:oasdiff/oasdiff \
 		go:github.com/daixiang0/gci \
@@ -229,21 +231,26 @@ lint:
 	@commitlint --config etc/.commitlintrc.yaml \
 		--extends "$$(mise where npm:@commitlint/config-conventional)/node_modules/@commitlint/config-conventional/lib/index.js" \
 		--from origin/master --to HEAD --verbose
+	@golangci-lint config verify --config etc/.golangci.yml
 	@golangci-lint run --config etc/.golangci.yml
 	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/sqlite/*.sql --dialect sqlite
 	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/mysql/*.sql --dialect mysql
 	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/pgsql/*.sql --dialect postgres
 	@gosec -quiet -exclude-generated ./...
 	@checkmake --config etc/checkmake.ini Makefile
-	@hadolint Dockerfile
+	@hadolint --failure-threshold info Dockerfile
 	@helm lint --strict infra/helm/app --set-string image.tag=ci-validation
 	@helm lint --strict infra/helm/app --set-string image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000
 	@REDOCLY_SUPPRESS_UPDATE_NOTICE=true REDOCLY_TELEMETRY=false redocly lint --config etc/redocly.yaml --format stylish api/openapi/**/*.yaml
-	@oasdiff breaking --fail-on ERR origin/master:api/openapi/v1/.combined.yaml api/openapi/v1/.combined.yaml
+	@oasdiff breaking --fail-on ERR --allow-external-refs=false \
+		origin/master:api/openapi/v1/.combined.yaml api/openapi/v1/.combined.yaml
+	@buf build api
 	@buf lint api
+	@buf format --diff --exit-code api
+	@buf breaking api --against ".git#commit=$$(git rev-parse origin/master),subdir=api"
 	@gitleaks git --config etc/gitleaks.toml --no-banner --redact -v
-	@markdownlint-cli2 --config etc/.markdownlint.yaml README.md docs/**/*.md
-	@vale --no-exit --config etc/vale.ini README.md docs/**/*.md internal/ cmd/ pkg/ tests/
+	@markdownlint-cli2 --config etc/.markdownlint-cli2.yaml
+	@vale --config etc/vale.ini README.md docs/adr docs/brd docs/core internal/ cmd/ pkg/ tests/
 	@actionlint -oneline --config-file etc/actionlint.yaml
 	@zizmor -q --persona regular --min-severity high --min-confidence high --offline --format plain --color never --no-progress .
 	@ec

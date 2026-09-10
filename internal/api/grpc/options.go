@@ -58,11 +58,11 @@ func WithMaxSendMsgSize(size int) Option {
 	}
 }
 
-// WitHealthCheckCtx sets the health-check context.
-// Once context is canceled, health-check will return error.
-func WitHealthCheckCtx(ctx context.Context) Option {
+// WithReadinessContext sets the parent context for the readiness monitor.
+// Cancellation stops the monitor and sets the gRPC health status to NOT_SERVING.
+func WithReadinessContext(ctx context.Context) Option {
 	return func(s *Server) {
-		s.healthCheckCtx = ctx
+		s.readinessCtx = ctx
 	}
 }
 

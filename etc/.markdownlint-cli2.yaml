@@ -1,0 +1,20 @@
+---
+
+config:
+  # Reference:
+  #   https://github.com/DavidAnson/markdownlint/blob/main/schema/.markdownlint.yaml
+  default: true
+
+  # https://github.com/DavidAnson/markdownlint/blob/v0.38.0/doc/md034.md
+  MD034: false
+
+  # https://github.com/DavidAnson/markdownlint/blob/v0.38.0/doc/md013.md
+  MD013:
+    line_length: 120
+    heading_line_length: 120
+    code_block_line_length: 120
+
+globs:
+  - README.md
+  - docs/**/*.md
+gitignore: true

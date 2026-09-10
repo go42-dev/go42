@@ -40,6 +40,93 @@ type grpcRequestLoggingTest struct {
 	code      codes.Code
 }
 
+func TestServeReportsBindFailure(t *testing.T) {
+	for _, state := range []string{"ready", "unready"} {
+		t.Run(state, func(t *testing.T) {
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, listener.Close()) })
+			ctx, cancelReadiness := context.WithCancel(t.Context())
+			defer cancelReadiness()
+			var output bytes.Buffer
+			server, err := New(
+				WithReadinessContext(ctx),
+				WithLogger(slog.New(slog.NewJSONHandler(&output, nil))),
+			)
+			require.NoError(t, err)
+			defer server.grpcServer.Stop()
+			if state == "unready" {
+				cancelReadiness()
+			}
+
+			serveResult := make(chan error, 1)
+			go func() { serveResult <- server.Serve(listener.Addr().String()) }()
+			err = waitForServeResult(t, serveResult)
+			var listenError *net.OpError
+			require.ErrorAs(t, err, &listenError)
+			require.Equal(t, "listen", listenError.Op)
+			reported := requireServerFailure(t, server, err)
+
+			var entry map[string]any
+			require.NoError(t, json.Unmarshal(output.Bytes(), &entry))
+			require.Equal(t, "ERROR", entry["level"])
+			require.Equal(t, "server stopped unexpectedly", entry["msg"])
+			require.Equal(t, "grpc", entry["server"])
+			require.Equal(t, reported.Error(), entry["error"])
+		})
+	}
+}
+
+func TestReportServeError(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+	}{
+		{name: "accept failure", err: errors.New("accept failed")},
+		{name: "stopped without shutdown"},
+		{name: "canceled without shutdown", err: context.Canceled},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, err := New()
+			require.NoError(t, err)
+			defer server.grpcServer.Stop()
+			server.reportServeError(test.err)
+			_ = requireServerFailure(t, server, test.err)
+		})
+	}
+}
+
+func TestServeReportsUnexpectedStop(t *testing.T) {
+	for _, test := range []struct {
+		name            string
+		stopBeforeServe bool
+		serveErr        error
+	}{
+		{name: "stopped before serving", stopBeforeServe: true, serveErr: grpcpkg.ErrServerStopped},
+		{name: "stopped while serving"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, err := New()
+			require.NoError(t, err)
+			defer server.grpcServer.Stop()
+			var serveResult <-chan error
+			if test.stopBeforeServe {
+				server.grpcServer.Stop()
+				result := make(chan error, 1)
+				go func() { result <- server.Serve("127.0.0.1:0") }()
+				serveResult = result
+			} else {
+				_, serveResult = startTestServer(t, server)
+				server.grpcServer.Stop()
+			}
+
+			err = waitForServeResult(t, serveResult)
+			require.ErrorIs(t, err, test.serveErr)
+			_ = requireServerFailure(t, server, err)
+		})
+	}
+}
+
 type grpcContextTestLimiter func(context.Context, string) (bool, error)
 
 func (fn grpcContextTestLimiter) Limit(ctx context.Context, key string) (bool, error) {
@@ -203,11 +290,11 @@ func TestHealthMonitorOptionsAndCancellation(t *testing.T) {
 					WithReadinessCheckTimeout(time.Minute),
 				}
 				if test.withContext {
-					opts = append(opts, WitHealthCheckCtx(healthCtx))
+					opts = append(opts, WithReadinessContext(healthCtx))
 				}
 				if test.nilContext {
 					//nolint:staticcheck // SA1012: deliberately test the optional nil context.
-					opts = append(opts, WitHealthCheckCtx(nil))
+					opts = append(opts, WithReadinessContext(nil))
 				}
 				if test.withCheck {
 					opts = append(opts, WithReadinessCheck(func(ctx context.Context) error {
@@ -256,7 +343,7 @@ func TestHealthStatusTracksDependencyAvailability(t *testing.T) {
 	dependencyUnavailable := new(atomic.Bool)
 	server, err := New(
 		WithLogger(slog.New(slog.DiscardHandler)),
-		WitHealthCheckCtx(healthCtx),
+		WithReadinessContext(healthCtx),
 		WithReadinessCheck(func(context.Context) error {
 			if dependencyUnavailable.Load() {
 				return errors.New("dependency unavailable")
@@ -295,23 +382,7 @@ func TestPanicRecoveryDoesNotExposePanicDetails(t *testing.T) {
 func TestShutdownForcesGRPCServerAfterDeadline(t *testing.T) {
 	server, err := New(WithLogger(slog.New(slog.DiscardHandler)))
 	require.NoError(t, err)
-	listener := bufconn.Listen(1024 * 1024)
-	serveResult := make(chan error, 1)
-	go func() {
-		serveResult <- server.grpcServer.Serve(listener)
-	}()
-
-	clientConn, err := grpcpkg.NewClient(
-		"passthrough:///bufconn",
-		grpcpkg.WithContextDialer(func(context.Context, string) (net.Conn, error) {
-			return listener.Dial()
-		}),
-		grpcpkg.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	if err != nil {
-		t.Fatalf("create gRPC client: %v", err)
-	}
-	t.Cleanup(func() { _ = clientConn.Close() })
+	clientConn, serveResult := startTestServer(t, server)
 
 	watchCtx, cancelWatch := context.WithCancel(context.Background())
 	defer cancelWatch()
@@ -341,16 +412,13 @@ func TestShutdownForcesGRPCServerAfterDeadline(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for forced gRPC shutdown")
 	}
+	requireServerErrorsClosed(t, server)
 }
 
 func TestShutdownGracefullyStopsIdleGRPCServer(t *testing.T) {
 	server, err := New(WithLogger(slog.New(slog.DiscardHandler)))
 	require.NoError(t, err)
-	listener := bufconn.Listen(1024 * 1024)
-	serveResult := make(chan error, 1)
-	go func() {
-		serveResult <- server.grpcServer.Serve(listener)
-	}()
+	_, serveResult := startTestServer(t, server)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -365,6 +433,65 @@ func TestShutdownGracefullyStopsIdleGRPCServer(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for graceful gRPC shutdown")
+	}
+	requireServerErrorsClosed(t, server)
+}
+
+func startTestServer(t *testing.T, server *Server) (*grpcpkg.ClientConn, <-chan error) {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	address := listener.Addr().String()
+	require.NoError(t, listener.Close())
+	serveResult := make(chan error, 1)
+	go func() { serveResult <- server.Serve(address) }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		require.NoError(t, server.Shutdown(ctx))
+	})
+	conn, err := grpcpkg.NewClient("passthrough:///"+address,
+		grpcpkg.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	_, err = healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{}, grpcpkg.WaitForReady(true))
+	require.NoError(t, err)
+	return conn, serveResult
+}
+
+func waitForServeResult(t *testing.T, result <-chan error) error {
+	t.Helper()
+	select {
+	case err := <-result:
+		return err
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for server to stop")
+		return nil
+	}
+}
+
+func requireServerFailure(t *testing.T, server *Server, cause error) error {
+	t.Helper()
+	require.Len(t, server.Errors(), 1, "server must report one failure without waiting for a consumer")
+	err := <-server.Errors()
+	require.ErrorContains(t, err, "grpc server")
+	if cause != nil {
+		require.ErrorIs(t, err, cause)
+	}
+	requireServerErrorsClosed(t, server)
+	return err
+}
+
+func requireServerErrorsClosed(t *testing.T, server *Server) {
+	t.Helper()
+	select {
+	case err, open := <-server.Errors():
+		require.False(t, open, "unexpected server failure: %v", err)
+	default:
+		t.Fatal("server error channel is still open after serving stopped")
 	}
 }
 
@@ -529,7 +656,7 @@ func TestHealthWaitsForInitialReadinessCheck(t *testing.T) {
 				result := make(chan error)
 				var checks atomic.Int32
 				started := time.Now()
-				server, err := New(WitHealthCheckCtx(ctx), WithReadinessCheck(func(ctx context.Context) error {
+				server, err := New(WithReadinessContext(ctx), WithReadinessCheck(func(ctx context.Context) error {
 					checks.Add(1)
 					select {
 					case err := <-result:
@@ -564,7 +691,7 @@ func TestHealthRecoversFromInitialReadinessFailure(t *testing.T) {
 		var checks atomic.Int32
 		const interval = time.Minute
 		server, err := New(
-			WitHealthCheckCtx(ctx),
+			WithReadinessContext(ctx),
 			WithReadinessCheckInterval(interval),
 			WithReadinessCheck(func(context.Context) error {
 				checks.Add(1)
@@ -605,7 +732,7 @@ func TestHealthRemainsNotServingWhenInitialCheckIsCanceled(t *testing.T) {
 				ctx, cancel := context.WithCancel(t.Context())
 				defer cancel()
 				var checks atomic.Int32
-				server, err := New(WitHealthCheckCtx(ctx), WithReadinessCheck(func(ctx context.Context) error {
+				server, err := New(WithReadinessContext(ctx), WithReadinessCheck(func(ctx context.Context) error {
 					checks.Add(1)
 					<-ctx.Done()
 					// A dependency may finish successfully as shutdown starts.

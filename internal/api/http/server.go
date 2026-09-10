@@ -2,6 +2,8 @@ package http
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -53,8 +55,10 @@ type Server struct {
 	readyStatus       atomic.Int32
 	readyCheck        func(context.Context) error
 	readyCheckTimeout time.Duration
+	livenessCheck     func(context.Context) error
 
 	serveDone   chan struct{}
+	errors      chan error
 	shutdownCtx context.Context
 
 	shutdownCancel   context.CancelFunc
@@ -78,6 +82,7 @@ func New(opts ...Option) *Server {
 		e:                 echoServer,
 		bodyLimit:         defaultBodyLimit,
 		serveDone:         make(chan struct{}),
+		errors:            make(chan error, 1),
 		shutdownCtx:       ctx,
 		shutdownCancel:    cancel,
 		readyCheckTimeout: defaultReadinessCheckTimeout,
@@ -215,12 +220,10 @@ func New(opts ...Option) *Server {
 	return s
 }
 
+// Start serves requests until the server stops. Call it once after registering adapters.
+// Unexpected termination is also logged and reported through Errors.
 func (s *Server) Start(addr string) error {
-	cfg := echo.StartConfig{Address: addr}
-	return s.start(cfg)
-}
-
-func (s *Server) start(sc echo.StartConfig) error {
+	sc := echo.StartConfig{Address: addr}
 	sc.HideBanner = true
 	sc.HidePort = true
 	sc.GracefulTimeout = s.gracefulTimeout
@@ -251,7 +254,31 @@ func (s *Server) start(sc echo.StartConfig) error {
 	// This is important for graceful shutdown, because we want to wait until all requests are finished before exiting the process.
 	defer close(s.serveDone)
 
-	return sc.Start(s.shutdownCtx, s.e)
+	err := sc.Start(s.shutdownCtx, s.e)
+	s.reportServeError(err)
+	return err
+}
+
+// Errors reports at most one unexpected termination, including startup failures.
+// It closes when serving ends; shutdown requested through Shutdown closes it without an error.
+func (s *Server) Errors() <-chan error {
+	return s.errors
+}
+
+func (s *Server) reportServeError(err error) {
+	defer close(s.errors)
+	if s.shutdownCtx.Err() != nil {
+		return
+	}
+	if err == nil {
+		err = errors.New("stopped without a shutdown request")
+	}
+	err = fmt.Errorf("http server: %w", err)
+	s.errors <- err
+	s.l.ErrorContext(s.shutdownCtx, "server stopped unexpectedly",
+		slog.String("server", "http"),
+		slog.Any("error", err),
+	)
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
@@ -281,8 +308,15 @@ func (s *Server) RegisterV1(adapters ...adapterAccessor) {
 	}
 }
 
-func (s *Server) health(ctx *echo.Context) error {
-	return ctx.NoContent(http.StatusOK)
+func (s *Server) health(c *echo.Context) error {
+	if s.livenessCheck != nil {
+		ctx := c.Request().Context()
+		if err := s.livenessCheck(ctx); err != nil {
+			s.l.DebugContext(ctx, "liveness check failed", slog.Any("error", err))
+			return c.NoContent(http.StatusServiceUnavailable)
+		}
+	}
+	return c.NoContent(http.StatusOK)
 }
 
 func (s *Server) ready(echoCtx *echo.Context) error {

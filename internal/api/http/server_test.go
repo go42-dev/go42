@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/google/uuid"
@@ -41,6 +42,87 @@ type httpRequestLoggingTest struct {
 	limiterError error
 	panic        bool
 	status       int
+}
+
+func TestStartReportsBindFailure(t *testing.T) {
+	for _, state := range []string{"ready", "unready"} {
+		t.Run(state, func(t *testing.T) {
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, listener.Close()) })
+			ctx, cancelReadiness := context.WithCancel(t.Context())
+			defer cancelReadiness()
+			var output bytes.Buffer
+			server := newTestServer(t,
+				WithReadinessContext(ctx),
+				WithLogger(slog.New(slog.NewJSONHandler(&output, nil))),
+			)
+			defer server.shutdownCancel()
+			if state == "unready" {
+				cancelReadiness()
+				require.Eventually(t, func() bool {
+					return server.readyStatus.Load() == ReadyStatusShuttingDown
+				}, time.Second, time.Millisecond)
+			}
+			output.Reset()
+
+			serveResult := make(chan error, 1)
+			go func() { serveResult <- server.Start(listener.Addr().String()) }()
+			err = waitForServeResult(t, serveResult)
+			var listenError *net.OpError
+			require.ErrorAs(t, err, &listenError)
+			require.Equal(t, "listen", listenError.Op)
+			reported := requireServerFailure(t, server, err)
+
+			var entry map[string]any
+			require.NoError(t, json.Unmarshal(output.Bytes(), &entry))
+			require.Equal(t, "ERROR", entry["level"])
+			require.Equal(t, "server stopped unexpectedly", entry["msg"])
+			require.Equal(t, "http", entry["server"])
+			require.Equal(t, reported.Error(), entry["error"])
+		})
+	}
+}
+
+func TestReportServeError(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+	}{
+		{name: "accept failure", err: errors.New("accept failed")},
+		{name: "stopped without shutdown"},
+		{name: "canceled without shutdown", err: context.Canceled},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := newTestServer(t)
+			defer server.shutdownCancel()
+			server.reportServeError(test.err)
+			_ = requireServerFailure(t, server, test.err)
+		})
+	}
+}
+
+func TestStartReportsUnexpectedServeStop(t *testing.T) {
+	server := newTestServer(t)
+	underlyingServer := make(chan *nethttp.Server, 1)
+	server.root.GET("/server", func(c *echo.Context) error {
+		underlyingServer <- c.Request().Context().Value(nethttp.ServerContextKey).(*nethttp.Server)
+		return c.NoContent(nethttp.StatusNoContent)
+	})
+	address, serveResult := startTestServer(t, server)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	req, err := nethttp.NewRequestWithContext(ctx, nethttp.MethodGet, "http://"+address+"/server", nil)
+	require.NoError(t, err)
+	response, err := nethttp.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
+	require.Equal(t, nethttp.StatusNoContent, response.StatusCode)
+
+	require.NoError(t, (<-underlyingServer).Close())
+	err = waitForServeResult(t, serveResult)
+	require.NoError(t, err)
+	_ = requireServerFailure(t, server, nil)
 }
 
 func TestHTTPLogsRequestIDsBeforeRejections(t *testing.T) {
@@ -110,6 +192,40 @@ func TestHTTPLogsRequestIDsBeforeRejections(t *testing.T) {
 	}
 }
 
+func TestHealthReflectsLivenessFailure(t *testing.T) {
+	livenessCtx, markUnhealthy := context.WithCancel(t.Context())
+	defer markUnhealthy()
+	server := newTestServer(t, WithLivenessCheck(func(context.Context) error {
+		return livenessCtx.Err()
+	}))
+
+	require.Equal(t, nethttp.StatusOK, getHealthStatus(server))
+	markUnhealthy()
+	require.Equal(t, nethttp.StatusServiceUnavailable, getHealthStatus(server))
+}
+
+func TestHealthStaysHealthyDuringReadinessDrain(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		livenessCtx, markUnhealthy := context.WithCancel(t.Context())
+		defer markUnhealthy()
+		server := newTestServer(t,
+			WithReadinessContext(ctx),
+			WithLivenessCheck(func(context.Context) error {
+				return livenessCtx.Err()
+			}),
+		)
+		server.readyStatus.Store(ReadyStatusServing)
+
+		cancel()
+		synctest.Wait()
+
+		require.Equal(t, nethttp.StatusServiceUnavailable, getReadyStatus(server))
+		require.Equal(t, nethttp.StatusOK, getHealthStatus(server))
+	})
+}
+
 func TestReadyReturnsDependencyStatus(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -134,11 +250,21 @@ func TestReadyReturnsDependencyStatus(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			server := newTestServer(t, WithReadinessCheck(test.check))
+			var checkCalls int
+			server := newTestServer(t, WithReadinessCheck(func(ctx context.Context) error {
+				checkCalls++
+				return test.check(ctx)
+			}))
 			server.readyStatus.Store(ReadyStatusServing)
 
 			if got := getReadyStatus(server); got != test.wantStatus {
 				t.Errorf("GET /ready status = %d, want %d", got, test.wantStatus)
+			}
+			if got := getHealthStatus(server); got != nethttp.StatusOK {
+				t.Errorf("GET /health status = %d, want %d", got, nethttp.StatusOK)
+			}
+			if checkCalls != 1 {
+				t.Errorf("dependency check called %d times; liveness must not check dependencies", checkCalls)
 			}
 		})
 	}
@@ -173,6 +299,7 @@ func TestReadyReturnsServiceUnavailableAfterShutdown(t *testing.T) {
 	if err := <-serveResult; err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
+	requireServerErrorsClosed(t, server)
 
 	if got := getReadyStatus(server); got != nethttp.StatusServiceUnavailable {
 		t.Errorf("GET /ready status = %d, want %d", got, nethttp.StatusServiceUnavailable)
@@ -220,6 +347,7 @@ func TestShutdownWaitsForActiveHTTPRequest(t *testing.T) {
 	if err := <-serveResult; err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
+	requireServerErrorsClosed(t, server)
 }
 
 func TestShutdownReturnsAfterEchoGracefulTimeout(t *testing.T) {
@@ -255,6 +383,7 @@ func TestShutdownReturnsAfterEchoGracefulTimeout(t *testing.T) {
 	if err := <-serveResult; err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
+	requireServerErrorsClosed(t, server)
 	close(releaseRequest)
 	if err := <-requestResult; err != nil {
 		t.Fatalf("HTTP request error = %v", err)
@@ -593,11 +722,62 @@ func startTestServer(t *testing.T, server *Server) (string, <-chan error) {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
+	address := listener.Addr().String()
+	require.NoError(t, listener.Close())
 	serveResult := make(chan error, 1)
 	go func() {
-		serveResult <- server.start(echo.StartConfig{Listener: listener})
+		serveResult <- server.Start(address)
 	}()
-	return listener.Addr().String(), serveResult
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		require.NoError(t, server.Shutdown(ctx))
+	})
+	timeout := time.NewTimer(2 * time.Second)
+	defer timeout.Stop()
+	for server.readyStatus.Load() != ReadyStatusServing {
+		select {
+		case err := <-serveResult:
+			t.Fatalf("Start() returned before serving: %v", err)
+		case <-timeout.C:
+			t.Fatal("timed out waiting for HTTP server to start")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	return address, serveResult
+}
+
+func waitForServeResult(t *testing.T, result <-chan error) error {
+	t.Helper()
+	select {
+	case err := <-result:
+		return err
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for server to stop")
+		return nil
+	}
+}
+
+func requireServerFailure(t *testing.T, server *Server, cause error) error {
+	t.Helper()
+	require.Len(t, server.Errors(), 1, "server must report one failure without waiting for a consumer")
+	err := <-server.Errors()
+	require.ErrorContains(t, err, "http server")
+	if cause != nil {
+		require.ErrorIs(t, err, cause)
+	}
+	requireServerErrorsClosed(t, server)
+	return err
+}
+
+func requireServerErrorsClosed(t *testing.T, server *Server) {
+	t.Helper()
+	select {
+	case err, open := <-server.Errors():
+		require.False(t, open, "unexpected server failure: %v", err)
+	default:
+		t.Fatal("server error channel is still open after serving stopped")
+	}
 }
 
 func waitForSignal(t *testing.T, signal <-chan struct{}, description string) {
@@ -611,6 +791,13 @@ func waitForSignal(t *testing.T, signal <-chan struct{}, description string) {
 
 func getReadyStatus(server *Server) int {
 	request := httptest.NewRequest(nethttp.MethodGet, "/ready", nil)
+	response := httptest.NewRecorder()
+	server.e.ServeHTTP(response, request)
+	return response.Code
+}
+
+func getHealthStatus(server *Server) int {
+	request := httptest.NewRequest(nethttp.MethodGet, "/health", nil)
 	response := httptest.NewRecorder()
 	server.e.ServeHTTP(response, request)
 	return response.Code

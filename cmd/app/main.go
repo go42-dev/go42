@@ -31,7 +31,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
-	"google.golang.org/grpc"
 
 	grpcAPI "github.com/go42-dev/go42/internal/api/grpc"
 	httpAPI "github.com/go42-dev/go42/internal/api/http"
@@ -453,6 +452,7 @@ func main() {
 		slog.Info("no event engine initialized")
 	}
 
+	// watermill - events router with middleware
 	eventsEngine, err := events.NewRouter(
 		eventsBackend,
 		events.WithMaxRetries(cfg.Events.Consumer.MaxRetries),
@@ -567,22 +567,31 @@ func main() {
 		go outboxPublisher.Run(ctx, cfg.Outbox.WorkerRunInterval, cfg.Outbox.WorkerBatchSize)
 	}
 
-	// readinessCancel used to dynamically detect failures and disable probe.
-	readinessCtx, readinessCancel := context.WithCancelCause(ctx)
+	// Liveness or health probe indicates if application is operating as expected.
+	// If liveness fails, the application is considered unhealthy and should be restarted.
+	// It uses a separate context to avoid being affected by readiness checks or shutdown signals.
+	livenessCtx, livenessCancel := context.WithCancel(context.Background())
+	defer livenessCancel()
+	livenessCheck := func(_ context.Context) error {
+		return livenessCtx.Err()
+	}
+
+	// Readiness probe indicates if the application is ready to serve traffic.
+	// It checks liveness and the health of critical dependencies like database and cache.
+	// Readiness can fail, in which case traffic should be routed away from the
+	// application until it becomes ready again.
+	readinessCtx, readinessCancel := context.WithCancel(ctx)
+	defer readinessCancel()
 	readinessCheck := func(ctx context.Context) error {
-		if err := context.Cause(readinessCtx); err != nil {
-			return err
-		}
 		return errors.Join(
-			dbEngine.Ping(ctx),
-			cacheEngine.Ping(ctx),
+			livenessCheck(ctx), readinessCtx.Err(),
+			dbEngine.Ping(ctx), cacheEngine.Ping(ctx),
 		)
 	}
 
 	// http server
 	httpServerOpts := []httpAPI.Option{
 		httpAPI.WithLogger(slog.Default().With(slog.String("component", "http-server"))),
-		httpAPI.WitHealthCheckCtx(ctx),
 		httpAPI.WithTracing(cfg.Tracing.Enable),
 		httpAPI.WithReadTimeout(cfg.Server.HTTP.ReadTimeout),
 		httpAPI.WithWriteTimeout(cfg.Server.HTTP.WriteTimeout),
@@ -593,8 +602,11 @@ func main() {
 		httpAPI.WithCORSAllowOrigins(cfg.Server.HTTP.CORSAllowOrigins),
 		httpAPI.WithTrustedProxyCIDRs(cfg.Server.HTTP.TrustedProxyCIDRs),
 		httpAPI.WithGracefulTimeout(cfg.Core.ShutdownComponentTimeout),
-		httpAPI.WithReadinessCheckTimeout(cfg.Core.ReadinessCheckTimeout),
+		// liveness + readiness checks
+		httpAPI.WithLivenessCheck(livenessCheck),
+		httpAPI.WithReadinessContext(ctx),
 		httpAPI.WithReadinessCheck(readinessCheck),
+		httpAPI.WithReadinessCheckTimeout(cfg.Core.ReadinessCheckTimeout),
 	}
 
 	if cfg.Server.HTTP.RateLimiter.Enabled {
@@ -617,10 +629,6 @@ func main() {
 
 	grpcServerOpts := []grpcAPI.Option{
 		grpcAPI.WithLogger(slog.Default().With(slog.String("component", "grpc-server"))),
-		grpcAPI.WitHealthCheckCtx(ctx),
-		grpcAPI.WithReadinessCheck(readinessCheck),
-		grpcAPI.WithReadinessCheckTimeout(cfg.Core.ReadinessCheckTimeout),
-		grpcAPI.WithReadinessCheckInterval(cfg.Core.ReadinessCheckInterval),
 		grpcAPI.WithTracing(cfg.Tracing.Enable),
 		grpcAPI.WithMaxRecvMsgSize(cfg.Server.GRPC.MaxRecvMsgSize),
 		grpcAPI.WithMaxSendMsgSize(cfg.Server.GRPC.MaxSendMsgSize),
@@ -631,6 +639,11 @@ func main() {
 			cfg.Server.GRPC.TLS.CertFile,
 			cfg.Server.GRPC.TLS.KeyFile,
 		),
+		// liveness + readiness checks
+		grpcAPI.WithReadinessContext(ctx),
+		grpcAPI.WithReadinessCheck(readinessCheck),
+		grpcAPI.WithReadinessCheckTimeout(cfg.Core.ReadinessCheckTimeout),
+		grpcAPI.WithReadinessCheckInterval(cfg.Core.ReadinessCheckInterval),
 	}
 
 	if cfg.Server.GRPC.RateLimiter.Enabled {
@@ -666,7 +679,7 @@ func main() {
 		log.Fatalf("failed to initialize grpc server: %v\n", err)
 	}
 
-	// register grpc services
+	// Register grpc services.
 
 	authGrpc := authGrpcAdapterV1.New(
 		authService,
@@ -674,23 +687,23 @@ func main() {
 	)
 	grpcServer.Register(authGrpc)
 
-	// run servers
+	// Run the blocking servers; failures are logged and reported through Errors().
 
 	go func() {
-		slog.Info("starting http server...", slog.String("port", cfg.Server.HTTP.Listen))
-		if err := httpServer.Start(cfg.Server.HTTP.Listen); err != nil &&
-			!errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("failed to start http server: %v\n", err)
-		}
+		slog.InfoContext(ctx, "starting http server...", slog.String("port", cfg.Server.HTTP.Listen))
+		_ = httpServer.Start(cfg.Server.HTTP.Listen)
 	}()
 
 	go func() {
-		slog.Info("starting grpc server...", slog.String("port", cfg.Server.GRPC.Listen))
-		if err := grpcServer.Serve(cfg.Server.GRPC.Listen); err != nil &&
-			!errors.Is(err, grpc.ErrServerStopped) {
-			log.Fatalf("failed to start grpc server: %v\n", err)
-		}
+		slog.InfoContext(ctx, "starting grpc server...", slog.String("port", cfg.Server.GRPC.Listen))
+		_ = grpcServer.Serve(cfg.Server.GRPC.Listen)
 	}()
+
+	go watchLiveness(
+		ctx, livenessCancel,
+		httpServer.Errors(),
+		grpcServer.Errors(),
+	)
 
 	go watchReadiness(
 		ctx, readinessCancel,
@@ -1082,8 +1095,20 @@ func initTracing(ctx context.Context, cfg *config.Config) ShutMeDown {
 	return tp
 }
 
+func watchLiveness(
+	ctx context.Context, livenessCancel context.CancelFunc, observables ...<-chan error,
+) {
+	watchErrors(ctx, livenessCancel, observables...)
+}
+
 func watchReadiness(
-	ctx context.Context, readinessCancel context.CancelCauseFunc, observables ...<-chan error,
+	ctx context.Context, readinessCancel context.CancelFunc, observables ...<-chan error,
+) {
+	watchErrors(ctx, readinessCancel, observables...)
+}
+
+func watchErrors(
+	ctx context.Context, markFailed context.CancelFunc, observables ...<-chan error,
 ) {
 	watchCtx, stopWatching := context.WithCancel(ctx)
 	defer stopWatching()
@@ -1101,7 +1126,7 @@ func watchReadiness(
 				// shutdown signal received, stop watching (parent context canceled)
 				case <-watchCtx.Done():
 					return
-				// error received from observable, mark unready and stop watching
+				// error received from observable, report failure and stop watching
 				case err, ok := <-observable:
 					// if observable channel is closed or context canceled, stop watching
 					if !ok || watchCtx.Err() != nil {
@@ -1110,7 +1135,7 @@ func watchReadiness(
 					// we received genuine error from observable channel
 					if err != nil {
 						failure.Do(func() {
-							readinessCancel(err)
+							markFailed()
 							// cancel watchCtx to stop all other watchers
 							stopWatching()
 						})
@@ -1142,7 +1167,7 @@ func shutdown(cfg *config.Config, mainCancel context.CancelFunc, closers ...Shut
 
 	done := make(chan struct{})
 	go func(ctx context.Context) {
-		// Calling cancel() on main context disables health-checks for http and grpc servers.
+		// Canceling the application context marks HTTP and gRPC readiness as unavailable.
 		mainCancel()
 		time.Sleep(cfg.Core.ShutdownWaitForProbe)
 		for _, c := range closers {
