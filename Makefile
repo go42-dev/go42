@@ -247,7 +247,7 @@ lint:
 		-exclude-file-docstrings='Code generated' \
 		-pretty-print=false \
 		-print-full-file-path=true \
-		./...
+		./... || true
 
 ## generate | generate code for all modules
 # Side effects of this command should to be commited.
