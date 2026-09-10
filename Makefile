@@ -54,6 +54,8 @@ setup-linters:
 		markdownlint-cli2 \
 		vale \
 		zizmor \
+		npm:@commitlint/cli \
+		npm:@commitlint/config-conventional \
 		pipx:sqlfluff \
 		github:oasdiff/oasdiff \
 		go:github.com/daixiang0/gci \
@@ -222,8 +224,15 @@ image:
 	-t ghcr.io/go42-dev/go42:dev \
 	.
 
+# Override these refs to validate a different commit range with make lint.
+export COMMITLINT_FROM ?= origin/master
+export COMMITLINT_TO ?= HEAD
+
 ## lint | run all validation tools
 lint:
+	@commitlint --config etc/.commitlintrc.yaml \
+		--extends "$$(mise where npm:@commitlint/config-conventional)/node_modules/@commitlint/config-conventional/lib/index.js" \
+		--from "$$COMMITLINT_FROM" --to "$$COMMITLINT_TO" --verbose
 	@golangci-lint run --config etc/.golangci.yml
 	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/sqlite/*.sql --dialect sqlite
 	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/mysql/*.sql --dialect mysql

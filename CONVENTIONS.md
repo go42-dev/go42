@@ -56,7 +56,9 @@ This file outlines conventions for the go42 project.
   or group them in `accessors.go`. Keep mock-generation directives with the interface definitions and generate mocks
   into the package's `mocks/` directory.
 * DI dependencies should be interfaces wherever possible, name interfaces `xxxAccessor` or if possible simple name of sub-system: `cache`, `events`.
-* `WithTransaction` should NOT be used in repository level.
+* Services and worker handlers own transaction boundaries. Call the shared `WithTransaction` helper there and propagate
+  its `txCtx` to all participating database operations. Repository data-access methods use the supplied context and
+  must not manage transactions themselves.
 
 ## Linting
 

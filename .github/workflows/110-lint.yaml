@@ -33,10 +33,16 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    env:
+      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
+      MISE_DATA_DIR: ${{ github.workspace }}/.tools
+      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
+      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     steps:
       - name: 'Checkout repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0 # Commitlint needs the PR base and pushed commit history.
           persist-credentials: false
       - name: 'Validate branch name'
         env:
@@ -63,11 +69,46 @@ jobs:
           fi
 
           echo "Branch name '$BRANCH_NAME' is valid"
+      - name: 'Install pinned commitlint'
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: '2026.9.1'
+          install_args: --locked node jq npm:@commitlint/cli npm:@commitlint/config-conventional
       - name: 'Validate commit messages'
         if: github.event_name == 'pull_request' || github.event_name == 'push'
-        uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1
-        with:
-          configFile: etc/.commitlintrc.yaml
+        shell: bash
+        env:
+          COMMITLINT_FROM: ${{ github.event.pull_request.base.sha || github.event.before }}
+          COMMITLINT_TO: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |-
+          # Mise installs the preset separately from the CLI; use its resolved path.
+          preset_dir="$(mise where npm:@commitlint/config-conventional)"
+          args=(--config etc/.commitlintrc.yaml
+            --extends "$preset_dir/node_modules/@commitlint/config-conventional/lib/index.js"
+            --verbose)
+          lint_status=0
+
+          if [[ "$COMMITLINT_FROM" == '0000000000000000000000000000000000000000' ]]; then
+            # A new branch has no previous ref. Check only the commits in the push
+            # event instead of treating all existing repository history as new.
+            commits="$(jq -r '.commits[].id' "$GITHUB_EVENT_PATH")"
+            for commit in $commits; do
+              message="$(git show --no-patch --format=%B "$commit")"
+              printf '%s\n' "$message" | commitlint "${args[@]}" || lint_status=$?
+            done
+          else
+            # A force push can leave the previous tip outside the fetched history.
+            if ! git cat-file -e "$COMMITLINT_FROM^{commit}" 2>/dev/null; then
+              git fetch --no-tags origin "$COMMITLINT_FROM"
+            fi
+            commitlint "${args[@]}" --from "$COMMITLINT_FROM" --to "$COMMITLINT_TO" || lint_status=$?
+          fi
+
+          if (( lint_status != 0 )); then
+            echo '::error::Commit messages do not follow etc/.commitlintrc.yaml. See the diagnostics above.'
+          fi
+          exit "$lint_status"
 
   # Golang linter.
   # @see https://golangci-lint.run/

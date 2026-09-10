@@ -409,6 +409,16 @@ url = "https://nodejs.org/dist/v26.7.0/node-v26.7.0-darwin-arm64.tar.gz"
 checksum = "sha256:f279d1ed28ce57f7788bf23435d2ad7fdd7438904ad5c4d8a1081a7cde3d4b96"
 url = "https://nodejs.org/dist/v26.7.0/node-v26.7.0-darwin-x64.tar.gz"
 
+[[tools."npm:@commitlint/cli"]]
+version = "19.2.1"
+backend = "npm:@commitlint/cli"
+specifiers = ["19.2.1"]
+
+[[tools."npm:@commitlint/config-conventional"]]
+version = "19.1.0"
+backend = "npm:@commitlint/config-conventional"
+specifiers = ["19.1.0"]
+
 [[tools."npm:@redocly/cli"]]
 version = "2.51.2"
 backend = "npm:@redocly/cli"
