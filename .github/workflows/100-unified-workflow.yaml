@@ -53,154 +53,11 @@ jobs:
       - name: Start full CI
         run: echo "Full CI started."
 
-  git-lint:
-    uses: ./.github/workflows/110-git-lint.yaml
+  lint:
+    uses: ./.github/workflows/110-lint.yaml
     permissions:
       contents: read
       pull-requests: read
-    needs:
-      - gate-start
-    with:
-      runs_on: ubuntu-latest
-      continue_on_error: false
-      timeout_minutes: 10
-
-  golangci-lint:
-    uses: ./.github/workflows/110-golangci-lint.yaml
-    permissions:
-      contents: read
-    needs:
-      - gate-start
-    with:
-      runs_on: ubuntu-latest
-      continue_on_error: false
-      timeout_minutes: 10
-
-  nilaway-lint:
-    uses: ./.github/workflows/110-nilaway-lint.yaml
-    permissions:
-      contents: read
-    needs:
-      - gate-start
-    with:
-      runs_on: ubuntu-latest
-      continue_on_error: true
-      timeout_minutes: 10
-
-  docker-lint:
-    uses: ./.github/workflows/110-docker-lint.yaml
-    permissions:
-      contents: read
-    needs:
-      - gate-start
-    with:
-      runs_on: ubuntu-latest
-      continue_on_error: false
-      timeout_minutes: 10
-
-  make-lint:
-    uses: ./.github/workflows/110-make-lint.yaml
-    permissions:
-      contents: read
-    needs:
-      - gate-start
-    with:
-      runs_on: ubuntu-latest
-      continue_on_error: false
-      timeout_minutes: 10
-
-  helm-lint:
-    uses: ./.github/workflows/110-helm-lint.yaml
-    permissions:
-      contents: read
-    needs:
-      - gate-start
-    with:
-      runs_on: ubuntu-latest
-      continue_on_error: false
-      timeout_minutes: 10
-
-  proto-lint:
-    uses: ./.github/workflows/110-proto-lint.yaml
-    permissions:
-      contents: read
-    needs:
-      - gate-start
-    with:
-      runs_on: ubuntu-latest
-      continue_on_error: false
-      timeout_minutes: 10
-
-  openapi-lint:
-    uses: ./.github/workflows/110-openapi-lint.yaml
-    permissions:
-      contents: read
-    needs:
-      - gate-start
-    with:
-      runs_on: ubuntu-latest
-      continue_on_error: false
-      timeout_minutes: 10
-
-  markdown-lint:
-    uses: ./.github/workflows/110-markdown-lint.yaml
-    permissions:
-      contents: read
-    needs:
-      - gate-start
-    with:
-      runs_on: ubuntu-latest
-      continue_on_error: false
-      timeout_minutes: 10
-
-  writing-lint:
-    uses: ./.github/workflows/110-writing-lint.yaml
-    permissions:
-      contents: read
-    needs:
-      - gate-start
-    with:
-      runs_on: ubuntu-latest
-      continue_on_error: false
-      timeout_minutes: 10
-
-  action-lint:
-    uses: ./.github/workflows/110-action-lint.yaml
-    permissions:
-      contents: read
-    needs:
-      - gate-start
-    with:
-      runs_on: ubuntu-latest
-      continue_on_error: false
-      timeout_minutes: 10
-
-  sql-lint:
-    uses: ./.github/workflows/110-sql-lint.yaml
-    permissions:
-      contents: read
-    needs:
-      - gate-start
-    with:
-      runs_on: ubuntu-latest
-      continue_on_error: false
-      timeout_minutes: 10
-
-  project-lint:
-    uses: ./.github/workflows/110-project-lint.yaml
-    permissions:
-      contents: read
-    needs:
-      - gate-start
-    with:
-      runs_on: ubuntu-latest
-      continue_on_error: false
-      timeout_minutes: 10
-
-  editorconfig-lint:
-    uses: ./.github/workflows/110-editorconfig-lint.yaml
-    permissions:
-      contents: read
     needs:
       - gate-start
     with:
@@ -215,20 +72,7 @@ jobs:
     permissions:
       contents: read
     needs:
-      - git-lint
-      - golangci-lint
-      - nilaway-lint
-      - docker-lint
-      - make-lint
-      - helm-lint
-      - proto-lint
-      - openapi-lint
-      - markdown-lint
-      - writing-lint
-      - action-lint
-      - sql-lint
-      - project-lint
-      - editorconfig-lint
+      - lint
     with:
       runs_on: ubuntu-latest
       continue_on_error: false
@@ -239,20 +83,7 @@ jobs:
     permissions:
       contents: read
     needs:
-      - git-lint
-      - golangci-lint
-      - nilaway-lint
-      - docker-lint
-      - make-lint
-      - helm-lint
-      - proto-lint
-      - openapi-lint
-      - markdown-lint
-      - writing-lint
-      - action-lint
-      - sql-lint
-      - project-lint
-      - editorconfig-lint
+      - lint
     with:
       runs_on: ubuntu-latest
       fuzz_time: 30s
@@ -262,20 +93,7 @@ jobs:
     permissions:
       contents: read
     needs:
-      - git-lint
-      - golangci-lint
-      - nilaway-lint
-      - docker-lint
-      - make-lint
-      - helm-lint
-      - proto-lint
-      - openapi-lint
-      - markdown-lint
-      - writing-lint
-      - action-lint
-      - sql-lint
-      - project-lint
-      - editorconfig-lint
+      - lint
     with:
       runs_on: ubuntu-latest
       continue_on_error: false

@@ -1,0 +1,447 @@
+---
+
+name: lint
+
+# Lint source code, project files, and GitHub Actions.
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        required: true
+        type: string
+      continue_on_error:
+        required: true
+        type: boolean
+      timeout_minutes:
+        required: false
+        type: number
+        default: 10
+
+permissions: {}
+
+jobs:
+
+  # Git linter.
+  # Designed to check if user adheres to the project's Git rules.
+  # Also branch naming have implicit limitations due to docker tag naming rules.
+  git-lint:
+    name: git-lint
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 'Validate branch name'
+        env:
+          # The name of the branch or tag being merged into the base in a pull request.
+          # Available only for pull_request and pull_request_target events.
+          HEAD_REF: ${{ github.head_ref }}
+          # The short name of the branch or tag that triggered the workflow.
+          REF_NAME: ${{ github.ref_name }}
+        run: |-
+          # Use HEAD_REF for pull requests, REF_NAME for other events
+          # HEAD_REF is empty for non-PR events
+          BRANCH_NAME="${HEAD_REF:-$REF_NAME}"
+
+          # Clean up the branch name (remove refs/heads/ if present)
+          BRANCH_NAME="${BRANCH_NAME#refs/heads/}"
+
+          echo "Validating branch name: $BRANCH_NAME"
+
+          PATTERN="^[A-Za-z0-9\/_.\-]+$"
+          if ! echo "$BRANCH_NAME" | grep -qE "$PATTERN"; then
+            echo "Branch names should follow regex ^[A-Za-z0-9\/_.\-]+$"
+            echo "Current branch name '$BRANCH_NAME' does not match the pattern"
+            exit 1
+          fi
+
+          echo "Branch name '$BRANCH_NAME' is valid"
+      - name: 'Validate commit messages'
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1
+        with:
+          configFile: etc/.commitlintrc.yaml
+
+  # Golang linter.
+  # @see https://golangci-lint.run/
+  golangci-lint:
+    name: golangci-lint
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    # ----
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 'Setup Go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+      - name: 'Run golangci-lint'
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.13.2
+          args: --config etc/.golangci.yml
+
+  # Detect potential nil panics with the standalone NilAway checker.
+  # @see https://github.com/uber-go/nilaway
+  nilaway-lint:
+    name: nilaway-lint
+    runs-on: ${{ inputs.runs_on }}
+    # NilAway findings remain advisory.
+    continue-on-error: true
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 'Setup Go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+      - name: 'Install NilAway'
+        run: go install go.uber.org/nilaway/cmd/nilaway@v0.0.0-20260808063849-8649a03c818a
+      - name: 'Run NilAway'
+        run: |-
+          nilaway \
+          -include-pkgs=github.com/go42-dev/go42 \
+          -exclude-file-docstrings='Code generated' \
+          -pretty-print=false \
+          -print-full-file-path=true \
+          ./...
+
+  # Linter for Dockerfile.
+  # @see https://github.com/hadolint/hadolint
+  docker-lint:
+    name: docker-lint
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    # ----
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # ----
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
+        with:
+          dockerfile: ./Dockerfile
+
+  # Linter for Makefiles.
+  # @see https://github.com/checkmake/checkmake
+  make-lint:
+    name: make-lint
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    env:
+      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
+      MISE_DATA_DIR: ${{ github.workspace }}/.tools
+      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
+      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned checkmake
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: '2026.9.1'
+          install_args: --locked checkmake
+      - name: Run checkmake
+        run: checkmake --config etc/checkmake.ini Makefile
+
+  helm-lint:
+    name: helm-lint
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.2.4
+      - name: Lint Helm chart
+        run: |-
+          helm lint --strict infra/helm/app --set-string image.tag=ci-validation
+          helm lint --strict infra/helm/app \
+            --set-string image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+  # Protobuf linter.
+  # @see https://buf.build/docs/lint/
+  proto-lint:
+    name: proto-lint
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    # ----
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 'Run buf lint and format'
+        uses: bufbuild/buf-action@8c6a16e16f12ba20b6470afa9c2ba9b5ba8c97c3 # v1.5.0
+        with:
+          version: 1.55.0
+          input: api
+          lint: true
+          format: true
+          pr_comment: false
+
+  # OpenAPI validation and compatibility checks.
+  # @see https://redocly.com/docs/cli
+  openapi-lint:
+    name: openapi-lint
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    env:
+      OPENAPI_BASE_REF: >-
+        ${{ github.event.pull_request.base.sha || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before)
+        || 'HEAD^' }}
+    # ----
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # Include the PR base and previous push for compatibility checks.
+      - name: 'Run redocly OpenAPI linter'
+        run: |-
+          docker run --rm \
+            -v "${{ github.workspace }}:/workdir" \
+            -w /workdir \
+            ghcr.io/redocly/cli:2.51.2@sha256:2dcc3939c2180e1da96db06a40aa079cb32c4ef3bac8b35ff061f2140322da64 \
+            lint --config etc/redocly.yaml --format github-actions api/openapi/**/*.yaml
+      - name: Reject breaking OpenAPI changes
+        uses: oasdiff/oasdiff-action/breaking@9c0494cfee8b8fcc9fb383ed2d5d3fbdae169b93 # v0.1.15 (oasdiff v1.31.0)
+        with:
+          base: '${{ env.OPENAPI_BASE_REF }}:api/openapi/v1/.combined.yaml'
+          revision: api/openapi/v1/.combined.yaml
+          fail-on: ERR
+          review: 'false'
+          github-token: ''
+
+  # Markdown linter.
+  # @see https://github.com/DavidAnson/markdownlint
+  markdown-lint:
+    name: markdown-lint
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    # ----
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 'Run markdownlint'
+        uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff # v24.2.0
+        with:
+          config: etc/.markdownlint.yaml
+          globs: |-
+            README.md
+            docs/**/*.md
+
+  # Markdown linter.
+  # @see https://github.com/errata-ai/vale
+  writing-lint:
+    name: writing-lint
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    # ----
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 'Run Vale prose linter'
+        uses: errata-ai/vale-action@518a9136acc6e6668ce7c00d367051e0941e87ff # v3.0.0
+        with:
+          version: '3.18.0' # Keep in sync with etc/mise.toml.
+          fail_on_error: true
+          files: '["README.md","docs/adr","docs/brd","docs/core","internal/","cmd/","pkg/","tests/"]'
+          vale_flags: "--config etc/vale.ini"
+
+  # Linter for github actions.
+  # @see https://github.com/rhysd/actionlint
+  action-lint:
+    name: action-lint
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    # ----
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # ----
+      - name: 'Run actionlint'
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+        with:
+          version: v1.7.12
+          flags: --config-file etc/actionlint.yaml
+
+  zizmor-lint:
+    name: zizmor-lint
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    # ----
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # ----
+      - name: 'Run zizmor security audit'
+        uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+        with:
+          advanced-security: false
+          online-audits: false
+          persona: regular
+          min-severity: high
+          min-confidence: high
+          version: 1.30.0
+
+  # Linter for sql migrations.
+  # @see https://github.com/sqlfluff/sqlfluff
+  sql-lint:
+    name: sql-lint (${{ matrix.database }})
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        database:
+          - sqlite
+          - mysql
+          - pgsql
+        include:
+          - database: sqlite
+            dialect: sqlite
+            path: migrate/sqlite/*.sql
+          - database: mysql
+            dialect: mysql
+            path: migrate/mysql/*.sql
+          - database: pgsql
+            dialect: postgres
+            path: migrate/pgsql/*.sql
+    # -----
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # -----
+      - name: 'Run SQLFluff linter'
+        run: |-
+          docker run --rm \
+            --network none \
+            --volume "${{ github.workspace }}:/workspace:ro" \
+            --workdir /workspace \
+            sqlfluff/sqlfluff:4.3.0@sha256:8003e7099a43661bb972bb29b6c66ef0954545586a047bd88cdbdfb6d758f144 \
+            lint --config etc/sqlfluff.toml ${{ matrix.path }} --dialect ${{ matrix.dialect }}
+
+  # Linter specific to current project.
+  # This workflow checks for uncommitted changes after running 'make generate'.
+  # It is used to ensure that the relevant generated files are committed to the repository.
+  project-lint:
+    name: project-lint
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    # -----
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # -----
+      - name: 'Prepare project environment'
+        uses: ./.github/actions/prepare-env
+      # -----
+      - name: 'Generate code'
+        run: make generate
+      - name: 'Check for uncommitted changes'
+        run: |-
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "Uncommitted changes detected after running 'make generate'"
+            echo "The following files have changes:"
+            git status --porcelain
+            echo ""
+            echo "Please run 'make setup && make generate' locally and commit the changes."
+            exit 1
+          else
+            echo "No uncommitted changes detected"
+          fi
+
+  # Editorconfig linter.
+  # @see https://editorconfig-checker.github.io/
+  editorconfig-lint:
+    name: editorconfig-lint
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    # ----
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 'Setup Go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+      - name: 'Install editorconfig-checker'
+        run: go install github.com/editorconfig-checker/editorconfig-checker/v3/cmd/editorconfig-checker@v3.11.3
+      - name: 'Run editorconfig-checker'
+        run: editorconfig-checker -v
