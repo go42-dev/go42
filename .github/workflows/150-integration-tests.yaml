@@ -126,9 +126,35 @@ jobs:
             exit 1
           fi
       - name: 'Setup Go'
+        id: setup-go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
+          cache: false
+      - name: 'Get Go cache paths'
+        id: go-cache
+        shell: bash
+        run: |
+          {
+            echo "go-build=$(go env GOCACHE)"
+            echo "go-mod=$(go env GOMODCACHE)"
+          } >> "$GITHUB_OUTPUT"
+      - name: 'Restore and save Go caches'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        env:
+          # All database variants compile the same packages and share this job's cache.
+          GO_CACHE_PREFIX: go-tests-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup-go.outputs.go-version }}-${{ github.job
+            }}
+        with:
+          path: |
+            ${{ steps.go-cache.outputs.go-build }}
+            ${{ steps.go-cache.outputs.go-mod }}
+          # Refresh per source commit and reuse earlier builds from this job.
+          key: ${{ env.GO_CACHE_PREFIX }}-${{ hashFiles('go.mod', 'go.sum') }}-${{ inputs.source_sha || github.sha }}
+          restore-keys: |
+            ${{ env.GO_CACHE_PREFIX }}-${{ hashFiles('go.mod', 'go.sum') }}-
+            ${{ env.GO_CACHE_PREFIX }}-
       - name: 'Download Go modules'
         run: go mod download
       - name: 'Enable MySQL deadlock logging'

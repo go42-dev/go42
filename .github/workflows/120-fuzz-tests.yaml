@@ -38,16 +38,40 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup Go
+        id: setup-go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Locate fuzz corpus cache
-        id: corpus
-        run: echo "path=$(go env GOCACHE)/fuzz" >> "$GITHUB_OUTPUT"
+          cache: false
+      - name: Get Go cache paths
+        id: go-cache
+        shell: bash
+        run: |
+          {
+            echo "go-build=$(go env GOCACHE)"
+            echo "go-mod=$(go env GOMODCACHE)"
+          } >> "$GITHUB_OUTPUT"
+      - name: Restore and save Go caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        env:
+          GO_CACHE_PREFIX: go-tests-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup-go.outputs.go-version }}-${{ github.job
+            }}
+        with:
+          # Cache build entries without the separately managed fuzz corpus.
+          path: |
+            ${{ steps.go-cache.outputs.go-build }}/*
+            !${{ steps.go-cache.outputs.go-build }}/fuzz
+            ${{ steps.go-cache.outputs.go-mod }}
+          # Refresh per commit and reuse earlier builds from this job.
+          key: ${{ env.GO_CACHE_PREFIX }}-${{ hashFiles('go.mod', 'go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ env.GO_CACHE_PREFIX }}-${{ hashFiles('go.mod', 'go.sum') }}-
+            ${{ env.GO_CACHE_PREFIX }}-
       - name: Restore and save fuzz corpus
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ steps.corpus.outputs.path }}
+          path: ${{ steps.go-cache.outputs.go-build }}/fuzz
           # A new key lets successful runs save newly discovered inputs.
           key: fuzz-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.mod') }}-${{ github.run_id }}-${{ github.run_attempt
             }}
