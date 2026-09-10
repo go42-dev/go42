@@ -103,8 +103,6 @@ jobs:
 
   security:
     uses: ./.github/workflows/130-security.yaml
-    secrets:
-      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
     permissions:
       actions: read
       contents: read

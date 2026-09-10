@@ -132,28 +132,46 @@ jobs:
         with:
           persist-credentials: false
       - name: 'Setup Go'
+        id: setup-go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
+          # Save lint's build outputs in the dedicated cache below.
+          cache: false
       - name: 'Install pinned golangci-lint'
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           version: '2026.9.1'
           install_args: --locked golangci-lint
-      - name: 'Restore and save golangci-lint analysis cache'
+      - name: 'Get lint cache metadata'
+        id: lint-cache
+        shell: bash
+        run: |-
+          {
+            echo "go-build=$(go env GOCACHE)"
+            echo "go-mod=$(go env GOMODCACHE)"
+            echo "lint-version=$(golangci-lint version --short)"
+          } >> "$GITHUB_OUTPUT"
+      - name: 'Restore and save Go and golangci-lint caches'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        env:
+          LINT_CACHE_PREFIX: golangci-lint-v2-${{ runner.os }}-${{ runner.arch }}-${{
+            steps.setup-go.outputs.go-version }}-${{ steps.lint-cache.outputs.lint-version }}
         with:
-          path: ${{ env.GOLANGCI_LINT_CACHE }}
-          # Restore compatible results and save updated analysis for each commit.
-          key: golangci-lint-v1-${{ runner.os }}-${{ runner.arch }}-${{
-            hashFiles('etc/mise.lock', 'etc/.golangci.yml', 'go.mod', 'go.sum') }}-${{ github.sha }}
-          restore-keys: >-
-            golangci-lint-v1-${{ runner.os }}-${{ runner.arch }}-${{
-            hashFiles('etc/mise.lock', 'etc/.golangci.yml', 'go.mod', 'go.sum') }}-
+          # Analysis also needs compiled Go packages, not just linter results.
+          path: |-
+            ${{ steps.lint-cache.outputs.go-build }}
+            ${{ steps.lint-cache.outputs.go-mod }}
+            ${{ env.GOLANGCI_LINT_CACHE }}
+          # Refresh per commit; reuse compatible entries after dependency/config changes.
+          key: ${{ env.LINT_CACHE_PREFIX }}-${{ hashFiles('etc/.golangci.yml', 'go.mod', 'go.sum') }}-${{ github.sha }}
+          restore-keys: |-
+            ${{ env.LINT_CACHE_PREFIX }}-${{ hashFiles('etc/.golangci.yml', 'go.mod', 'go.sum') }}-
+            ${{ env.LINT_CACHE_PREFIX }}-
       - name: 'Validate golangci-lint configuration'
         run: golangci-lint config verify --config etc/.golangci.yml
       - name: 'Run golangci-lint'
-        run: golangci-lint run --config etc/.golangci.yml
+        run: golangci-lint run --config etc/.golangci.yml --verbose
 
   # Detect potential nil panics with the standalone NilAway checker.
   # @see https://github.com/uber-go/nilaway

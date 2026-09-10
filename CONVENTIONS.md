@@ -20,11 +20,12 @@ This file outlines conventions for the go42 project.
 * Record vendored dependencies' versions and upstream sources in adjacent `.versions.yaml` files. Update these records
   together with the vendored files, retain upstream license notices, and regenerate affected outputs.
 
-## SVC
+## VCS
 
-* branch naming
-* commit message
-* pull request names and description
+* Branch names must match `^[A-Za-z0-9/_.-]+$`.
+* Use Conventional Commits with the types and rules configured in `etc/.commitlintrc.yaml`.
+* PR titles summarize the resulting change. Descriptions explain the problem, resulting behavior, relevant compatibility or
+  migration impact, and validation performed.
 * tag naming
 * sub-module tags
 * always prefer merge commits to rebase (disable rebase)
@@ -69,6 +70,10 @@ This file outlines conventions for the go42 project.
 * Use `GetTx(ctx)` for writes and reads that require primary consistency. Use `GetReadDB(ctx)` only when replica lag is
   acceptable. Persist required outbox events using the same `txCtx` as the business change, so both commit or roll back
   together. Document operations where event recording is best effort.
+* Give background goroutines and resources explicit owners and shutdown paths. Use request contexts for request work and
+  component contexts for workers. Bound external calls and retry waits. Shutdown must wait for owned work and release
+  resources, reporting incomplete cleanup if its deadline expires. Clean up acquired resources when initialization fails.
+  Keep concurrency limits in force until underlying work finishes, even if the caller has timed out.
 
 ## Linting
 
@@ -77,7 +82,10 @@ This file outlines conventions for the go42 project.
 
 ## Testing
 
-* Prefer `make test-*` to manually invoking tests.
+* Test observable behavior and failure paths. Keep tests requiring external services in `tests/integration` or
+  `tests/resilience`, with isolated resources, cleanup, and bounded waits. Prefer synchronization or `testing/synctest` over
+  fixed sleeps for in-process concurrency. Run focused checks during development and applicable `make test-*` targets
+  before review. Report the commands, suites, and backends tested, including relevant skips.
 * Keep unit tests for `foo.go` together in `foo_test.go` in the same directory, regardless of suite size. Do not split them
   into separate files by behavior. Use descriptive names for package-wide, integration, and fuzz tests.
 
