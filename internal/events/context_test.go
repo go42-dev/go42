@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -103,91 +104,94 @@ func TestPropagationAcceptsMissingOrInvalidMetadata(t *testing.T) {
 }
 
 func TestSubscribersKeepCorrelationThroughRetriesAndDeadLetters(t *testing.T) {
-	recorder := installEventSpanRecorder(t)
 	for _, test := range []messageDeliveryTest{
 		{name: "exhausted retries", attempts: 3},
 		{name: "permanent failure", permanent: true, attempts: 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			recorder.Reset()
-			var output eventLogBuffer
-			logger := slog.New(tools.SlogContextWrapper(slog.NewJSONHandler(&output, nil)))
-			router, backend, ctx := newContextTestRouter(t, logger)
-			deadLetters, err := backend.Subscriber().Subscribe(ctx, "failing_dlq")
-			require.NoError(t, err)
-			observations := make(chan messageContextObservation, test.attempts)
-			require.NoError(t, router.Subscribe("failing", func(ctx context.Context, payload []byte) error {
-				observations <- observeMessageContext(ctx)
-				err := errors.New("invalid event")
-				if test.permanent {
-					return events.Permanent(err)
+			synctest.Test(t, func(t *testing.T) {
+				recorder := installEventSpanRecorder(t)
+				var output eventLogBuffer
+				logger := slog.New(tools.SlogContextWrapper(slog.NewJSONHandler(&output, nil)))
+				router, backend, ctx := newContextTestRouter(t, logger)
+				deadLetters, err := backend.Subscriber().Subscribe(ctx, "failing_dlq")
+				require.NoError(t, err)
+				observations := make(chan messageContextObservation, test.attempts)
+				require.NoError(t, router.Subscribe("failing", func(ctx context.Context, payload []byte) error {
+					observations <- observeMessageContext(ctx)
+					err := errors.New("invalid event")
+					if test.permanent {
+						return events.Permanent(err)
+					}
+					return err
+				}))
+				startRouter(t, router, ctx)
+				source := trace.NewSpanContext(trace.SpanContextConfig{
+					TraceID: trace.TraceID{1}, SpanID: trace.SpanID{2}, TraceFlags: trace.FlagsSampled,
+				})
+				producer := trace.ContextWithSpanContext(t.Context(), source)
+				producer = tools.SetRequestIDToContext(producer, "request-42")
+				require.NoError(t, router.Publish(producer, "failing", "failed-event", []byte("invalid JSON")))
+				deadLetter := waitForRouterMessage(t, deadLetters)
+				deadLetter.Ack()
+				// Drain publisher completion before shutdown cancels the consumer context.
+				synctest.Wait()
+				require.NoError(t, router.Shutdown(t.Context()))
+				_, open := waitForRouterError(t, router.Errors())
+				require.False(t, open)
+
+				var consumerSpan trace.SpanContext
+				for range test.attempts {
+					var observation messageContextObservation
+					select {
+					case observation = <-observations:
+					default:
+						t.Fatal("missing delivery attempt")
+					}
+					assert.Equal(t, "request-42", observation.requestID)
+					assert.NoError(t, observation.err)
+					assert.Equal(t, source.TraceID(), observation.span.TraceID())
+					assert.NotEqual(t, source.SpanID(), observation.span.SpanID())
+					if consumerSpan.IsValid() {
+						assert.Equal(t, consumerSpan.SpanID(), observation.span.SpanID())
+					}
+					consumerSpan = observation.span
 				}
-				return err
-			}))
-			startRouter(t, router, ctx)
-			source := trace.NewSpanContext(trace.SpanContextConfig{
-				TraceID: trace.TraceID{1}, SpanID: trace.SpanID{2}, TraceFlags: trace.FlagsSampled,
+				assert.Equal(t, "request-42", deadLetter.Metadata.Get("request_id"))
+				restored := events.ContextWithPropagation(t.Context(), deadLetter.Metadata)
+				assert.Equal(t, source.TraceID(), trace.SpanContextFromContext(restored).TraceID())
+				assert.Equal(t, "invalid JSON", string(deadLetter.Payload))
+
+				retries, deadLetterLogs := 0, 0
+				for _, entry := range readEventLogs(t, &output) {
+					switch entry["msg"] {
+					case "Error occurred, retrying":
+						retries++
+					case "event moved to dead-letter topic":
+						deadLetterLogs++
+					default:
+						continue
+					}
+					assert.Equal(t, "request-42", entry["request_id"])
+					assert.Equal(t, source.TraceID().String(), entry["trace_id"])
+					assert.Equal(t, consumerSpan.SpanID().String(), entry["span_id"])
+					assert.Equal(t, deadLetter.UUID, entry["message_uuid"])
+				}
+				assert.Equal(t, test.attempts-1, retries)
+				assert.Equal(t, 1, deadLetterLogs)
+
+				spans := recorder.Ended()
+				require.Len(t, spans, 2)
+				for _, span := range spans {
+					if span.SpanKind() != trace.SpanKindConsumer {
+						continue
+					}
+					assert.Equal(t, codes.Error, span.Status().Code)
+					require.Len(t, span.Links(), 1)
+					assert.Equal(t, span.Parent().SpanID(), span.Links()[0].SpanContext.SpanID())
+					assert.Equal(t, trace.SpanContextFromContext(restored).SpanID(), span.Parent().SpanID())
+				}
 			})
-			producer := trace.ContextWithSpanContext(t.Context(), source)
-			producer = tools.SetRequestIDToContext(producer, "request-42")
-			require.NoError(t, router.Publish(producer, "failing", "failed-event", []byte("invalid JSON")))
-			deadLetter := waitForRouterMessage(t, deadLetters)
-			deadLetter.Ack()
-			require.NoError(t, router.Shutdown(t.Context()))
-			_, open := waitForRouterError(t, router.Errors())
-			require.False(t, open)
-
-			var consumerSpan trace.SpanContext
-			for range test.attempts {
-				var observation messageContextObservation
-				select {
-				case observation = <-observations:
-				default:
-					t.Fatal("missing delivery attempt")
-				}
-				assert.Equal(t, "request-42", observation.requestID)
-				assert.NoError(t, observation.err)
-				assert.Equal(t, source.TraceID(), observation.span.TraceID())
-				assert.NotEqual(t, source.SpanID(), observation.span.SpanID())
-				if consumerSpan.IsValid() {
-					assert.Equal(t, consumerSpan.SpanID(), observation.span.SpanID())
-				}
-				consumerSpan = observation.span
-			}
-			assert.Equal(t, "request-42", deadLetter.Metadata.Get("request_id"))
-			restored := events.ContextWithPropagation(t.Context(), deadLetter.Metadata)
-			assert.Equal(t, source.TraceID(), trace.SpanContextFromContext(restored).TraceID())
-			assert.Equal(t, "invalid JSON", string(deadLetter.Payload))
-
-			retries, deadLetterLogs := 0, 0
-			for _, entry := range readEventLogs(t, &output) {
-				switch entry["msg"] {
-				case "Error occurred, retrying":
-					retries++
-				case "event moved to dead-letter topic":
-					deadLetterLogs++
-				default:
-					continue
-				}
-				assert.Equal(t, "request-42", entry["request_id"])
-				assert.Equal(t, source.TraceID().String(), entry["trace_id"])
-				assert.Equal(t, consumerSpan.SpanID().String(), entry["span_id"])
-				assert.Equal(t, deadLetter.UUID, entry["message_uuid"])
-			}
-			assert.Equal(t, test.attempts-1, retries)
-			assert.Equal(t, 1, deadLetterLogs)
-
-			spans := recorder.Ended()
-			require.Len(t, spans, 2)
-			for _, span := range spans {
-				if span.SpanKind() != trace.SpanKindConsumer {
-					continue
-				}
-				assert.Equal(t, codes.Error, span.Status().Code)
-				require.Len(t, span.Links(), 1)
-				assert.Equal(t, span.Parent().SpanID(), span.Links()[0].SpanContext.SpanID())
-				assert.Equal(t, trace.SpanContextFromContext(restored).SpanID(), span.Parent().SpanID())
-			}
 		})
 	}
 }
