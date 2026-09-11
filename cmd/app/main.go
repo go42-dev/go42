@@ -580,12 +580,14 @@ func main() {
 	// It checks liveness and the health of critical dependencies like database and cache.
 	// Readiness can fail, in which case traffic should be routed away from the
 	// application until it becomes ready again.
-	readinessCtx, readinessCancel := context.WithCancel(ctx)
-	defer readinessCancel()
-	readinessCheck := func(ctx context.Context) error {
+	readinessCheck := func(checkCtx context.Context) error {
 		return errors.Join(
-			livenessCheck(ctx), readinessCtx.Err(),
-			dbEngine.Ping(ctx), cacheEngine.Ping(ctx),
+			// liveness check is a prerequisite for readiness
+			livenessCheck(checkCtx),
+			// global context, canceled upon shutdown
+			ctx.Err(),
+			// sub-systems required for normal operation
+			dbEngine.Ping(checkCtx), cacheEngine.Ping(checkCtx),
 		)
 	}
 
@@ -702,14 +704,7 @@ func main() {
 	// liveness error = application is unhealthy and should be restarted
 	go watchLiveness(
 		ctx, livenessCancel,
-		httpServer.Errors(),
-		grpcServer.Errors(),
-	)
-
-	// readiness error = application is not ready to serve traffic but may recover
-	go watchReadiness(
-		ctx, readinessCancel,
-		eventsEngine.Errors(),
+		httpServer, grpcServer, eventsEngine,
 	)
 
 	// entities passed into shutdown are processed in the same order
@@ -1098,15 +1093,13 @@ func initTracing(ctx context.Context, cfg *config.Config) ShutMeDown {
 }
 
 func watchLiveness(
-	ctx context.Context, livenessCancel context.CancelFunc, observables ...<-chan error,
+	ctx context.Context, livenessCancel context.CancelFunc,
+	httpServer *httpAPI.Server, grpcServer *grpcAPI.Server, eventsEngine *events.Router,
 ) {
-	watchErrors(ctx, livenessCancel, observables...)
-}
-
-func watchReadiness(
-	ctx context.Context, readinessCancel context.CancelFunc, observables ...<-chan error,
-) {
-	watchErrors(ctx, readinessCancel, observables...)
+	// These channels report terminal local failures that require a restart.
+	watchErrors(ctx, livenessCancel,
+		httpServer.Errors(), grpcServer.Errors(), eventsEngine.Errors(),
+	)
 }
 
 func watchErrors(

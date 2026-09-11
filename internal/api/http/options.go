@@ -66,6 +66,14 @@ func WithSwaggerRoot(root string) Option {
 	}
 }
 
+// WithLivenessCheck sets the local health check. It must return promptly and
+// must not check external dependencies. A nil check always reports healthy.
+func WithLivenessCheck(check func(context.Context) error) Option {
+	return func(s *Server) {
+		s.livenessCheck = check
+	}
+}
+
 // WithReadinessContext marks readiness as shutting down when the context is canceled.
 func WithReadinessContext(ctx context.Context) Option {
 	return func(s *Server) {
@@ -73,14 +81,6 @@ func WithReadinessContext(ctx context.Context) Option {
 			<-ctx.Done()
 			s.readyStatus.Store(ReadyStatusShuttingDown)
 		}()
-	}
-}
-
-// WithLivenessCheck sets the local health check. It must return promptly and
-// must not check external dependencies. A nil check always reports healthy.
-func WithLivenessCheck(check func(context.Context) error) Option {
-	return func(s *Server) {
-		s.livenessCheck = check
 	}
 }
 

@@ -20,7 +20,7 @@ func NewMetricsCollector() echo.MiddlewareFunc {
 			start := time.Now()
 
 			labels := map[string]interface{}{
-				"method": c.Request().Method,
+				"method": normalizeHTTPMethod(c.Request().Method),
 				"path":   c.Path(),
 			}
 
@@ -39,6 +39,17 @@ func NewMetricsCollector() echo.MiddlewareFunc {
 
 			return err
 		}
+	}
+}
+
+// normalizeHTTPMethod keeps metric labels bounded for arbitrary request methods.
+func normalizeHTTPMethod(method string) string {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut,
+		http.MethodPatch, http.MethodDelete, http.MethodConnect, http.MethodOptions, http.MethodTrace:
+		return method
+	default:
+		return "_OTHER"
 	}
 }
 
