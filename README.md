@@ -40,4 +40,4 @@ Go42 is opinionated approach to develop cloud native golang services.
 ## Documentation
 
 * [Go42 Documentation](http://go42.dev)
-* [Blueprint Documentation](docs/README.md)
+* [Blueprint Documentation](https://go42-dev.github.io/go42/)
