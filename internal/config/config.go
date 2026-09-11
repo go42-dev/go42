@@ -530,8 +530,9 @@ type Outbox struct {
 	PublishTimeout      time.Duration `env:"OUTBOX_PUBLISH_TIMEOUT"       default:"10s"  v:"gt=0"`
 	RetryInitialBackoff time.Duration `env:"OUTBOX_RETRY_INITIAL_BACKOFF" default:"5s"   v:"gt=0"`
 	RetryMaxBackoff     time.Duration `env:"OUTBOX_RETRY_MAX_BACKOFF"     default:"5m"   v:"gt=0"`
-	CleanupInterval     time.Duration `env:"OUTBOX_CLEANUP_INTERVAL"      default:"1h"   v:"gt=0"`
+	CleanupInterval     time.Duration `env:"OUTBOX_CLEANUP_INTERVAL"      default:"1m"   v:"gt=0"`
 	CleanupBatchSize    int           `env:"OUTBOX_CLEANUP_BATCH_SIZE"    default:"1000" v:"gt=0"`
+	CleanupMaxBatches   int           `env:"OUTBOX_CLEANUP_MAX_BATCHES"   default:"20"   v:"gt=0"`
 	CleanupRetention    time.Duration `env:"OUTBOX_CLEANUP_RETENTION"     default:"168h" v:"gt=0"`
 }
 

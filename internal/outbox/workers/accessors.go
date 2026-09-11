@@ -25,4 +25,5 @@ type publisher interface {
 
 type cleanupRepository interface {
 	DeleteProcessedMessages(ctx context.Context, before time.Time, limit int) (int64, error)
+	GetOldestProcessedMessageTime(ctx context.Context, before time.Time) (time.Time, bool, error)
 }

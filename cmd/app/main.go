@@ -496,11 +496,15 @@ func main() {
 		)
 		outboxCleaner := outboxWorkers.NewOutboxMessageCleaner(
 			outboxRepository,
+			outboxWorkers.OutboxMessageCleanerWithInterval(cfg.Outbox.CleanupInterval),
+			outboxWorkers.OutboxMessageCleanerWithRetention(cfg.Outbox.CleanupRetention),
+			outboxWorkers.OutboxMessageCleanerWithBatchSize(cfg.Outbox.CleanupBatchSize),
+			outboxWorkers.OutboxMessageCleanerWithMaxBatches(cfg.Outbox.CleanupMaxBatches),
 			outboxWorkers.OutboxMessageCleanerWithLogger(
 				slog.Default().With(slog.String("component", "outbox-cleaner")),
 			),
 		)
-		go outboxCleaner.Run(ctx, cfg.Outbox.CleanupInterval, cfg.Outbox.CleanupRetention, cfg.Outbox.CleanupBatchSize)
+		go outboxCleaner.Run(ctx)
 
 		// auth domain
 		authLogger := slog.Default().With(slog.String("component", "auth-service"))

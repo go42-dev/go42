@@ -157,9 +157,46 @@ func TestOutboxCleanupDefaults(t *testing.T) {
 		Environment: map[string]string{},
 	}))
 	require.NoError(t, tools.ValidateStructCompact(cfg))
-	assert.Equal(t, time.Hour, cfg.CleanupInterval)
+	assert.Equal(t, time.Minute, cfg.CleanupInterval)
 	assert.Equal(t, 7*24*time.Hour, cfg.CleanupRetention)
 	assert.Equal(t, 1000, cfg.CleanupBatchSize)
+	assert.Equal(t, 20, cfg.CleanupMaxBatches)
+}
+
+func TestOutboxCleanupConfiguration(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		environment map[string]string
+		valid       bool
+	}{
+		{
+			name: "overrides", valid: true,
+			environment: map[string]string{
+				"OUTBOX_CLEANUP_INTERVAL": "20s", "OUTBOX_CLEANUP_RETENTION": "12h",
+				"OUTBOX_CLEANUP_BATCH_SIZE": "200", "OUTBOX_CLEANUP_MAX_BATCHES": "5",
+			},
+		},
+		{name: "zero max batches", environment: map[string]string{"OUTBOX_CLEANUP_MAX_BATCHES": "0"}},
+		{name: "negative max batches", environment: map[string]string{"OUTBOX_CLEANUP_MAX_BATCHES": "-1"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var cfg config.Outbox
+			require.NoError(t, env.ParseWithOptions(&cfg, env.Options{
+				TagName: config.TagNameEnvVarName, DefaultValueTagName: config.TagNameDefaultValue,
+				Environment: test.environment,
+			}))
+			err := tools.ValidateStructCompact(cfg)
+			if !test.valid {
+				require.ErrorContains(t, err, "must be greater than 0")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, 20*time.Second, cfg.CleanupInterval)
+			assert.Equal(t, 12*time.Hour, cfg.CleanupRetention)
+			assert.Equal(t, 200, cfg.CleanupBatchSize)
+			assert.Equal(t, 5, cfg.CleanupMaxBatches)
+		})
+	}
 }
 
 func TestEventsPublisherDefaults(t *testing.T) {

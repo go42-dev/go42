@@ -106,6 +106,23 @@ func (r *Repository) DeleteProcessedMessages(ctx context.Context, before time.Ti
 	return int64(rows), nil
 }
 
+// GetOldestProcessedMessageTime uses the cleanup index to find the oldest eligible
+// timestamp. A missing row means that no processed messages are past retention.
+func (r *Repository) GetOldestProcessedMessageTime(ctx context.Context, before time.Time) (time.Time, bool, error) {
+	message, err := gorm.G[models.Message](r.GetTx(ctx)).Select("processed_at").
+		Where("status = ? AND processed_at < ?", models.MessageStatusProcessed, before.UTC()).
+		Order("processed_at ASC").
+		Order("id ASC").
+		Take(ctx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("error selecting oldest processed message: %w", err)
+	}
+	return message.ProcessedAt.Time.UTC(), true, nil
+}
+
 func (r *Repository) SaveFailedMessages(ctx context.Context, messages []models.Message) error {
 	db := r.GetTx(ctx)
 	// Select all fields so zero values also overwrite stored values.

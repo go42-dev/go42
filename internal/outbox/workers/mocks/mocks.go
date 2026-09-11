@@ -176,3 +176,19 @@ func (mr *MockcleanupRepositoryMockRecorder) DeleteProcessedMessages(ctx, before
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteProcessedMessages", reflect.TypeOf((*MockcleanupRepository)(nil).DeleteProcessedMessages), ctx, before, limit)
 }
+
+// GetOldestProcessedMessageTime mocks base method.
+func (m *MockcleanupRepository) GetOldestProcessedMessageTime(ctx context.Context, before time.Time) (time.Time, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetOldestProcessedMessageTime", ctx, before)
+	ret0, _ := ret[0].(time.Time)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetOldestProcessedMessageTime indicates an expected call of GetOldestProcessedMessageTime.
+func (mr *MockcleanupRepositoryMockRecorder) GetOldestProcessedMessageTime(ctx, before any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOldestProcessedMessageTime", reflect.TypeOf((*MockcleanupRepository)(nil).GetOldestProcessedMessageTime), ctx, before)
+}

@@ -336,6 +336,73 @@ func TestDeleteProcessedMessagesPropagatesDeleteError(t *testing.T) {
 	require.NoError(t, db.Master().WithContext(t.Context()).First(&stored, "id = ?", message.ID).Error)
 }
 
+func TestGetOldestProcessedMessageTimeFiltersAndOrders(t *testing.T) {
+	_, repo, _ := newOutboxRepository(t)
+	cutoff := time.Now().UTC().Add(-7 * 24 * time.Hour).Truncate(time.Second)
+	oldest, found, err := repo.GetOldestProcessedMessageTime(t.Context(), cutoff)
+	require.NoError(t, err)
+	assert.False(t, found)
+	assert.True(t, oldest.IsZero())
+
+	for _, test := range []struct {
+		status      string
+		processedAt sql.NullTime
+	}{
+		{status: models.MessageStatusProcessed, processedAt: sql.NullTime{Time: cutoff.Add(-time.Hour), Valid: true}},
+		{status: models.MessageStatusProcessed, processedAt: sql.NullTime{Time: cutoff.Add(-3 * time.Hour), Valid: true}},
+		{status: models.MessageStatusPending, processedAt: sql.NullTime{Time: cutoff.Add(-24 * time.Hour), Valid: true}},
+		{status: models.MessageStatusFailed, processedAt: sql.NullTime{Time: cutoff.Add(-24 * time.Hour), Valid: true}},
+		{status: models.MessageStatusProcessed, processedAt: sql.NullTime{Time: cutoff, Valid: true}},
+		{status: models.MessageStatusProcessed, processedAt: sql.NullTime{Time: cutoff.Add(time.Hour), Valid: true}},
+		{status: models.MessageStatusProcessed},
+	} {
+		message := newCleanupMessage(cutoff.Add(-30 * 24 * time.Hour))
+		message.Status, message.ProcessedAt = test.status, test.processedAt
+		require.NoError(t, repo.NewOutboxMessage(t.Context(), &message))
+	}
+	// The lookup must use the same strict cutoff and UTC normalization as deletion.
+	for _, expected := range []time.Time{cutoff.Add(-3 * time.Hour), cutoff.Add(-time.Hour)} {
+		oldest, found, err = repo.GetOldestProcessedMessageTime(
+			t.Context(),
+			cutoff.In(time.FixedZone("test", 14*60*60)),
+		)
+		require.NoError(t, err)
+		require.True(t, found)
+		assert.True(t, expected.Equal(oldest), "expected %s, got %s", expected, oldest)
+		deleted, deleteErr := repo.DeleteProcessedMessages(t.Context(), cutoff, 1)
+		require.NoError(t, deleteErr)
+		require.Equal(t, int64(1), deleted)
+	}
+	oldest, found, err = repo.GetOldestProcessedMessageTime(t.Context(), cutoff)
+	require.NoError(t, err)
+	assert.False(t, found, "only undelivered messages and retained history remain")
+	assert.True(t, oldest.IsZero())
+}
+
+func TestGetOldestProcessedMessageTimePropagatesCancellation(t *testing.T) {
+	_, repo, _ := newOutboxRepository(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	oldest, found, err := repo.GetOldestProcessedMessageTime(ctx, time.Now())
+	require.ErrorIs(t, err, context.Canceled)
+	assert.False(t, found)
+	assert.True(t, oldest.IsZero())
+}
+
+func TestGetOldestProcessedMessageTimePropagatesQueryError(t *testing.T) {
+	db, repo, _ := newOutboxRepository(t)
+	wantErr := errors.New("query unavailable")
+	callback := db.Master().Callback().Query()
+	require.NoError(t, callback.Before("gorm:query").Register("test:fail_outbox_query", func(tx *gorm.DB) {
+		_ = tx.AddError(wantErr)
+	}))
+	t.Cleanup(func() { require.NoError(t, callback.Remove("test:fail_outbox_query")) })
+	oldest, found, err := repo.GetOldestProcessedMessageTime(t.Context(), time.Now())
+	require.ErrorIs(t, err, wantErr)
+	assert.False(t, found)
+	assert.True(t, oldest.IsZero())
+}
+
 func newCleanupMessage(processedAt time.Time) models.Message {
 	return models.Message{
 		ID: uuid.New(), AggregateID: 42, AggregateType: "user.created", Topic: "auth",
