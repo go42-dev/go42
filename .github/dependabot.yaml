@@ -37,7 +37,7 @@ updates:
   # Documentation tooling is not part of the service or runtime image. Ignore
   # all of its version and security updates to avoid PRs such as #397.
   - package-ecosystem: "npm"
-    directory: "/docs/pages"
+    directory: "/pages"
     schedule:
       interval: "weekly"
     cooldown:

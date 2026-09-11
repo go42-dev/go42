@@ -29,27 +29,28 @@ jobs:
     permissions:
       contents: read
       pages: read
+    env:
+      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
+      MISE_DATA_DIR: ${{ github.workspace }}/.tools
+      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
+      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     steps:
       - name: 'Checkout repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # ----
-      - name: 'Setup Node.js'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - name: 'Install pinned Node.js'
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: docs/pages/package-lock.json
+          version: '2026.9.1'
+          install_args: --locked node
       # ----
       - name: 'Install dependencies'
-        working-directory: docs/pages
+        working-directory: pages
         run: npm ci
-      - name: 'Gather documentation from source directories'
-        working-directory: docs/pages
-        run: npm run assemble-docs
       - name: 'Build Docusaurus static files'
-        working-directory: docs/pages
+        working-directory: pages
         env:
           DOCUSAURUS_TITLE: ${{ github.event.repository.name }}
           DOCUSAURUS_URL: 'https://${{ github.repository_owner }}.github.io'
@@ -64,7 +65,7 @@ jobs:
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           name: 'github-pages'
-          path: docs/pages/build
+          path: pages/build
 
   deploy:
     name: deploy

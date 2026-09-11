@@ -10,10 +10,12 @@ const config: Config = {
   baseUrl: process.env.DOCUSAURUS_BASE_URL || '/go42/',
   favicon: 'img/go42-logo.svg',
   onBrokenLinks: 'throw',
+  onBrokenAnchors: 'throw',
   markdown: {
+    format: 'detect',
     mermaid: true,
     hooks: {
-      onBrokenMarkdownLinks: 'warn',
+      onBrokenMarkdownLinks: 'throw',
     },
   },
   i18n: {
@@ -46,7 +48,7 @@ const config: Config = {
         specs: [
           {
             id: 'api-v1',
-            spec: '../../api/openapi/v1/.combined.yaml',
+            spec: '../api/openapi/v1/.combined.yaml',
             route: '/api/v1',
           }
         ],

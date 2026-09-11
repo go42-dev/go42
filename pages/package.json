@@ -13,7 +13,10 @@
     "write-translations": "docusaurus write-translations",
     "write-heading-ids": "docusaurus write-heading-ids",
     "typecheck": "tsc",
-    "assemble-docs": "node assemble.js",
+    "assemble-docs": "node assemble.mjs",
+    "validate-docs": "node assemble.mjs --check",
+    "test": "node --test assemble.test.mjs",
+    "check": "npm run test && npm run validate-docs && npm run build && npm run typecheck",
     "prebuild": "npm run assemble-docs",
     "prestart": "npm run assemble-docs"
   },
@@ -36,7 +39,13 @@
     "@docusaurus/types": "3.10.2",
     "fs-extra": "^11.4.0",
     "glob": "^10.3.10",
-    "typescript": "~5.6.2"
+    "js-yaml": "4.3.2",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "remark-stringify": "11.0.0",
+    "typescript": "~5.6.2",
+    "unified": "11.0.5",
+    "unist-util-visit": "5.0.0"
   },
   "browserslist": {
     "production": [

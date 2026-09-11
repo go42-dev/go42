@@ -155,8 +155,8 @@ jobs:
       - name: 'Restore and save Go and golangci-lint caches'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         env:
-          LINT_CACHE_PREFIX: golangci-lint-v2-${{ runner.os }}-${{ runner.arch }}-${{
-            steps.setup-go.outputs.go-version }}-${{ steps.lint-cache.outputs.lint-version }}
+          LINT_CACHE_PREFIX: golangci-lint-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup-go.outputs.go-version }}-${{
+            steps.lint-cache.outputs.lint-version }}
         with:
           # Analysis also needs compiled Go packages, not just linter results.
           path: |-
@@ -385,9 +385,8 @@ jobs:
         run: buf format --diff --exit-code api
       - name: 'Reject breaking Protobuf changes'
         if: >-
-          ${{ !cancelled() && steps.build.outcome == 'success' &&
-          github.event_name == 'pull_request' &&
-          !contains(github.event.pull_request.labels.*.name, 'buf skip breaking') }}
+          ${{ !cancelled() && steps.build.outcome == 'success' && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name,
+          'buf skip breaking') }}
         env:
           BUF_BREAKING_BASE: ${{ github.event.pull_request.base.sha }}
         run: buf breaking api --against ".git#commit=$BUF_BREAKING_BASE,subdir=api"
@@ -433,67 +432,6 @@ jobs:
             echo "::error::oasdiff could not compare the OpenAPI specifications. See the log above for details."
           fi
           exit "$oasdiff_status"
-
-  # Markdown linter.
-  # @see https://github.com/DavidAnson/markdownlint
-  markdown-lint:
-    name: markdown-lint
-    runs-on: ${{ inputs.runs_on }}
-    continue-on-error: ${{ inputs.continue_on_error }}
-    timeout-minutes: ${{ inputs.timeout_minutes }}
-    permissions:
-      contents: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
-    # ----
-    steps:
-      - name: 'Checkout repository'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: 'Install pinned markdownlint'
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
-        with:
-          version: '2026.9.1'
-          install_args: --locked node markdownlint-cli2
-      - name: 'Run markdownlint'
-        shell: bash
-        run: markdownlint-cli2 --config etc/.markdownlint-cli2.yaml
-
-  # Prose linter.
-  # @see https://github.com/vale-cli/vale
-  writing-lint:
-    name: writing-lint
-    runs-on: ${{ inputs.runs_on }}
-    continue-on-error: ${{ inputs.continue_on_error }}
-    timeout-minutes: ${{ inputs.timeout_minutes }}
-    permissions:
-      contents: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
-    # ----
-    steps:
-      - name: 'Checkout repository'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: 'Install pinned Vale'
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
-        with:
-          version: '2026.9.1'
-          install_args: --locked vale
-      - name: 'Sync pinned Vale styles'
-        shell: bash
-        run: vale --config etc/vale.ini sync
-      - name: 'Run Vale prose linter'
-        shell: bash
-        run: vale --config etc/vale.ini README.md docs/adr docs/brd docs/core internal/ cmd/ pkg/ tests/
 
   # Linter for github actions.
   # @see https://github.com/rhysd/actionlint
@@ -549,7 +487,8 @@ jobs:
           install_args: --locked zizmor
       - name: 'Run zizmor security audit'
         shell: bash
-        run: zizmor -q --persona regular --min-severity high --min-confidence high --offline --format plain --color never --no-progress .
+        run: zizmor -q --persona regular --min-severity high --min-confidence high --offline --format plain --color never
+          --no-progress .
 
   # Linter for sql migrations.
   # @see https://github.com/sqlfluff/sqlfluff
@@ -595,8 +534,8 @@ jobs:
       - name: 'Run SQLFluff linter'
         shell: bash
         run: >-
-          sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar
-          ${{ matrix.path }} --dialect ${{ matrix.dialect }}
+          sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar ${{ matrix.path }} --dialect ${{ matrix.dialect
+          }}
 
   # Linter specific to current project.
   # This workflow checks for uncommitted changes after running 'make generate'.
@@ -661,3 +600,32 @@ jobs:
       - name: 'Run editorconfig-checker'
         shell: bash
         run: ec
+
+  # Documentation checks and website build.
+  docs-lint:
+    name: docs-lint
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    env:
+      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
+      MISE_DATA_DIR: ${{ github.workspace }}/.tools
+      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
+      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 'Install pinned documentation tools'
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: '2026.9.1'
+          install_args: --locked node markdownlint-cli2 vale
+      - name: 'Sync pinned Vale styles'
+        shell: bash
+        run: vale --config etc/vale.ini sync
+      - name: 'Check documentation and build the website'
+        run: make docs-check

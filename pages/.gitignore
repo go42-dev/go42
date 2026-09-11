@@ -13,6 +13,5 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-/docs/architecture/
-/docs/business/
-/docs/core/
+# All website content is assembled from the repository's source Markdown.
+/docs/

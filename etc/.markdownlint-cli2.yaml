@@ -8,6 +8,10 @@ config:
   # https://github.com/DavidAnson/markdownlint/blob/v0.38.0/doc/md034.md
   MD034: false
 
+  # Website metadata supplies a title; keep a visible H1 for readers in a checkout.
+  MD025:
+    front_matter_title: ""
+
   # https://github.com/DavidAnson/markdownlint/blob/v0.38.0/doc/md013.md
   MD013:
     line_length: 120
@@ -15,6 +19,6 @@ config:
     code_block_line_length: 120
 
 globs:
-  - README.md
   - docs/**/*.md
+
 gitignore: true

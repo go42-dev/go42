@@ -26,6 +26,7 @@ G0LANG PR0JECT 0PERATION BLUEPRINT
 
 Go42 is opinionated approach to develop cloud native golang services.
 
+
 ## Goals
 
 - Establish an SDLC framework that scales with project, team, and organizational growth.
@@ -35,3 +36,8 @@ Go42 is opinionated approach to develop cloud native golang services.
 - Ensure rapid and streamlined operational deployment bootstrapping.
 - Embed security fundamentals from day one.
 - Me learning a lot of new things in the process.
+
+## Documentation
+
+* [Go42 Documentation](http://go42.dev)
+* [Blueprint Documentation](docs/README.md)

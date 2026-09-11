@@ -22,7 +22,7 @@ export PATH := $(MISE_DATA_DIR)/shims:$(PATH)
 
 .PHONY: help setup setup-common setup-linters setup-generators setup-mcp
 .PHONY: test-unit test-fuzz test-integration test-resilience test-load
-.PHONY: run run-docker debug build image lint generate serve-docs
+.PHONY: run run-docker debug build image lint generate docs-check docs-serve
 .PHONY: check-env generate-migration-id generate-dep-graph grpcui show-asm
 
 help: Makefile
@@ -41,7 +41,7 @@ setup-common:
 	@mise install --locked \
 		node jq yq python uv
 
-## setup-linters | install code linters
+## setup-linters | install linters
 setup-linters:
 	@mise install --locked \
 		actionlint \
@@ -228,16 +228,20 @@ image:
 	-t ghcr.io/go42-dev/go42:dev \
 	.
 
-## lint | run all validation tools
+## lint | run code and project linters
 lint:
 	@commitlint --config etc/.commitlintrc.yaml \
 		--extends "$$(mise where npm:@commitlint/config-conventional)/node_modules/@commitlint/config-conventional/lib/index.js" \
 		--from origin/master --to HEAD --verbose
 	@golangci-lint config verify --config etc/.golangci.yml
 	@golangci-lint run --config etc/.golangci.yml
-	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/sqlite/*.sql --dialect sqlite
-	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/mysql/*.sql --dialect mysql
-	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/pgsql/*.sql --dialect postgres
+	@go vet -vettool="$$(mise which nilaway)" \
+		-include-pkgs=github.com/go42-dev/go42 \
+		-exclude-file-docstrings='Code generated' \
+		-include-errors-in-files="$$(pwd -P)" \
+		-pretty-print=false \
+		-print-full-file-path=true \
+		./... || true
 	@gosec -terse -exclude-generated ./...
 	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 govulncheck ./cmd/app
 	@CGO_ENABLED=0 GOOS=linux GOARCH=arm64 govulncheck ./cmd/app
@@ -246,6 +250,9 @@ lint:
 		"$$(git rev-parse origin/master)" . ./...
 	@mise exec -- capslock-git-diff -granularity=package -capabilities= \
 		. "$$(git rev-parse origin/master)" ./...
+	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/sqlite/*.sql --dialect sqlite
+	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/mysql/*.sql --dialect mysql
+	@sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar migrate/pgsql/*.sql --dialect postgres
 	@checkmake --config etc/checkmake.ini Makefile
 	@hadolint --failure-threshold info Dockerfile
 	@helm lint --strict infra/helm/app --set-string image.tag=ci-validation
@@ -258,18 +265,9 @@ lint:
 	@buf format --diff --exit-code api
 	@buf breaking api --against ".git#commit=$$(git rev-parse origin/master),subdir=api"
 	@gitleaks git --config etc/gitleaks.toml --no-banner --redact -v
-	@markdownlint-cli2 --config etc/.markdownlint-cli2.yaml
-	@vale --config etc/vale.ini README.md docs/adr docs/brd docs/core internal/ cmd/ pkg/ tests/
 	@actionlint -oneline --config-file etc/actionlint.yaml
 	@zizmor -q --persona regular --min-severity high --min-confidence high --offline --format plain --color never --no-progress .
 	@ec
-	@go vet -vettool="$$(mise which nilaway)" \
-		-include-pkgs=github.com/go42-dev/go42 \
-		-exclude-file-docstrings='Code generated' \
-		-include-errors-in-files="$$(pwd -P)" \
-		-pretty-print=false \
-		-print-full-file-path=true \
-		./... || true
 
 ## generate | generate code for all modules
 # Side effects of this command should to be commited.
@@ -282,11 +280,22 @@ generate:
 	@REDOCLY_SUPPRESS_UPDATE_NOTICE=true REDOCLY_TELEMETRY=false redocly join api/openapi/v1/*.yaml -o api/openapi/v1/.combined.yaml
 	@yq eval '.info.title = "v1 combined specification"' -i api/openapi/v1/.combined.yaml
 
-## docs | serve documentation
-serve-docs:
-	@npm --prefix docs/pages install
-	@npm --prefix docs/pages run build
-	@npm --prefix docs/pages run serve
+# ╭────────────────────----------------──────────╮
+# │                Documentation                 │
+# ╰─────────────────────----------------─────────╯
+
+## docs-check | validate documentation
+docs-check:
+	@markdownlint-cli2 --config etc/.markdownlint-cli2.yaml
+	@vale --config etc/vale.ini docs/
+	@npm --prefix pages ci --no-audit --no-fund
+	@npm --prefix pages run check
+
+## docs-serve | build and serve documentation locally
+docs-serve:
+	@npm --prefix pages ci --no-audit --no-fund
+	@npm --prefix pages run build
+	@npm --prefix pages run serve
 
 # ╭────────────────────----------------──────────╮
 # │                Miscellaneous                 │
@@ -315,10 +324,3 @@ generate-dep-graph:
 #   * brew install grpcui
 grpcui:
 	@grpcui -plaintext localhost:9090
-
-## show-asm | visualise assembly
-# Dependencies:
-#   * go install loov.dev/lensm@main
-# Usage: FILTER={regex} make show-asm
-show-asm: build
-	@lensm -watch -text-size 22 -filter $(FILTER) .build/app
