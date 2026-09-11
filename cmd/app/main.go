@@ -699,12 +699,14 @@ func main() {
 		_ = grpcServer.Serve(cfg.Server.GRPC.Listen)
 	}()
 
+	// liveness error = application is unhealthy and should be restarted
 	go watchLiveness(
 		ctx, livenessCancel,
 		httpServer.Errors(),
 		grpcServer.Errors(),
 	)
 
+	// readiness error = application is not ready to serve traffic but may recover
 	go watchReadiness(
 		ctx, readinessCancel,
 		eventsEngine.Errors(),

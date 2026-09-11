@@ -2,6 +2,7 @@ package workers
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/go42-dev/go42/internal/outbox/models"
@@ -10,7 +11,9 @@ import (
 //go:generate mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
 
 type repository interface {
-	WithTransaction(ctx context.Context, fn func(txCtx context.Context) error) error
+	WithTransactionIsolation(
+		ctx context.Context, isolationLvl sql.IsolationLevel, fn func(txCtx context.Context) error,
+	) error
 	GetUnprocessedMessages(ctx context.Context, limit int) ([]models.Message, error)
 	SaveProcessedMessages(ctx context.Context, messages []models.Message) error
 	SaveFailedMessages(ctx context.Context, messages []models.Message) error

@@ -4,6 +4,7 @@ package resilience
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -368,8 +369,10 @@ type outboxBatchRepository struct {
 	afterTransaction func(error)
 }
 
-func (r *outboxBatchRepository) WithTransaction(ctx context.Context, fn func(context.Context) error) error {
-	err := r.Repository.WithTransaction(ctx, fn)
+func (r *outboxBatchRepository) WithTransactionIsolation(
+	ctx context.Context, isolationLvl sql.IsolationLevel, fn func(context.Context) error,
+) error {
+	err := r.Repository.WithTransactionIsolation(ctx, isolationLvl, fn)
 	r.afterTransaction(err)
 	return err
 }

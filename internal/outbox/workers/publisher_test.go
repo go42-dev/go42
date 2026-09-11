@@ -3,6 +3,7 @@ package workers
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,11 +41,14 @@ func TestOutboxPublisherRestoresContextFromMetadata(t *testing.T) {
 	secondCtx := tools.SetRequestIDToContext(trace.ContextWithSpanContext(t.Context(), secondSpan), "second-request")
 	first.Metadata = events.PropagationFromContext(firstCtx)
 	second.Metadata = events.PropagationFromContext(secondCtx)
-	workerCtx := context.WithValue(t.Context(), outboxWorkerContextKey{}, "transaction")
-	workerCtx, cancel := context.WithCancel(workerCtx)
+	workerCtx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	expectOutboxTransaction(repository)
-	repository.EXPECT().GetUnprocessedMessages(gomock.Any(), 10).Return([]models.Message{first, second}, nil)
+	txCtx := context.WithValue(workerCtx, outboxWorkerContextKey{}, "transaction")
+	repository.EXPECT().WithTransactionIsolation(workerCtx, sql.LevelReadCommitted, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ sql.IsolationLevel, fn func(context.Context) error) error {
+			return fn(txCtx)
+		})
+	repository.EXPECT().GetUnprocessedMessages(txCtx, 10).Return([]models.Message{first, second}, nil)
 	var contexts []context.Context
 	publisher.EXPECT().Publish(gomock.Any(), first.Topic, gomock.Any(), gomock.Any()).Times(2).
 		DoAndReturn(func(ctx context.Context, _ string, id string, payload []byte) error {
@@ -67,7 +71,7 @@ func TestOutboxPublisherRestoresContextFromMetadata(t *testing.T) {
 			contexts = append(contexts, ctx)
 			return nil
 		})
-	repository.EXPECT().SaveProcessedMessages(gomock.Any(), gomock.Any()).Return(nil)
+	repository.EXPECT().SaveProcessedMessages(txCtx, gomock.Any()).Return(nil)
 	require.NoError(t, worker.run(workerCtx, 10))
 	assert.Empty(t, tools.GetRequestIDFromContext(workerCtx))
 	cancel()
@@ -202,8 +206,9 @@ func TestOutboxPublisherRunsOneBatchPerTick(t *testing.T) {
 		publisher := mocks.NewMockpublisher(ctrl)
 		worker := NewOutboxMessagePublisher(repository, publisher)
 		first, second := newOutboxTestMessage(), newOutboxTestMessage()
-		repository.EXPECT().WithTransaction(ctx, gomock.Any()).
-			DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) }).Times(3)
+		repository.EXPECT().WithTransactionIsolation(ctx, sql.LevelReadCommitted, gomock.Any()).
+			DoAndReturn(func(ctx context.Context, _ sql.IsolationLevel, fn func(context.Context) error) error { return fn(ctx) }).
+			Times(3)
 		gomock.InOrder(
 			repository.EXPECT().GetUnprocessedMessages(ctx, 1).Return([]models.Message{first}, nil),
 			publisher.EXPECT().Publish(gomock.Any(), first.Topic, first.ID.String(), gomock.Any()).Return(nil),
@@ -254,19 +259,22 @@ func TestOutboxPublisherRetriesFailedRunsAtNextInterval(t *testing.T) {
 				))
 				message := newOutboxTestMessage()
 				storageError := errors.New("storage unavailable")
-				firstTransaction := repository.EXPECT().WithTransaction(ctx, gomock.Any())
+				firstTransaction := repository.EXPECT().
+					WithTransactionIsolation(ctx, sql.LevelReadCommitted, gomock.Any())
 				if stage == "begin transaction" {
 					firstTransaction.Return(storageError)
 				} else {
-					firstTransaction.DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error {
-						err := fn(ctx)
-						if stage == "commit transaction" {
-							assert.NoError(t, err)
-							return storageError
-						}
-						assert.ErrorIs(t, err, storageError)
-						return err
-					})
+					firstTransaction.DoAndReturn(
+						func(ctx context.Context, _ sql.IsolationLevel, fn func(context.Context) error) error {
+							err := fn(ctx)
+							if stage == "commit transaction" {
+								assert.NoError(t, err)
+								return storageError
+							}
+							assert.ErrorIs(t, err, storageError)
+							return err
+						},
+					)
 					switch stage {
 					case "read messages":
 						repository.EXPECT().GetUnprocessedMessages(ctx, 10).Return(nil, storageError)
@@ -300,8 +308,10 @@ func TestOutboxPublisherRetriesFailedRunsAtNextInterval(t *testing.T) {
 							})
 					}
 				}
-				repository.EXPECT().WithTransaction(ctx, gomock.Any()).After(firstTransaction).
-					DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) })
+				repository.EXPECT().
+					WithTransactionIsolation(ctx, sql.LevelReadCommitted, gomock.Any()).
+					After(firstTransaction).
+					DoAndReturn(func(ctx context.Context, _ sql.IsolationLevel, fn func(context.Context) error) error { return fn(ctx) })
 				repository.EXPECT().GetUnprocessedMessages(ctx, 10).Return([]models.Message{message}, nil)
 				publisher.EXPECT().
 					Publish(gomock.Any(), message.Topic, message.ID.String(), gomock.Any()).
@@ -357,8 +367,8 @@ func TestOutboxPublisherPreservesTransactionErrors(t *testing.T) {
 			repository := mocks.NewMockrepository(ctrl)
 			worker := NewOutboxMessagePublisher(repository, mocks.NewMockpublisher(ctrl))
 			wantErr := errors.New("transaction unavailable")
-			repository.EXPECT().WithTransaction(t.Context(), gomock.Any()).
-				DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error {
+			repository.EXPECT().WithTransactionIsolation(t.Context(), sql.LevelReadCommitted, gomock.Any()).
+				DoAndReturn(func(ctx context.Context, _ sql.IsolationLevel, fn func(context.Context) error) error {
 					if stage == "commit" {
 						assert.NoError(t, fn(ctx))
 					}
@@ -435,8 +445,8 @@ func TestOutboxPublisherCancelsActivePublishWithoutConsumingRetry(t *testing.T) 
 					OutboxMessagePublisherWithPublishTimeout(time.Hour),
 				)
 				first, second := newOutboxTestMessage(), newOutboxTestMessage()
-				repository.EXPECT().WithTransaction(ctx, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error {
+				repository.EXPECT().WithTransactionIsolation(ctx, sql.LevelReadCommitted, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, _ sql.IsolationLevel, fn func(context.Context) error) error {
 						err := fn(ctx)
 						assert.ErrorIs(t, err, test.wantErr)
 						return err
@@ -540,8 +550,8 @@ func assertOutboxPublishFailure(
 }
 
 func expectOutboxTransaction(repository *mocks.Mockrepository) {
-	repository.EXPECT().WithTransaction(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error {
+	repository.EXPECT().WithTransactionIsolation(gomock.Any(), sql.LevelReadCommitted, gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _ sql.IsolationLevel, fn func(context.Context) error) error {
 			return fn(ctx)
 		})
 }

@@ -77,7 +77,13 @@ func (r *BaseRepository) Rollback(ctx context.Context) error {
 }
 
 func (r *BaseRepository) WithTransaction(ctx context.Context, fn func(txCtx context.Context) error) error {
-	txCtx, err := r.Begin(ctx, sql.LevelDefault)
+	return r.WithTransactionIsolation(ctx, sql.LevelDefault, fn)
+}
+
+func (r *BaseRepository) WithTransactionIsolation(
+	ctx context.Context, isolationLvl sql.IsolationLevel, fn func(txCtx context.Context) error,
+) error {
+	txCtx, err := r.Begin(ctx, isolationLvl)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}

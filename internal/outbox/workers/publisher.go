@@ -77,7 +77,8 @@ func (p *OutboxMessagePublisher) Run(
 }
 
 func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
-	err := p.repository.WithTransaction(ctx, func(txCtx context.Context) error {
+	// Allow concurrent enqueues while row locks protect the selected batch.
+	err := p.repository.WithTransactionIsolation(ctx, sql.LevelReadCommitted, func(txCtx context.Context) error {
 		p.logger.DebugContext(txCtx, "running outbox publisher job")
 
 		messages, err := p.repository.GetUnprocessedMessages(txCtx, batchSize)

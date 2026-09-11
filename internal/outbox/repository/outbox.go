@@ -43,7 +43,8 @@ func (r *Repository) GetUnprocessedMessages(ctx context.Context, limit int) ([]m
 		Where("next_attempt_at IS NULL OR next_attempt_at <= ?", time.Now().UTC()).
 		Order("created_at ASC").
 		Order("id ASC").
-		Limit(limit).Find(ctx)
+		Limit(limit).
+		Find(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching messages: %w", err)
 	}

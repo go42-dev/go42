@@ -11,6 +11,7 @@ package mocks
 
 import (
 	context "context"
+	sql "database/sql"
 	reflect "reflect"
 	time "time"
 
@@ -85,18 +86,18 @@ func (mr *MockrepositoryMockRecorder) SaveProcessedMessages(ctx, messages any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveProcessedMessages", reflect.TypeOf((*Mockrepository)(nil).SaveProcessedMessages), ctx, messages)
 }
 
-// WithTransaction mocks base method.
-func (m *Mockrepository) WithTransaction(ctx context.Context, fn func(context.Context) error) error {
+// WithTransactionIsolation mocks base method.
+func (m *Mockrepository) WithTransactionIsolation(ctx context.Context, isolationLvl sql.IsolationLevel, fn func(context.Context) error) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WithTransaction", ctx, fn)
+	ret := m.ctrl.Call(m, "WithTransactionIsolation", ctx, isolationLvl, fn)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// WithTransaction indicates an expected call of WithTransaction.
-func (mr *MockrepositoryMockRecorder) WithTransaction(ctx, fn any) *gomock.Call {
+// WithTransactionIsolation indicates an expected call of WithTransactionIsolation.
+func (mr *MockrepositoryMockRecorder) WithTransactionIsolation(ctx, isolationLvl, fn any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithTransaction", reflect.TypeOf((*Mockrepository)(nil).WithTransaction), ctx, fn)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithTransactionIsolation", reflect.TypeOf((*Mockrepository)(nil).WithTransactionIsolation), ctx, isolationLvl, fn)
 }
 
 // Mockpublisher is a mock of publisher interface.

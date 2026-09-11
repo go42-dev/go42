@@ -227,6 +227,51 @@ func rejectOutboxRetries(t *testing.T, db database.Database) {
 	})
 }
 
+func TestOutboxPublisherAllowsConcurrentEnqueue(t *testing.T) {
+	db, repo := newOutboxPublisherDatabase(t)
+	if db.Master().Name() == "sqlite" {
+		t.Skip("concurrent writers require PostgreSQL or MySQL")
+	}
+	entry := newOutboxTestMessage()
+	require.NoError(t, repo.NewOutboxMessage(t.Context(), &entry))
+	entered, released := make(chan struct{}), make(chan struct{})
+	release := sync.OnceFunc(func() { close(released) })
+	defer release()
+	router := newOutboxTestRouter(t, func(_ string, _ ...*message.Message) error {
+		close(entered)
+		<-released
+		return nil
+	})
+	worker := workers.NewOutboxMessagePublisher(repo, router)
+	// Scan beyond the current queue so the test also covers locks on the insertion gap.
+	done := startOutboxPublisher(t, t.Context(), repo, worker, 1000)
+	waitForOutboxPublishSignal(t, entered)
+
+	next := newOutboxTestMessage()
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	producer := database.NewBaseRepository(db)
+	err := producer.WithTransaction(ctx, func(txCtx context.Context) error {
+		return repo.NewOutboxMessage(txCtx, &next)
+	})
+	require.NoError(t, err, "enqueue must commit while the publisher holds its current batch")
+	select {
+	case err := <-done:
+		t.Fatalf("publisher returned before its blocked publish was released: %v", err)
+	default:
+	}
+
+	release()
+	require.NoError(t, waitForOutboxRun(t, done))
+	pending, err := repo.GetUnprocessedMessages(t.Context(), 1000)
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+	require.Equal(t, next.ID, pending[0].ID, "new messages must remain available for the next batch")
+	var processed models.Message
+	require.NoError(t, db.Master().WithContext(t.Context()).First(&processed, "id = ?", entry.ID).Error)
+	require.Equal(t, models.MessageStatusProcessed, processed.Status)
+}
+
 func TestOutboxConcurrentPublishersProcessDisjointBatches(t *testing.T) {
 	db, first := newOutboxPublisherDatabase(t)
 	if db.Master().Name() == "sqlite" {
@@ -297,8 +342,10 @@ type publisherTestRepository struct {
 	afterTransaction func(error)
 }
 
-func (r *publisherTestRepository) WithTransaction(ctx context.Context, fn func(context.Context) error) error {
-	err := r.Repository.WithTransaction(ctx, fn)
+func (r *publisherTestRepository) WithTransactionIsolation(
+	ctx context.Context, isolationLvl sql.IsolationLevel, fn func(context.Context) error,
+) error {
+	err := r.Repository.WithTransactionIsolation(ctx, isolationLvl, fn)
 	r.afterTransaction(err)
 	return err
 }
