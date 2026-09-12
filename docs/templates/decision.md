@@ -22,9 +22,10 @@ Describe credible options and the tradeoffs that matter here.
 
 ## Decision
 
-State the proposed or agreed choice and why it fits. Identify unknown historical reasoning when recording an earlier
-choice.
+State the proposed or agreed choice and why it fits. For an accepted choice, identify the recorded maintainer decision
+or delegated agreement. Identify unknown historical reasoning when recording an earlier choice.
 
 ## Consequences
 
-Describe benefits, costs, limitations, and obligations. Link current implementation or migration details where useful.
+Describe benefits, costs, limitations, and obligations. Link current implementation, compatibility, or migration details
+to their owning handbook page. Distinguish demonstrated effects from outcomes that still need verification.

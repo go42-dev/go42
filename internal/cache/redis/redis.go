@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/avast/retry-go/v4"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/go42-dev/go42/internal/tools"
@@ -17,16 +16,8 @@ type Wrapper struct {
 	logger *slog.Logger
 	client *redis.Client
 
-	connectRetryTimeout        time.Duration
-	connectRetryInitialBackoff time.Duration
-	connectRetryMaxBackoff     time.Duration
+	connectRetry tools.StartupRetryPolicy
 }
-
-const (
-	defaultConnectRetryTimeout        = time.Minute
-	defaultConnectRetryInitialBackoff = 500 * time.Millisecond
-	defaultConnectRetryMaxBackoff     = 5 * time.Second
-)
 
 // allowRateLimitScript implements GCRA atomically inside Redis.
 var allowRateLimitScript = redis.NewScript(`
@@ -53,9 +44,7 @@ return 1
 
 func Open(ctx context.Context, host string, db int, opts ...Option) (*Wrapper, error) {
 	w := &Wrapper{
-		connectRetryTimeout:        defaultConnectRetryTimeout,
-		connectRetryInitialBackoff: defaultConnectRetryInitialBackoff,
-		connectRetryMaxBackoff:     defaultConnectRetryMaxBackoff,
+		connectRetry: tools.DefaultStartupRetryPolicy(),
 	}
 
 	cfg := &redis.Options{
@@ -69,45 +58,25 @@ func Open(ctx context.Context, host string, db int, opts ...Option) (*Wrapper, e
 		w.logger = slog.New(slog.DiscardHandler)
 	}
 
-	retryCtx, cancel := context.WithTimeout(ctx, w.connectRetryTimeout)
-	defer cancel()
-
-	rdb, err := retry.DoWithData[*redis.Client](func() (*redis.Client, error) {
+	err := w.connectRetry.Do(ctx, "redis", w.logger, func(attemptCtx context.Context) error {
 		rdb := redis.NewClient(cfg)
-		if err := rdb.Ping(retryCtx).Err(); err != nil {
+		if err := rdb.Ping(attemptCtx).Err(); err != nil {
 			pingErr := fmt.Errorf("failed to ping redis: %w", err)
 			if closeErr := rdb.Close(); closeErr != nil {
-				return nil, errors.Join(
+				return errors.Join(
 					pingErr,
 					fmt.Errorf("failed to close redis client: %w", closeErr),
 				)
 			}
-			return nil, pingErr
+			return pingErr
 		}
-		return rdb, nil
-	},
-		retry.Context(retryCtx),
-		retry.Attempts(0),
-		retry.Delay(w.connectRetryInitialBackoff),
-		retry.MaxDelay(w.connectRetryMaxBackoff),
-		retry.DelayType(retry.FullJitterBackoffDelay),
-		retry.WrapContextErrorWithLastError(true),
-		retry.OnRetry(func(n uint, err error) {
-			if retryCtx.Err() == nil {
-				w.logger.WarnContext(
-					ctx,
-					"cache connection attempt failed, retrying...",
-					slog.Any("attempt", n+1),
-					slog.Any("error", err),
-				)
-			}
-		}),
-	)
+		w.client = rdb
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	w.client = rdb
 	return w, nil
 }
 

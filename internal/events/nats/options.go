@@ -17,12 +17,6 @@ func WithConsumerBindings(bindings map[string]ConsumerBinding) Option {
 	}
 }
 
-func WithConsumerBindingsJSON(bindings string) Option {
-	return func(engine *NATS, _ *nats.PublisherConfig, _ *nats.SubscriberConfig) {
-		engine.consumerBindingsJSON = bindings
-	}
-}
-
 func WithTLSEnabled(enabled bool) Option {
 	return func(engine *NATS, _ *nats.PublisherConfig, _ *nats.SubscriberConfig) {
 		engine.tlsEnabled = enabled
@@ -89,14 +83,14 @@ func WithConnectTimeout(timeout time.Duration) Option {
 
 func WithConnectRetryTimeout(timeout time.Duration) Option {
 	return func(n *NATS, pubCfg *nats.PublisherConfig, subCfg *nats.SubscriberConfig) {
-		n.connectRetryTimeout = timeout
+		n.connectRetry.Timeout = timeout
 	}
 }
 
 func WithConnectRetryBackoff(initial time.Duration, max time.Duration) Option {
 	return func(n *NATS, pubCfg *nats.PublisherConfig, subCfg *nats.SubscriberConfig) {
-		n.connectRetryInitialBackoff = initial
-		n.connectRetryMaxBackoff = max
+		n.connectRetry.InitialBackoff = initial
+		n.connectRetry.MaxBackoff = max
 	}
 }
 

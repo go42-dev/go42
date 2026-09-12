@@ -27,8 +27,10 @@ Add stable numbered criteria as needed.
 
 ## Verification
 
-For each criterion, record verification evidence and any remaining implementation or verification gap.
+For each criterion, link the check or source and record its relevant environment/backend, observed result, and remaining
+implementation or verification gap. Distinguish inspected source, automated tests, manual observations, and untested plans.
+Passing one backend's tests does not establish behavior on another. Keep detailed run logs with the task.
 
-| Criterion | Evidence or gap |
-| --- | --- |
-| REQ-NNN.1 | Link a test or check and its result, or describe missing implementation or verification. |
+| Criterion | Evidence or gap                                                                                              |
+|-----------|--------------------------------------------------------------------------------------------------------------|
+| REQ-NNN.1 | Link a test/check or source; state its scope and result, or describe missing implementation or verification. |

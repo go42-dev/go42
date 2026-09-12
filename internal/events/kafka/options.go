@@ -41,14 +41,14 @@ func WithLogger(logger *slog.Logger) Option {
 
 func WithConnectRetryTimeout(timeout time.Duration) Option {
 	return func(k *Kafka, pubCfg *sarama.Config, subCfg *sarama.Config) {
-		k.connectRetryTimeout = timeout
+		k.connectRetry.Timeout = timeout
 	}
 }
 
 func WithConnectRetryBackoff(initial time.Duration, max time.Duration) Option {
 	return func(k *Kafka, pubCfg *sarama.Config, subCfg *sarama.Config) {
-		k.connectRetryInitialBackoff = initial
-		k.connectRetryMaxBackoff = max
+		k.connectRetry.InitialBackoff = initial
+		k.connectRetry.MaxBackoff = max
 	}
 }
 

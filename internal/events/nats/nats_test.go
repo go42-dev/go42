@@ -12,7 +12,8 @@ import (
 func TestNATSRejectsInvalidOptionsBeforeConnecting(t *testing.T) {
 	for _, option := range []Option{
 		WithConnectTimeout(0), WithPublishAckTimeout(0), WithSubAckTimeout(0), WithSubWorkerCount(0),
-		WithConsumerBindingsJSON(`{"auth":{"stream":"events"}}`), WithConsumerBindingsJSON(`invalid`),
+		WithConnectRetryTimeout(0), WithConnectRetryBackoff(time.Second, time.Millisecond),
+		WithConsumerBindings(map[string]ConsumerBinding{"auth": {Stream: "events"}}),
 		WithTLSConfig("", "client.pem", "", ""),
 	} {
 		ctx, cancel := context.WithCancel(t.Context())

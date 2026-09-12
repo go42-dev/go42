@@ -211,11 +211,42 @@ func TestEventsPublisherDefaults(t *testing.T) {
 	assert.Equal(t, 5*time.Second, cfg.Kafka.ProducerTimeout)
 	assert.Equal(t, 5*time.Second, cfg.Kafka.ProducerMetadataTimeout)
 	assert.Equal(t, 3, cfg.Kafka.ProducerRetryMax)
+	assert.Nil(t, cfg.NATS.ConsumerBindings)
 	assert.False(t, cfg.NATS.JetStream.AutoProvision)
 	assert.False(t, cfg.RabbitMQ.AutoProvision)
 	assert.False(t, cfg.Kafka.TopicAutoCreation)
-	assert.True(t, cfg.RabbitMQ.PublishMandatory)
 	assert.EqualValues(t, -2, cfg.Kafka.ConsumerOffsetInitial)
+}
+
+func TestConfigParsesNATSConsumerBindings(t *testing.T) {
+	clearConfigEnvironment(t)
+	t.Setenv("EVENTS_ENGINE", "nats")
+	for _, test := range []struct {
+		name, value string
+		want        config.NATSConsumerBindings
+	}{
+		{name: "empty"},
+		{name: "null", value: "null"},
+		{name: "empty object", value: "{}", want: config.NATSConsumerBindings{}},
+		{
+			name: "topic bindings",
+			value: `{
+				"auth_events": {"stream": "events", "consumer": "auth"},
+				"orders.created": {"stream": "orders", "consumer": "billing"}
+			}`,
+			want: config.NATSConsumerBindings{
+				"auth_events":    {Stream: "events", Consumer: "auth"},
+				"orders.created": {Stream: "orders", Consumer: "billing"},
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("NATS_CONSUMER_BINDINGS", test.value)
+			cfg, err := config.New()
+			require.NoError(t, err)
+			assert.Equal(t, test.want, cfg.Events.NATS.ConsumerBindings)
+		})
+	}
 }
 
 type brokerConfigTestCase struct {
@@ -227,7 +258,6 @@ func TestConfigRejectsUnsafeBrokerSettings(t *testing.T) {
 	for _, test := range []brokerConfigTestCase{
 		{"zero connection timeout", map[string]string{"RABBITMQ_CONNECT_TIMEOUT": "0s"}},
 		{"unlimited prefetch", map[string]string{"RABBITMQ_CONSUME_PREFETCH_COUNT": "0"}},
-		{"unconfirmed routing", map[string]string{"RABBITMQ_PUBLISH_MANDATORY": "false"}},
 		{"bad compression", map[string]string{"KAFKA_PRODUCER_COMPRESSION": "invalid"}},
 		{"bad offsets", map[string]string{"KAFKA_CONSUMER_OFFSET_INITIAL": "1"}},
 		{"bad heartbeat", map[string]string{"KAFKA_CONSUMER_HEARTBEAT_INTERVAL": "20s"}},
@@ -239,7 +269,7 @@ func TestConfigRejectsUnsafeBrokerSettings(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			switch test.name {
-			case "unconfirmed routing", "bad heartbeat", "incomplete SASL", "conflicting NATS auth",
+			case "bad heartbeat", "incomplete SASL", "conflicting NATS auth",
 				"TLS disabled with files", "incomplete mTLS", "invalid retry range":
 				t.Skip("temporarily accepted: config.New no longer performs this broker validation")
 			}
@@ -315,6 +345,11 @@ func TestConfigRejectsMalformedEnvironment(t *testing.T) {
 		{"unsigned integer", "CACHE_LOCAL_CAPACITY", "-1", "Capacity"},
 		{"unsigned overflow", "CACHE_LOCAL_MAX_COST_BYTES", "18446744073709551616", "MaxCostBytes"},
 		{"float", "TRACING_SAMPLING_RATE", "many", "SamplingRate"},
+		{"NATS invalid JSON", "NATS_CONSUMER_BINDINGS", "{", "ConsumerBindings"},
+		{"NATS array", "NATS_CONSUMER_BINDINGS", "[]", "ConsumerBindings"},
+		{"NATS quoted object", "NATS_CONSUMER_BINDINGS", `"{}"`, "ConsumerBindings"},
+		{"NATS invalid stream", "NATS_CONSUMER_BINDINGS", `{"auth":{"stream":1}}`, "ConsumerBindings"},
+		{"NATS invalid consumer", "NATS_CONSUMER_BINDINGS", `{"auth":{"consumer":true}}`, "ConsumerBindings"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv(test.key, test.value)

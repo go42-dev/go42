@@ -14,6 +14,7 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/go-sql-driver/mysql"
 
+	"github.com/go42-dev/go42/internal/events/nats"
 	"github.com/go42-dev/go42/internal/tools"
 )
 
@@ -379,20 +380,34 @@ type EventsConsumer struct {
 }
 
 type EventsNATS struct {
-	DSN              string        `env:"NATS_DSN"               default:"nats://localhost:4222"`
-	ClientName       string        `env:"NATS_CLIENT_NAME"       default:""`
-	Token            string        `env:"NATS_TOKEN"             default:""`
-	User             string        `env:"NATS_USER"              default:""`
-	Password         string        `env:"NATS_PASSWORD"          default:""`
-	CredentialsFile  string        `env:"NATS_CREDENTIALS_FILE"  default:""`
-	ConsumerBindings string        `env:"NATS_CONSUMER_BINDINGS" default:""`
-	ConnTimeout      time.Duration `env:"NATS_CONN_TIMEOUT"      default:"5s"                    v:"gt=0"`
-	ConnRetry        bool          `env:"NATS_CONN_RETRY"        default:"false"`
-	MaxRetry         int           `env:"NATS_MAX_RETRY"         default:"-1"                    v:"gte=-1"`
-	RetryDelay       time.Duration `env:"NATS_RETRY_DELAY"       default:"1s"                    v:"gt=0"`
+	DSN              string               `env:"NATS_DSN"               default:"nats://localhost:4222"`
+	ClientName       string               `env:"NATS_CLIENT_NAME"       default:""`
+	Token            string               `env:"NATS_TOKEN"             default:""`
+	User             string               `env:"NATS_USER"              default:""`
+	Password         string               `env:"NATS_PASSWORD"          default:""`
+	CredentialsFile  string               `env:"NATS_CREDENTIALS_FILE"  default:""`
+	ConsumerBindings NATSConsumerBindings `env:"NATS_CONSUMER_BINDINGS" default:""`
+	ConnTimeout      time.Duration        `env:"NATS_CONN_TIMEOUT"      default:"5s"                    v:"gt=0"`
+	ConnRetry        bool                 `env:"NATS_CONN_RETRY"        default:"false"`
+	MaxRetry         int                  `env:"NATS_MAX_RETRY"         default:"-1"                    v:"gte=-1"`
+	RetryDelay       time.Duration        `env:"NATS_RETRY_DELAY"       default:"1s"                    v:"gt=0"`
 	JetStream        EventsNATSJetStream
 	Publisher        EventsNATSPublisher
 	Subscriber       EventsNATSSubscriber
+}
+
+type NATSConsumerBindings map[string]nats.ConsumerBinding
+
+// UnmarshalText decodes the JSON object supplied by NATS_CONSUMER_BINDINGS.
+func (b *NATSConsumerBindings) UnmarshalText(text []byte) error {
+	var bindings map[string]nats.ConsumerBinding
+	if len(text) > 0 {
+		if err := json.Unmarshal(text, &bindings); err != nil {
+			return err
+		}
+	}
+	*b = bindings
+	return nil
 }
 
 type EventsNATSJetStream struct {
@@ -417,8 +432,6 @@ type EventsRabbitMQ struct {
 	ReconnectInitialInterval time.Duration `env:"RABBITMQ_RECONNECT_INITIAL_INTERVAL" default:"500ms"                              v:"gt=0"`
 	ReconnectMultiplier      float64       `env:"RABBITMQ_RECONNECT_MULTIPLIER"       default:"1.5"                                v:"gte=1"`
 	ReconnectMaxInterval     time.Duration `env:"RABBITMQ_RECONNECT_MAX_INTERVAL"     default:"30s"                                v:"gt=0"`
-	PublishMandatory         bool          `env:"RABBITMQ_PUBLISH_MANDATORY"          default:"true"`
-	ConsumeNoRequeue         bool          `env:"RABBITMQ_CONSUME_NO_REQUEUE"         default:"false"`
 	ConsumeConsumerName      string        `env:"RABBITMQ_CONSUME_CONSUMER_NAME"      default:""`
 	ConsumeExclusive         bool          `env:"RABBITMQ_CONSUME_EXCLUSIVE"          default:"false"`
 	ConsumePrefetchCount     int           `env:"RABBITMQ_CONSUME_PREFETCH_COUNT"     default:"1"                                  v:"gt=0"`

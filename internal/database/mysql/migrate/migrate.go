@@ -9,7 +9,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/avast/retry-go/v4"
 	"github.com/go-sql-driver/mysql"
 	"github.com/pressly/goose/v3"
 	"github.com/pressly/goose/v3/lock"
@@ -49,43 +48,25 @@ func Migrate(
 		return fmt.Errorf("failed to set MySQL slog2mysql: %w", err)
 	}
 
-	retryCtx, cancelRetry := context.WithTimeout(ctx, config.connectRetryTimeout)
-
-	db, err := retry.DoWithData[*sql.DB](func() (*sql.DB, error) {
-		db, err := sql.Open("mysql", uri)
+	var db *sql.DB
+	err := config.connectRetry.Do(ctx, "mysql", logger, func(attemptCtx context.Context) error {
+		conn, err := sql.Open("mysql", uri)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open database connection: %w", err)
+			return fmt.Errorf("failed to open database connection: %w", err)
 		}
-		if err := db.PingContext(retryCtx); err != nil {
+		if err := conn.PingContext(attemptCtx); err != nil {
 			pingErr := fmt.Errorf("failed to ping database: %w", err)
-			if closeErr := db.Close(); closeErr != nil {
-				return nil, errors.Join(
+			if closeErr := conn.Close(); closeErr != nil {
+				return errors.Join(
 					pingErr,
 					fmt.Errorf("failed to close migration database: %w", closeErr),
 				)
 			}
-			return nil, pingErr
+			return pingErr
 		}
-		return db, nil
-	},
-		retry.Context(retryCtx),
-		retry.Attempts(0),
-		retry.Delay(config.connectRetryInitialBackoff),
-		retry.MaxDelay(config.connectRetryMaxBackoff),
-		retry.DelayType(retry.FullJitterBackoffDelay),
-		retry.WrapContextErrorWithLastError(true),
-		retry.OnRetry(func(n uint, err error) {
-			if retryCtx.Err() == nil {
-				logger.WarnContext(
-					ctx,
-					"database connection attempt failed, retrying...",
-					slog.Any("attempt", n+1),
-					slog.Any("error", err),
-				)
-			}
-		}),
-	)
-	cancelRetry()
+		db = conn
+		return nil
+	})
 	if err != nil {
 		return err
 	}

@@ -3,19 +3,13 @@ package migrate
 import (
 	"log/slog"
 	"time"
-)
 
-const (
-	defaultConnectRetryTimeout        = time.Minute
-	defaultConnectRetryInitialBackoff = 500 * time.Millisecond
-	defaultConnectRetryMaxBackoff     = 5 * time.Second
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 type options struct {
-	logger                     *slog.Logger
-	connectRetryTimeout        time.Duration
-	connectRetryInitialBackoff time.Duration
-	connectRetryMaxBackoff     time.Duration
+	logger       *slog.Logger
+	connectRetry tools.StartupRetryPolicy
 }
 
 type Option func(opts *options)
@@ -28,21 +22,19 @@ func WithLogger(logger *slog.Logger) Option {
 
 func WithConnectRetryTimeout(timeout time.Duration) Option {
 	return func(opts *options) {
-		opts.connectRetryTimeout = timeout
+		opts.connectRetry.Timeout = timeout
 	}
 }
 
 func WithConnectRetryBackoff(initial time.Duration, max time.Duration) Option {
 	return func(opts *options) {
-		opts.connectRetryInitialBackoff = initial
-		opts.connectRetryMaxBackoff = max
+		opts.connectRetry.InitialBackoff = initial
+		opts.connectRetry.MaxBackoff = max
 	}
 }
 
 func defaultOptions() options {
 	return options{
-		connectRetryTimeout:        defaultConnectRetryTimeout,
-		connectRetryInitialBackoff: defaultConnectRetryInitialBackoff,
-		connectRetryMaxBackoff:     defaultConnectRetryMaxBackoff,
+		connectRetry: tools.DefaultStartupRetryPolicy(),
 	}
 }

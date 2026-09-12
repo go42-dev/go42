@@ -2,7 +2,6 @@ package nats
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,7 +13,6 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	wnats "github.com/ThreeDotsLabs/watermill-nats/v2/pkg/nats"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/avast/retry-go/v4"
 	natsgo "github.com/nats-io/nats.go"
 
 	"github.com/go42-dev/go42/internal/metrics"
@@ -22,40 +20,34 @@ import (
 )
 
 const (
-	defaultConnectRetryTimeout        = time.Minute
-	defaultConnectRetryInitialBackoff = 500 * time.Millisecond
-	defaultConnectRetryMaxBackoff     = 5 * time.Second
-	defaultPublishTimeout             = 5 * time.Second
-	defaultNakDelay                   = time.Second
-	defaultConsumerMaxDeliver         = -1
-	defaultConnectTimeout             = 5 * time.Second
-	defaultMaxReconnects              = -1
-	defaultReconnectDelay             = time.Second
-	defaultConsumerGroup              = "default"
-	defaultSubscribersCount           = 1
-	defaultAckWaitTimeout             = 30 * time.Second
-	defaultSubscribeTimeout           = 30 * time.Second
-	defaultCloseTimeout               = 30 * time.Second
-	disabledReconnectBufferSize       = -1
+	defaultPublishTimeout       = 5 * time.Second
+	defaultNakDelay             = time.Second
+	defaultConsumerMaxDeliver   = -1
+	defaultConnectTimeout       = 5 * time.Second
+	defaultMaxReconnects        = -1
+	defaultReconnectDelay       = time.Second
+	defaultConsumerGroup        = "default"
+	defaultSubscribersCount     = 1
+	defaultAckWaitTimeout       = 30 * time.Second
+	defaultSubscribeTimeout     = 30 * time.Second
+	defaultCloseTimeout         = 30 * time.Second
+	disabledReconnectBufferSize = -1
 )
 
 type NATS struct {
 	mu     sync.Mutex
 	closed bool
 
-	logger               *slog.Logger
-	publisher            *wnats.Publisher
-	subscribers          []*wnats.Subscriber
-	subscriberConfig     wnats.SubscriberConfig
-	publishTimeout       time.Duration
-	consumerBindings     map[string]ConsumerBinding
-	consumerBindingsJSON string
-	tlsEnabled           bool
-	tlsOpts              tools.TLSOptions
+	logger           *slog.Logger
+	publisher        *wnats.Publisher
+	subscribers      []*wnats.Subscriber
+	subscriberConfig wnats.SubscriberConfig
+	publishTimeout   time.Duration
+	consumerBindings map[string]ConsumerBinding
+	tlsEnabled       bool
+	tlsOpts          tools.TLSOptions
 
-	connectRetryTimeout        time.Duration
-	connectRetryInitialBackoff time.Duration
-	connectRetryMaxBackoff     time.Duration
+	connectRetry tools.StartupRetryPolicy
 }
 
 type connectionResult struct {
@@ -66,10 +58,8 @@ type connectionResult struct {
 func New(ctx context.Context, dsn string, opts ...Option) (*NATS, error) {
 	var (
 		engine = &NATS{
-			connectRetryTimeout:        defaultConnectRetryTimeout,
-			connectRetryInitialBackoff: defaultConnectRetryInitialBackoff,
-			connectRetryMaxBackoff:     defaultConnectRetryMaxBackoff,
-			publishTimeout:             defaultPublishTimeout,
+			connectRetry:   tools.DefaultStartupRetryPolicy(),
+			publishTimeout: defaultPublishTimeout,
 		}
 		jetStreamConfig = wnats.JetStreamConfig{
 			AutoProvision:     false,
@@ -85,7 +75,7 @@ func New(ctx context.Context, dsn string, opts ...Option) (*NATS, error) {
 				natsgo.ReconnectWait(defaultReconnectDelay),
 			},
 			JetStream: jetStreamConfig,
-			Marshaler: gobMarshaler{},
+			Marshaler: marshaler{},
 		}
 		subCfg = &wnats.SubscriberConfig{
 			URL: dsn,
@@ -95,7 +85,7 @@ func New(ctx context.Context, dsn string, opts ...Option) (*NATS, error) {
 				natsgo.ReconnectWait(defaultReconnectDelay),
 			},
 			JetStream:        jetStreamConfig,
-			Unmarshaler:      new(wnats.GobMarshaler),
+			Unmarshaler:      new(wnats.NATSMarshaler),
 			NakDelay:         wnats.NewStaticDelay(defaultNakDelay),
 			QueueGroupPrefix: defaultConsumerGroup,
 			SubscribersCount: defaultSubscribersCount,
@@ -115,11 +105,6 @@ func New(ctx context.Context, dsn string, opts ...Option) (*NATS, error) {
 	if tlsConfig != nil {
 		pubCfg.NatsOptions = append(pubCfg.NatsOptions, natsgo.Secure(tlsConfig.Clone()))
 		subCfg.NatsOptions = append(subCfg.NatsOptions, natsgo.Secure(tlsConfig.Clone()))
-	}
-	if len(engine.consumerBindingsJSON) > 0 {
-		if err := json.Unmarshal([]byte(engine.consumerBindingsJSON), &engine.consumerBindings); err != nil {
-			return nil, fmt.Errorf("invalid NATS consumer bindings: %w", err)
-		}
 	}
 	if err := validateConfig(engine, pubCfg, subCfg); err != nil {
 		return nil, err
@@ -148,44 +133,15 @@ func New(ctx context.Context, dsn string, opts ...Option) (*NATS, error) {
 	)
 	engine.subscriberConfig = *subCfg
 
-	retryCtx, cancel := context.WithTimeout(ctx, engine.connectRetryTimeout)
-	defer cancel()
-
-	err = retry.Do(func() error {
-		result := "failure"
-		defer func() {
-			metrics.Counter("application_event_backend_connection_attempts_total", map[string]any{
-				"backend": "nats",
-				"result":  result,
-			}).Inc()
-		}()
-
-		connections, err := connect(retryCtx, *pubCfg, engine.logger)
+	err = engine.connectRetry.Do(ctx, "nats", engine.logger, func(attemptCtx context.Context) error {
+		connections, err := connect(attemptCtx, *pubCfg, engine.logger)
 		if err != nil {
 			return err
 		}
 
 		engine.publisher = connections.publisher
-		result = "success"
 		return nil
-	},
-		retry.Context(retryCtx),
-		retry.Attempts(0),
-		retry.Delay(engine.connectRetryInitialBackoff),
-		retry.MaxDelay(engine.connectRetryMaxBackoff),
-		retry.DelayType(retry.FullJitterBackoffDelay),
-		retry.WrapContextErrorWithLastError(true),
-		retry.OnRetry(func(n uint, err error) {
-			if retryCtx.Err() == nil {
-				engine.logger.WarnContext(
-					ctx,
-					"broker connection attempt failed, retrying...",
-					slog.Any("attempt", n+1),
-					slog.Any("error", err),
-				)
-			}
-		}),
-	)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -301,11 +257,10 @@ func validateConfig(engine *NATS, publisher *wnats.PublisherConfig, subscriber *
 	if publisher.JetStream.Disabled || subscriber.JetStream.Disabled || subscriber.JetStream.AckAsync {
 		return errors.New("NATS requires JetStream and confirmed acknowledgements")
 	}
-	if engine.publishTimeout <= 0 || engine.connectRetryTimeout <= 0 ||
-		engine.connectRetryInitialBackoff <= 0 || engine.connectRetryMaxBackoff < engine.connectRetryInitialBackoff ||
+	if engine.publishTimeout <= 0 ||
 		subscriber.AckWaitTimeout <= 0 || subscriber.SubscribeTimeout <= 0 || subscriber.CloseTimeout <= 0 ||
 		subscriber.SubscribersCount <= 0 {
-		return errors.New("NATS timeouts, worker count and retry backoff must be positive and ordered")
+		return errors.New("NATS timeouts and worker count must be positive")
 	}
 	for topic, binding := range engine.consumerBindings {
 		if len(topic) == 0 || len(binding.Consumer) == 0 || len(binding.Stream) == 0 ||

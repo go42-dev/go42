@@ -12,23 +12,18 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	wkafka "github.com/ThreeDotsLabs/watermill-kafka/v3/pkg/kafka"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/avast/retry-go/v4"
 
-	"github.com/go42-dev/go42/internal/metrics"
 	"github.com/go42-dev/go42/internal/tools"
 )
 
 const (
-	defaultConnectRetryTimeout        = time.Minute
-	defaultConnectRetryInitialBackoff = 500 * time.Millisecond
-	defaultConnectRetryMaxBackoff     = 5 * time.Second
-	defaultMetadataTimeout            = 5 * time.Second
-	defaultDialTimeout                = 5 * time.Second
-	defaultReadTimeout                = 5 * time.Second
-	defaultWriteTimeout               = 5 * time.Second
-	defaultProducerTimeout            = 5 * time.Second
-	defaultProducerRetryMax           = 3
-	idempotentMaxOpenRequests         = 1
+	defaultMetadataTimeout    = 5 * time.Second
+	defaultDialTimeout        = 5 * time.Second
+	defaultReadTimeout        = 5 * time.Second
+	defaultWriteTimeout       = 5 * time.Second
+	defaultProducerTimeout    = 5 * time.Second
+	defaultProducerRetryMax   = 3
+	idempotentMaxOpenRequests = 1
 )
 
 type Kafka struct {
@@ -43,9 +38,7 @@ type Kafka struct {
 	closeDone  chan struct{}
 	closeErr   error
 
-	connectRetryTimeout        time.Duration
-	connectRetryInitialBackoff time.Duration
-	connectRetryMaxBackoff     time.Duration
+	connectRetry tools.StartupRetryPolicy
 }
 
 type connectionResult struct {
@@ -58,10 +51,8 @@ type connectionResult struct {
 func New(ctx context.Context, brokers []string, group string, opts ...Option) (*Kafka, error) {
 	var (
 		engine = &Kafka{
-			closeDone:                  make(chan struct{}),
-			connectRetryTimeout:        defaultConnectRetryTimeout,
-			connectRetryInitialBackoff: defaultConnectRetryInitialBackoff,
-			connectRetryMaxBackoff:     defaultConnectRetryMaxBackoff,
+			closeDone:    make(chan struct{}),
+			connectRetry: tools.DefaultStartupRetryPolicy(),
 		}
 		pubCfg = wkafka.DefaultSaramaSyncPublisherConfig()
 		subCfg = wkafka.DefaultSaramaSubscriberConfig()
@@ -102,45 +93,16 @@ func New(ctx context.Context, brokers []string, group string, opts ...Option) (*
 		engine.logger = slog.New(slog.DiscardHandler)
 	}
 
-	retryCtx, cancel := context.WithTimeout(ctx, engine.connectRetryTimeout)
-	defer cancel()
-
-	err = retry.Do(func() error {
-		resultLabel := "failure"
-		defer func() {
-			metrics.Counter("application_event_backend_connection_attempts_total", map[string]any{
-				"backend": "kafka",
-				"result":  resultLabel,
-			}).Inc()
-		}()
-
-		result, err := connect(retryCtx, brokers, group, pubCfg, subCfg, engine.logger)
+	err = engine.connectRetry.Do(ctx, "kafka", engine.logger, func(attemptCtx context.Context) error {
+		result, err := connect(attemptCtx, brokers, group, pubCfg, subCfg, engine.logger)
 		if err != nil {
 			return err
 		}
 		engine.publisher = &publisher{Publisher: result.publisher}
 		engine.client = result.client
 		engine.subscriber = &subscriber{Subscriber: result.subscriber, client: result.client}
-		resultLabel = "success"
 		return nil
-	},
-		retry.Context(retryCtx),
-		retry.Attempts(0),
-		retry.Delay(engine.connectRetryInitialBackoff),
-		retry.MaxDelay(engine.connectRetryMaxBackoff),
-		retry.DelayType(retry.FullJitterBackoffDelay),
-		retry.WrapContextErrorWithLastError(true),
-		retry.OnRetry(func(n uint, err error) {
-			if retryCtx.Err() == nil {
-				engine.logger.WarnContext(
-					ctx,
-					"broker connection attempt failed, retrying...",
-					slog.Any("attempt", n+1),
-					slog.Any("error", err),
-				)
-			}
-		}),
-	)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -284,10 +246,6 @@ func validateConfig(engine *Kafka, brokers []string, group string, publisher, su
 	}
 	if len(brokers) == 0 || len(group) == 0 {
 		return errors.New("kafka brokers and consumer group are required")
-	}
-	if engine.connectRetryTimeout <= 0 || engine.connectRetryInitialBackoff <= 0 ||
-		engine.connectRetryMaxBackoff < engine.connectRetryInitialBackoff {
-		return errors.New("kafka startup timeout and backoff must be positive and ordered")
 	}
 	for _, config := range []*sarama.Config{publisher, subscriber} {
 		if config.Metadata.Timeout <= 0 || config.Net.DialTimeout <= 0 || config.Net.ReadTimeout <= 0 ||

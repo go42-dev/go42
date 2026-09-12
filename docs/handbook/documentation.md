@@ -22,6 +22,28 @@ The external [go42 operational guide](https://go42.dev), maintained solely by go
 from the blueprint and operating go42 as a whole. It is outside the application checkout and its contributors'
 responsibilities. Link to it for additional explanation, identifying the applicable version when guidance depends on one.
 
+## Building task context
+
+For a change, read the [application profile](project.md), [conventions](conventions.md), and this policy, then select
+relevant handbook sections and records from the [index](../README.md). Follow their source and test links into the affected
+component. Load additional context when an interface, dependency, or failure crosses that component's boundary.
+
+| Source                                         | What it establishes                                                           |
+|------------------------------------------------|-------------------------------------------------------------------------------|
+| Current task and recorded maintainer agreement | The requested scope and any approved change to intent                         |
+| Accepted requirements and decisions            | Agreed outcomes, constraints, and significant choices                         |
+| Handbook, source, configuration, and tests     | Described and implemented behavior, executable checks, and known gaps         |
+| Draft requirements and proposed decisions      | Material for review; status alone does not authorize an implementation change |
+| External blueprint documentation               | Background about go42; verify applicability to this checkout                  |
+
+When sources disagree, identify the conflicting claim and check the relevant implementation and test. Record whether
+the work fixes an implementation defect, corrects stale guidance, or changes agreed intent. Resolve missing product or
+operational decisions with the maintainer; label the unknown instead of deriving a requirement from an observed defect.
+
+For AI-assisted work, retain a short task handoff: objective, affected paths and records, decisions made, checks and
+results, and unresolved questions. Put durable application facts in their owning documents; keep transient work notes
+with the task. Never include credentials or tokens in either.
+
 ## Document types
 
 | Type        | Question                | Contents                               | Update rule                |
@@ -74,18 +96,34 @@ add the page to the index, and run the [checks](#verification).
 State assumptions and unknowns explicitly. Do not invent stakeholders, targets, dates, approvals, or historical reasoning
 to fill a template.
 
+## Writing procedures and evidence
+
+Write for a named reader task. Keep procedures beside their constraints: execution environment, prerequisites, required
+inputs, expected result, and relevant failure or cleanup steps. State when a command writes data, needs a running service,
+or applies only to one backend. Put a limitation before the step it affects instead of hiding it at the end of the page.
+Use bounded examples and placeholders or disposable values; keep secrets out of recorded output.
+
+Link the source that owns a claim. Distinguish a source inspection from a test run, a local observation, or a deployed
+result. Evidence should identify the check, its relevant environment/backend and result, and what remains unverified.
+A successful source/site check proves structure and links; it does not prove application behavior or production readiness.
+
+Keep one authoritative explanation for each subject and link to it from other guides. Use the smallest example that
+demonstrates the outcome. Adapt the [handbook template](../templates/handbook.md) to the subject; an architectural
+explanation does not need a procedure or an empty recovery section. Store detailed run logs with the task, while retaining
+stable test/source links and material limitations in the documentation.
+
 ## Metadata and filenames
 
 Every page has YAML front matter. IDs are unique across published pages and remain stable when titles change.
 
-| Applies to | Metadata |
-| --- | --- |
-| All pages | `id` and `title`; optional `related` list of published document IDs |
-| Handbook | Lowercase descriptive `id`; unique positive integer `sidebar_position` |
-| Requirements | `id: REQ-NNN` and `status` |
-| Decisions | `id: ADR-NNN`, `status`, and a real `date` in `YYYY-MM-DD` form |
+| Applies to           | Metadata                                                                                      |
+|----------------------|-----------------------------------------------------------------------------------------------|
+| All pages            | `id` and `title`; optional `related` list of published document IDs                           |
+| Handbook             | Lowercase descriptive `id`; unique positive integer `sidebar_position`                        |
+| Requirements         | `id: REQ-NNN` and `status`                                                                    |
+| Decisions            | `id: ADR-NNN`, `status`, and a real `date` in `YYYY-MM-DD` form                               |
 | Superseded decisions | `superseded_by`: the replacement decision's ID; its status must be `accepted` or `superseded` |
-| Templates | `template-` IDs; change the metadata when copying; record status validation does not apply |
+| Templates            | `template-` IDs; change the metadata when copying; record status validation does not apply    |
 
 Use descriptive handbook filenames and numbered record filenames, such as `handbook/deployment.md`,
 `requirements/002-releases.md`, and `decisions/002-release-trigger.md`. Allocate the next unused record number, keep it
@@ -115,12 +153,12 @@ The handbook describes current implementation and labels plans. An observed defe
 
 Read the application profile, conventions, and records relevant to the change. Use this table to identify its impact:
 
-| Change | Documentation to review and update |
-| --- | --- |
-| Desired behavior, scope, or acceptance criteria | Requirement; affected handbook instructions and evidence |
-| Significant architectural or operational choice | Decision; affected requirements and current handbook explanation |
-| Current behavior, settings, commands, or procedures | The handbook page that owns the subject |
-| Mechanical change with no change to documented claims | No document change; explain why in the change report |
+| Change                                                | Documentation to review and update                               |
+|-------------------------------------------------------|------------------------------------------------------------------|
+| Desired behavior, scope, or acceptance criteria       | Requirement; affected handbook instructions and evidence         |
+| Significant architectural or operational choice       | Decision; affected requirements and current handbook explanation |
+| Current behavior, settings, commands, or procedures   | The handbook page that owns the subject                          |
+| Mechanical change with no change to documented claims | No document change; explain why in the change report             |
 
 Update affected sources alongside implementation. Keep each fact in one authoritative place and link to it; maintain
 the index when pages change. Verify claims against code, configuration, tests, or observed results. Report the

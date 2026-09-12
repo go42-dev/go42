@@ -15,10 +15,6 @@ related:
 The application needs documentation that describes its own purpose, requirements, choices, and operating environment.
 Contributors need instructions that apply to the checked-out code, including after it diverges from go42 defaults.
 
-The external [go42 operational guide](https://github.com/go42-dev/go42-docs) is maintained solely by go42's authors and
-describes go42 as a whole. Application users consult it online; it is outside the application checkout and its contributors'
-documentation responsibilities.
-
 This record ships as a proposal for local adoption. The application maintainer reviews its applicability before
 acceptance. The local policy and tooling can be evaluated while the record remains proposed.
 

@@ -17,14 +17,14 @@ func WithLogger(logger *slog.Logger) Option {
 
 func WithConnectRetryTimeout(timeout time.Duration) Option {
 	return func(w *Wrapper, client *memcache.Client) {
-		w.connectRetryTimeout = timeout
+		w.connectRetry.Timeout = timeout
 	}
 }
 
 func WithConnectRetryBackoff(initial time.Duration, max time.Duration) Option {
 	return func(w *Wrapper, client *memcache.Client) {
-		w.connectRetryInitialBackoff = initial
-		w.connectRetryMaxBackoff = max
+		w.connectRetry.InitialBackoff = initial
+		w.connectRetry.MaxBackoff = max
 	}
 }
 

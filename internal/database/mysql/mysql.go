@@ -8,19 +8,14 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/avast/retry-go/v4"
 	libMysql "github.com/go-sql-driver/mysql"
 	slogGorm "github.com/orandin/slog-gorm"
 	"go.opentelemetry.io/otel/attribute"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/plugin/opentelemetry/tracing"
-)
 
-const (
-	defaultConnectRetryTimeout        = time.Minute
-	defaultConnectRetryInitialBackoff = 500 * time.Millisecond
-	defaultConnectRetryMaxBackoff     = 5 * time.Second
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 type Mysql struct {
@@ -37,18 +32,14 @@ type Mysql struct {
 	maxIdleConns    int
 	queryTimeout    time.Duration
 
-	connectRetryTimeout        time.Duration
-	connectRetryInitialBackoff time.Duration
-	connectRetryMaxBackoff     time.Duration
+	connectRetry tools.StartupRetryPolicy
 
 	queryLogging bool
 }
 
 func Open(ctx context.Context, masterDSN string, slaveDSN string, opts ...Option) (*Mysql, error) {
 	w := &Mysql{
-		connectRetryTimeout:        defaultConnectRetryTimeout,
-		connectRetryInitialBackoff: defaultConnectRetryInitialBackoff,
-		connectRetryMaxBackoff:     defaultConnectRetryMaxBackoff,
+		connectRetry: tools.DefaultStartupRetryPolicy(),
 	}
 
 	for _, opt := range opts {
@@ -170,47 +161,29 @@ func (w *Mysql) connect(ctx context.Context, dsn string, config *gorm.Config) (*
 	// this affects only the initial connection ping
 	config.DisableAutomaticPing = true
 
-	retryCtx, cancel := context.WithTimeout(ctx, w.connectRetryTimeout)
-	defer cancel()
-
-	db, err := retry.DoWithData[*gorm.DB](func() (*gorm.DB, error) {
+	var db *gorm.DB
+	err = w.connectRetry.Do(ctx, "mysql", w.logger, func(attemptCtx context.Context) error {
 		conn, err := gorm.Open(mysql.Open(dsn), config)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open database connection: %w", err)
+			return fmt.Errorf("failed to open database connection: %w", err)
 		}
 		connDB, err := conn.DB()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get database instance: %w", err)
+			return fmt.Errorf("failed to get database instance: %w", err)
 		}
-		if err := connDB.PingContext(retryCtx); err != nil {
+		if err := connDB.PingContext(attemptCtx); err != nil {
 			pingErr := fmt.Errorf("failed to ping database: %w", err)
 			if closeErr := connDB.Close(); closeErr != nil {
-				return nil, errors.Join(
+				return errors.Join(
 					pingErr,
 					fmt.Errorf("failed to close database after ping failure: %w", closeErr),
 				)
 			}
-			return nil, pingErr
+			return pingErr
 		}
-		return conn, nil
-	},
-		retry.Context(retryCtx),
-		retry.Attempts(0), // we will retry until the context is done
-		retry.Delay(w.connectRetryInitialBackoff),
-		retry.MaxDelay(w.connectRetryMaxBackoff),
-		retry.DelayType(retry.FullJitterBackoffDelay),
-		retry.WrapContextErrorWithLastError(true),
-		retry.OnRetry(func(n uint, err error) {
-			if retryCtx.Err() == nil {
-				w.logger.WarnContext(
-					ctx,
-					"database connection attempt failed, retrying...",
-					slog.Any("attempt", n+1),
-					slog.Any("error", err),
-				)
-			}
-		}),
-	)
+		db = conn
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}

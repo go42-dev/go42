@@ -1,7 +1,7 @@
 ---
 id: architecture
 title: Architecture
-sidebar_position: 5
+sidebar_position: 6
 ---
 
 # Architecture
@@ -35,6 +35,26 @@ define those interfaces.
 The [authentication service](../../internal/auth/auth.go) owns business operations, sessions, and token behavior.
 Feature `domain/` packages hold service inputs and errors; `models/` packages hold persistence models; repositories own
 database access. Dependency interfaces live beside their consumers.
+
+## Source map
+
+Use this map to find the owner of a behavior before editing it. Follow a request from its contract through the adapter,
+service, and repository; follow asynchronous effects through the outbox and subscriber.
+
+| Concern | Source owner | Use it to locate |
+| --- | --- | --- |
+| Composition and lifecycle | [cmd/app](../../cmd/app) | Dependency construction, registration, probes, and shutdown |
+| API definitions | [api/openapi](../../api/openapi) and [api/proto](../../api/proto) | HTTP and gRPC source contracts; generated output lives in `api/gen/` |
+| Authentication behavior | [internal/auth](../../internal/auth) | Service operations, transport adapters, authorization, models, and repository |
+| Shared transport behavior | [internal/api](../../internal/api) | Servers, middleware, interceptors, validation, and error conversion |
+| Persistence and migrations | [internal/database](../../internal/database) and [migrate](../../migrate) | Pools, transaction context, engine-specific schema and seed data |
+| Asynchronous effects | [internal/outbox](../../internal/outbox) and [internal/events](../../internal/events) | Durable message records, publishing, retries, and broker adapters |
+| Cache and configuration | [internal/cache](../../internal/cache) and [internal/config](../../internal/config) | Cache adapters, settings, defaults, and validation |
+| Operational signals | [internal/metrics](../../internal/metrics) and [infra](../../infra) | Metric helpers, database observers, dashboard, and deployment configuration |
+| Behavioral evidence | Adjacent `*_test.go` files and [tests](../../tests) | Unit cases, integration checks, resilience scenarios, and load scripts |
+
+Edit source contracts and consumer interfaces before using the [generation workflow](development.md#generated-files-and-dependencies).
+Generated clients, handlers, and mocks describe the generated interface; their source definitions own changes to it.
 
 ## Requests and persistence
 

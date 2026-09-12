@@ -15,26 +15,30 @@ significant decisions, and operating instructions. The handbook table follows th
 
 ### Handbook
 
-| Document                                               | Purpose                                                                      |
+| Document | Purpose |
 | ------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| [Application profile](handbook/project.md)             | Purpose, ownership, current capabilities, and documentation gaps             |
-| [Maintaining documentation](handbook/documentation.md) | Document types, authoring, maintenance, checks, and publishing               |
-| [Project conventions](handbook/conventions.md)         | Engineering rules for code, architecture, data, runtime, and test design     |
-| [Development workflow](handbook/development.md)        | Setup, local development, formatting, tests, verification, and contributions |
-| [Architecture](handbook/architecture.md)               | Components, request and event flows, persistence, and process lifecycle      |
-| [Configuration](handbook/configuration.md)             | Configuration sources, backend choices, defaults, and deployment settings    |
-| [Operations](handbook/operations.md)                   | Startup checks, health, observability, deployment, and recovery boundaries   |
+| [Application profile](handbook/project.md) | Purpose, ownership, current capabilities, and documentation gaps |
+| [Maintaining documentation](handbook/documentation.md) | Task context, document types, authoring, checks, and publishing |
+| [Project conventions](handbook/conventions.md) | Engineering rules for code, architecture, data, runtime, and test design |
+| [Configuration](handbook/configuration.md) | Configuration sources, backend choices, defaults, and deployment settings |
+| [Development workflow](handbook/development.md) | Setup, feature implementation, generation, tests, and contributions |
+| [Architecture](handbook/architecture.md) | Source map, component boundaries, request and event flows, and lifecycle |
+| [Using the API](handbook/api.md) | Credentials, session flow, local verification, and request failure diagnosis |
+| [Release](handbook/release.md) | Version selection, release validation, published artifacts, and image identity |
+| [Deployment](handbook/deployment.md) | Container and Helm configuration, migration handoff, and rollout verification |
+| [Operations](handbook/operations.md) | Probe checks, process lifecycle, outbox diagnosis, and failure recovery |
+| [Monitoring](handbook/monitoring.md) | Collect metrics, interpret signals, and configure the supplied dashboard |
 
 ### Requirements
 
-| Document                                                                | Purpose                                                    |
-|-------------------------------------------------------------------------|------------------------------------------------------------|
+| Document | Purpose |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | [REQ-001: Application documentation](requirements/001-documentation.md) | Outcomes and acceptance criteria for project documentation |
 
 ### Decisions
 
-| Document                                                                                      | Purpose                                                         |
-|-----------------------------------------------------------------------------------------------|-----------------------------------------------------------------|
+| Document | Purpose |
+| ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | [ADR-001: Keep application documentation with its code](decisions/001-documentation-model.md) | Rationale for maintaining application knowledge beside the code |
 
 ## Templates
@@ -42,11 +46,11 @@ significant decisions, and operating instructions. The handbook table follows th
 Start new documents from a template and follow the
 [authoring workflow](handbook/documentation.md#creating-a-document).
 
-| Template                                | Purpose                                                        |
-|-----------------------------------------|----------------------------------------------------------------|
-| [Handbook](templates/handbook.md)       | Current behavior, architecture, and working instructions       |
+| Template | Purpose |
+| ----------------------------------------- | ---------------------------------------------------------------- |
+| [Handbook](templates/handbook.md) | Current behavior, architecture, and working instructions |
 | [Requirement](templates/requirement.md) | Desired outcomes, scope, acceptance criteria, and verification |
-| [Decision](templates/decision.md)       | Significant choices, alternatives, reasoning, and consequences |
+| [Decision](templates/decision.md) | Significant choices, alternatives, reasoning, and consequences |
 
 ## References
 

@@ -35,6 +35,7 @@ func TestKafkaRejectsInvalidOptionsBeforeConnecting(t *testing.T) {
 		WithProducerCompression("invalid"), WithConsumerGroupRebalanceStrategy("invalid"),
 		WithKafkaVersion("invalid"), WithReadTimeout(0), WithProducerMetadataTimeout(0),
 		WithProducerTimeout(0), WithProducerRetryMax(0),
+		WithConnectRetryTimeout(0), WithConnectRetryBackoff(time.Second, time.Millisecond),
 		WithSASL("", "user", "password"), WithSASL("PLAIN", "user", ""),
 		WithTLSConfig("", "client.pem", "", ""),
 	} {

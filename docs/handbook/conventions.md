@@ -51,6 +51,8 @@ Paths are relative to the repository root. Preferences and exceptions are stated
 * Repeated migration runs through Goose must preserve existing schema and application data. Require raw SQL replay safety
   only when a documented recovery procedure depends on it. Include `Up` and `Down` sections in the same file. Rollback must
   target only changes introduced by that migration; document any data loss or irreversible changes.
+* Add a new migration for changes to an already-applied schema. Editing an old migration does not update databases that
+  have recorded it as applied. Test both a fresh database and an upgrade containing existing data.
 * Use lowercase SQL keywords and `snake_case` for table and column names in migrations.
 * Store and compare timestamps in UTC. Normalize incoming timestamps with `UTC()` at repository write boundaries,
   including future CLI writes.

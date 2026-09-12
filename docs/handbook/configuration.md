@@ -1,7 +1,7 @@
 ---
 id: configuration
 title: Configuration
-sidebar_position: 6
+sidebar_position: 4
 ---
 
 # Configuration
@@ -29,6 +29,30 @@ Local tasks set `DATABASE_MIGRATE_PATH`, `SERVER_HTTP_STATIC_ROOT`, and `SERVER_
 The [runtime image](../../Dockerfile) instead installs these resources at the model's default paths: `/migrate`,
 `/usr/share/www`, and `/usr/share/www/api`. A directly launched binary needs paths valid for its own filesystem.
 
+## Diagnose a configuration problem
+
+Separate environment loading from typed parsing, validation, and dependency initialization:
+
+| Symptom | Check |
+| --- | --- |
+| Parsing error before dependency startup | Match the field's type; duration `10s` has a unit, while `10` is invalid |
+| `validation errors` at startup | A parsed value violates a `v` constraint; `STARTUP_CONNECT_TIMEOUT=0s` fails its positive-duration rule |
+| Exported setting appears ignored | Launch tasks load `.env.example`, then `.env`, overriding inherited values for those keys |
+| Edited `.env` has no effect | Running processes retain their startup configuration; restart the intended local process |
+| Migration or static files are missing | Check paths inside that execution environment; local tasks override the three resource paths |
+| Valid configuration but startup/readiness fails | Inspect the selected dependency, credentials, topology, and connection errors |
+
+The local launch tasks use `grep`, `xargs`, and shell `export` to load files. Keep their `.env` values simple and on one
+line; this is not a full dotenv parser and does not reliably preserve whitespace or complex quoting. For such values,
+supply the environment directly to the binary or container and account for its filesystem paths.
+
+`config.New()` validates declared fields; it does not report every unknown environment variable, so a misspelled key can
+leave a default in effect. Compare the exact name with the configuration model and generated reference. Capture only
+relevant non-secret settings in a diagnosis: `.env` and `Config.String()` can expose credentials.
+
+Use [configuration tests](../../internal/config/config_test.go) to find accepted and rejected cases. The
+[integration test environment](development.md#integration-test-environment) has its own process settings and precedence.
+
 ## Storage and events
 
 | Setting | Default behavior | Available choices |
@@ -51,9 +75,30 @@ External cache and broker choices also require their connection settings, such a
 adapter, including dead-letter destinations. Automatic provisioning or topic creation is disabled by default through
 `NATS_JETSTREAM_AUTO_PROVISION`, `RABBITMQ_AUTO_PROVISION`, and `KAFKA_TOPIC_AUTO_CREATE`.
 
+RabbitMQ always uses publisher confirms, mandatory routing, and requeue after failed processing. Remove
+`RABBITMQ_PUBLISH_MANDATORY` and `RABBITMQ_CONSUME_NO_REQUEUE` from deployment configuration. The application no longer
+reads these settings.
+
+`NATS_CONSUMER_BINDINGS` accepts a JSON object mapping topics to objects with `stream` and `consumer` fields. The typed
+configuration field decodes it through `UnmarshalText` during `config.New()`; malformed JSON fails configuration loading
+even when another event backend is selected. Application setup passes the map directly through `WithConsumerBindings`.
+An empty setting uses the adapter's default binding rules.
+
 `gochan` and the local cache are process-local. The `none` event backend discards outgoing messages while reporting
 publication success, so outbox rows can become processed without creating user history. Choose a backend whose durability
 and sharing behavior fits the application; see [event delivery](architecture.md#event-delivery).
+
+### NATS message format
+
+The NATS adapter uses Watermill's `NATSMarshaler`: the message body contains the original payload bytes, and metadata uses
+native NATS headers. Outbox events therefore arrive as JSON. `_watermill_message_uuid` carries the event ID, while
+`Nats-Msg-Id` combines the destination and event ID so retries deduplicate without suppressing delivery to a dead-letter
+subject. Request IDs, trace context, and dead-letter details remain in the metadata headers.
+
+This format replaces the previous Gob envelope. Coordinate upgrades of all publishers and consumers: new consumers do
+not decode Gob messages. Before switching, drain or migrate any Gob messages that can still be delivered or replayed,
+including dead-letter messages, preserving their event IDs and metadata. Existing SQL outbox rows need no conversion;
+the publisher encodes them when sending. Automatic Gob fallback is not supported.
 
 ## Interfaces and authentication
 
@@ -84,6 +129,11 @@ and the deployment's TLS boundary still need an application-specific operating p
 | `SHUTDOWN_COMPONENT_TIMEOUT` | `3s` | Per-component close deadline within the overall budget |
 
 Allow deployment probes and termination deadlines to accommodate migration, initialization, and shutdown behavior.
+PostgreSQL, MySQL, their migration runners, Redis, Memcached, NATS, Kafka, and RabbitMQ share the
+[startup retry policy](../../internal/tools/retry.go) for defaults, validation, backoff, connection-attempt metrics,
+and retry logging. Timeout and backoff must be positive, with maximum backoff at least as large as initial backoff.
+Each connection initialization has its own retry budget, bounded by the caller's context. Migration execution uses
+the caller's context after connecting; the connection retry budget does not limit migration execution.
 See [operations](operations.md#startup-and-shutdown) for the sequence and expected checks.
 
 ## Optional integrations

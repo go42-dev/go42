@@ -1,7 +1,7 @@
 ---
 id: development
 title: Development workflow
-sidebar_position: 4
+sidebar_position: 5
 ---
 
 # Development workflow
@@ -101,9 +101,38 @@ from `.env`. Start the services required by the selected database, cache, and ev
 `task run` and `task run-docker` treat exit code 1 as success, as recorded in Taskfile. Check the application output when
 verifying startup or shutdown behavior.
 
-For optional inspection tools, `task grpcui` starts a UI for the local gRPC server and requires `grpcui`.
+For optional inspection tools, `task grpcui` requires `grpcui` and targets plaintext `localhost:50051`. Enable
+`SERVER_GRPC_REFLECTION_ENABLED=true` on the local test application and restart it first; reflection is disabled by default.
+Business calls still require `x-api-key` metadata and permissions. The generated integration clients use compiled
+descriptors and do not need reflection.
 `task generate-dep-graph` writes the dependency graph and requires `goda` and Graphviz's `dot`. These dependencies are
 described in Taskfile comments and are installed separately.
+
+### Profiling a local process
+
+Use a host process launched by `task run`, `task debug`, or a direct binary for this procedure. Set `PPROF_ENABLED=true`,
+`PPROF_LISTEN=127.0.0.1:6060`, and `PPROF_PREFIX=/debug/pprof` in its configuration, then restart it.
+The [profiling server](../../cmd/app/main.go) is separate from the main HTTP listener and has no application authentication.
+Use loopback access for local collection and retain profiles as private diagnostic artifacts.
+
+From another terminal, capture a heap sample and ten seconds of CPU activity:
+
+```sh
+mkdir -p .build
+curl --fail --silent --show-error --max-time 15 \
+  http://127.0.0.1:6060/debug/pprof/heap -o .build/heap.pprof
+curl --fail --silent --show-error --max-time 25 \
+  'http://127.0.0.1:6060/debug/pprof/profile?seconds=10' -o .build/cpu.pprof
+go tool pprof -top .build/heap.pprof
+go tool pprof -top .build/cpu.pprof
+```
+
+Expect nonempty profile files and a function/sample summary. Exercise the affected workload during CPU collection;
+an idle sample may contain little evidence. Record the running revision and symptom with the profile, and use a matching
+binary for source or disassembly analysis. Adjust the URL port if the listener differs, but keep the default prefix:
+the current custom-prefix handler returns HTML for named profiles such as heap. This recipe does not apply unchanged to
+`task run-docker`, whose port mapping expects `:port` listener values. Disable local profiling again when finished.
+Its endpoint availability does not establish main-server readiness.
 
 ## Generated files and dependencies
 
@@ -123,6 +152,42 @@ regenerate affected outputs. Follow [tool maintenance](#maintaining-the-workflow
 
 For a new database migration, run `task generate-migration-id` once to obtain its filename prefix. Use the same filename
 across database engines and follow the [migration conventions](conventions.md#architecture-and-data).
+
+## Implementing a feature
+
+Use the [source map](architecture.md#source-map) to trace an existing operation with similar behavior. Confirm the desired
+outcome and failure cases in the relevant requirement; record a significant new choice in a decision when needed.
+
+1. Define the transport contract in [OpenAPI](../../api/openapi/v1/auth.yaml) or
+   [Protobuf](../../api/proto/auth/v1/auth.proto). Specify validation, authorization, response fields, and error behavior.
+2. Implement service inputs and errors in the feature's `domain/` package, persistence models and migrations when needed,
+   and repository operations. Keep transaction boundaries in the service and propagate `txCtx` to required outbox writes.
+3. Update consumer interfaces and implement the service operation. Decide which failures roll back the operation and
+   which side effects can be retried independently. Cover those outcomes in service and repository tests.
+4. Implement each affected adapter. HTTP routes and request/response types are handwritten in
+   [adapter.go](../../internal/auth/adapters/http/v1/adapter.go) and [models.go](../../internal/auth/adapters/http/v1/models.go).
+   Generating an HTTP SDK does not add a running route. For gRPC, implement the generated service interface and update
+   [adapterPermissionMapping](../../internal/auth/adapters/grpc/v1/adapter.go). With gRPC authorization enabled, methods
+   without registered permissions are denied.
+5. Register a new adapter or dependency in [cmd/app](../../cmd/app/main.go). `RegisterV1` supplies the HTTP `/api/v1`
+   prefix; the gRPC adapter registers its generated service. For new background work, define its startup and shutdown owner.
+6. Run the [generation workflow](#generated-files-and-dependencies). A new HTTP contract also needs generator directives
+   in [api/generate.go](../../api/generate.go); the existing directives name the authentication contract explicitly.
+7. Test the service and transport behavior, including validation, missing permissions, and dependency failure. When both
+   transports expose an operation, verify both mappings. Run applicable API compatibility checks before review.
+8. Update the owning handbook page, requirement evidence, and any affected operating instructions with the change.
+
+For persisted-data or message-format changes, include the [migration handoff](deployment.md#migrations-and-change-handoff).
+
+For the existing authentication feature, a focused unit check is:
+
+```sh
+task test-unit -- ./internal/auth/... ./internal/api/...
+```
+
+The [HTTP integration clients](../../tests/integration/http/v1/users_clients_test.go) exercise both generated HTTP SDKs;
+[gRPC integration tests](../../tests/integration/grpc/v1/auth_test.go) exercise the generated gRPC client. Follow the
+[integration prerequisites](#integration-test-environment) before running `task test-integration`.
 
 ## Formatting and linting
 
@@ -232,6 +297,32 @@ Without load-test selectors, both protocols run, even if the first fails, and wr
 Each invocation removes previous summaries for its selected scope before running k6 and reports failures through its exit
 status.
 
+### Integration test environment
+
+`task test-integration` runs the full suite; it does not start the application. Use a dedicated test application because
+the API tests create, update, and delete user records. The repository tests separately create isolated databases through
+the [test helper](../../tests/integration/helpers.go).
+
+| Test process setting | Required setup |
+| --- | --- |
+| `HTTP_SERVER_ADDRESS` | Application base URL, default `http://localhost:8080`; omit the `/api/v1` suffix |
+| `GRPC_SERVER_ADDRESS` | Application address, default `localhost:50051`; the current client uses plaintext gRPC |
+| `HTTP_API_KEY` | Explicit key with `users:list`, `users:read_others`, `users:create`, `users:update`, and `users:delete` |
+| `GRPC_API_KEY` | Key with the same permissions; set it explicitly instead of relying on the helper's inherited test key |
+| `DATABASE_*` | Select the engine and test database service; MySQL/PostgreSQL credentials need create/drop database privileges |
+
+Start the application with its own configuration and verify [readiness](operations.md#run-and-verify-locally). Supply the
+test settings through `.env` or the test process environment; the Task command loads `.env` when present but does not load
+`.env.example`. Values loaded from `.env` override inherited environment values, including `DATABASE_*` and test addresses
+or keys. Check that file when an exported override appears ineffective. The app and test runner are separate processes,
+so changing the runner's settings does not reconfigure the app. Keep `SERVER_GRPC_AUTHORIZATION_ENABLED=true` on the test
+application: the suite tests denied requests too. SQLite repository tests use temporary files and need no database service.
+
+The [integration CI workflow](../../.github/workflows/150-integration-tests.yaml) is a complete example of application,
+backend, address, and test-credential setup. It disables the application's authentication rate limiter for its test load.
+Keep such overrides scoped to the test application. If the suite reports a missing HTTP key, follow this section; its
+current failure message refers to an obsolete `tests/integration/README.md` path.
+
 ### Choosing checks before review
 
 * Run applicable `task test-*` commands for the changed behavior, using the suites and backends relevant to the change.
@@ -258,7 +349,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) with 
 [etc/.commitlintrc.yaml](../../etc/.commitlintrc.yaml). Branch names must match `^[A-Za-z0-9/_.-]+$`, be descriptive, and
 include a task identifier when applicable. Prefer merge commits over rebasing, and keep rebase disabled. Use `.gitkeep`
 to preserve empty directories in Git and the `gh` client to access GitHub resources. Use
-[Semantic Versioning](https://semver.org/) for releases.
+[Semantic Versioning](https://semver.org/) for releases; follow [Release](release.md) for publishing artifacts.
 
 Destructive operations require user confirmation in interactive mode. In non-interactive mode, allow them only when
 explicitly requested by the user.
@@ -277,7 +368,8 @@ Before opening or updating a pull request:
     relevant manual checks. Distinguish completed checks from planned checks, identify anything left unverified, and
     explain material skips.
 5. Add a `Deployment` section when adopting the change requires action. Describe relevant migrations, configuration or
-    compatibility changes, rollout requirements, and rollback limitations. Link detailed operating instructions.
+    compatibility changes, rollout requirements, and rollback limitations. Link the relevant
+    [deployment instructions](deployment.md).
 
 ## Maintaining the workflow
 

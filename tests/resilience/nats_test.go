@@ -11,6 +11,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	wnats "github.com/ThreeDotsLabs/watermill-nats/v2/pkg/nats"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
 	natsgo "github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
 
@@ -72,8 +73,9 @@ func TestNATSBindsExistingPushConsumersAndRejectsPullConsumers(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			entry := message.NewMessage(watermill.NewUUID(), []byte("managed consumer"))
+			entry := message.NewMessage(watermill.NewUUID(), []byte(`{"event":"created"}`))
 			entry.Metadata.Set("request_id", "request-42")
+			entry.Metadata.Set("traceparent", "00-11111111111111111111111111111111-2222222222222222-01")
 			entry.SetContext(ctx)
 			for range 2 {
 				require.NoError(t, backend.Publisher().Publish(topic, entry))
@@ -81,6 +83,13 @@ func TestNATSBindsExistingPushConsumersAndRejectsPullConsumers(t *testing.T) {
 			stored, err := js.StreamInfo(stream)
 			require.NoError(t, err)
 			require.EqualValues(t, 1, stored.State.Msgs, "retrying a stable ID must deduplicate")
+			raw, err := js.GetMsg(stream, 1)
+			require.NoError(t, err)
+			require.Equal(t, []byte(entry.Payload), raw.Data)
+			require.Equal(t, entry.UUID, raw.Header.Get(wnats.WatermillUUIDHdr))
+			for key, value := range entry.Metadata {
+				require.Equal(t, value, raw.Header.Get(key))
+			}
 			received := receiveBrokerMessage(t, ctx, messages)
 			require.Equal(t, entry.UUID, received.UUID)
 			require.Equal(t, entry.Payload, received.Payload)
@@ -149,8 +158,12 @@ func TestNATSDeduplicationDoesNotSuppressSharedStreamDeadLetters(t *testing.T) {
 	dead, err := js.GetMsg(stream, 2)
 	require.NoError(t, err)
 	require.Equal(t, topic+"_dlq", dead.Subject)
+	require.Equal(t, []byte("event"), source.Data)
+	require.Equal(t, source.Data, dead.Data)
 	require.NotEqual(t, source.Header.Get(natsgo.MsgIdHdr), dead.Header.Get(natsgo.MsgIdHdr))
-	decoded, err := (wnats.GobMarshaler{}).Unmarshal(&natsgo.Msg{Data: dead.Data, Header: dead.Header})
+	require.Contains(t, dead.Header.Get(middleware.ReasonForPoisonedKey), "invalid event")
+	require.Equal(t, topic, dead.Header.Get(middleware.PoisonedTopicKey))
+	decoded, err := new(wnats.NATSMarshaler).Unmarshal(&natsgo.Msg{Data: dead.Data, Header: dead.Header})
 	require.NoError(t, err)
 	require.Equal(t, id, decoded.UUID)
 	require.Equal(t, []byte("event"), []byte(decoded.Payload))

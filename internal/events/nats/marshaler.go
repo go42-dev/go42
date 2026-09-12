@@ -8,17 +8,16 @@ import (
 	natsgo "github.com/nats-io/nats.go"
 )
 
-// gobMarshaler keeps the existing wire payload and adds broker deduplication headers.
-type gobMarshaler struct {
-	wnats.GobMarshaler
+// marshaler uses native NATS payloads and headers and scopes deduplication to each destination.
+type marshaler struct {
+	wnats.NATSMarshaler
 }
 
-func (g gobMarshaler) Marshal(topic string, msg *message.Message) (*natsgo.Msg, error) {
-	encoded, err := g.GobMarshaler.Marshal(topic, msg)
+func (m marshaler) Marshal(topic string, msg *message.Message) (*natsgo.Msg, error) {
+	encoded, err := m.NATSMarshaler.Marshal(topic, msg)
 	if err != nil {
 		return nil, err
 	}
-	encoded.Header = natsgo.Header{}
 	encoded.Header.Set(wnats.WatermillUUIDHdr, msg.UUID)
 	// Deduplication belongs to a destination. A DLQ may share its source's stream.
 	encoded.Header.Set(natsgo.MsgIdHdr, deduplicationID(topic, msg.UUID))

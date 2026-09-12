@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/avast/retry-go/v4"
 	"github.com/bradfitz/gomemcache/memcache"
 
 	"github.com/go42-dev/go42/internal/tools"
@@ -19,22 +18,12 @@ type Wrapper struct {
 	logger *slog.Logger
 	client *memcache.Client
 
-	connectRetryTimeout        time.Duration
-	connectRetryInitialBackoff time.Duration
-	connectRetryMaxBackoff     time.Duration
+	connectRetry tools.StartupRetryPolicy
 }
-
-const (
-	defaultConnectRetryTimeout        = time.Minute
-	defaultConnectRetryInitialBackoff = 500 * time.Millisecond
-	defaultConnectRetryMaxBackoff     = 5 * time.Second
-)
 
 func Open(ctx context.Context, hosts []string, opts ...Option) (*Wrapper, error) {
 	w := &Wrapper{
-		connectRetryTimeout:        defaultConnectRetryTimeout,
-		connectRetryInitialBackoff: defaultConnectRetryInitialBackoff,
-		connectRetryMaxBackoff:     defaultConnectRetryMaxBackoff,
+		connectRetry: tools.DefaultStartupRetryPolicy(),
 	}
 	client := memcache.New(hosts...)
 	for _, opt := range opts {
@@ -44,10 +33,7 @@ func Open(ctx context.Context, hosts []string, opts ...Option) (*Wrapper, error)
 		w.logger = slog.New(slog.DiscardHandler)
 	}
 
-	retryCtx, cancel := context.WithTimeout(ctx, w.connectRetryTimeout)
-	defer cancel()
-
-	err := retry.Do(func() error {
+	err := w.connectRetry.Do(ctx, "memcached", w.logger, func(_ context.Context) error {
 		if err := client.Ping(); err != nil {
 			pingErr := fmt.Errorf("failed to ping memcached: %w", err)
 			if closeErr := client.Close(); closeErr != nil {
@@ -59,24 +45,7 @@ func Open(ctx context.Context, hosts []string, opts ...Option) (*Wrapper, error)
 			return pingErr
 		}
 		return nil
-	},
-		retry.Context(retryCtx),
-		retry.Attempts(0),
-		retry.Delay(w.connectRetryInitialBackoff),
-		retry.MaxDelay(w.connectRetryMaxBackoff),
-		retry.DelayType(retry.FullJitterBackoffDelay),
-		retry.WrapContextErrorWithLastError(true),
-		retry.OnRetry(func(n uint, err error) {
-			if retryCtx.Err() == nil {
-				w.logger.WarnContext(
-					ctx,
-					"cache connection attempt failed, retrying...",
-					slog.Any("attempt", n+1),
-					slog.Any("error", err),
-				)
-			}
-		}),
-	)
+	})
 	if err != nil {
 		return nil, err
 	}
