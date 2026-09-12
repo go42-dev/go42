@@ -159,22 +159,24 @@ Use the [source map](architecture.md#source-map) to trace an existing operation 
 outcome and failure cases in the relevant requirement; record a significant new choice in a decision when needed.
 
 1. Define the transport contract in [OpenAPI](../../api/openapi/v1/auth.yaml) or
-   [Protobuf](../../api/proto/auth/v1/auth.proto). Specify validation, authorization, response fields, and error behavior.
+    [Protobuf](../../api/proto/auth/v1/auth.proto). Specify validation, authorization, response fields, and error behavior.
 2. Implement service inputs and errors in the feature's `domain/` package, persistence models and migrations when needed,
-   and repository operations. Keep transaction boundaries in the service and propagate `txCtx` to required outbox writes.
+    and repository operations. Keep transaction boundaries in the service and propagate `txCtx` to required outbox writes.
 3. Update consumer interfaces and implement the service operation. Decide which failures roll back the operation and
-   which side effects can be retried independently. Cover those outcomes in service and repository tests.
+    which side effects can be retried independently. Cover those outcomes in service and repository tests.
 4. Implement each affected adapter. HTTP routes and request/response types are handwritten in
-   [adapter.go](../../internal/auth/adapters/http/v1/adapter.go) and [models.go](../../internal/auth/adapters/http/v1/models.go).
-   Generating an HTTP SDK does not add a running route. For gRPC, implement the generated service interface and update
-   [adapterPermissionMapping](../../internal/auth/adapters/grpc/v1/adapter.go). With gRPC authorization enabled, methods
-   without registered permissions are denied.
+    [adapter.go](../../internal/auth/adapters/http/v1/adapter.go) and
+    [models.go](../../internal/auth/adapters/http/v1/models.go).
+    Generating an HTTP SDK does not add a running route. For gRPC, implement the generated service interface and update
+    [adapterPermissionMapping](../../internal/auth/adapters/grpc/v1/adapter.go). With gRPC authorization enabled, methods
+    without registered permissions are denied.
 5. Register a new adapter or dependency in [cmd/app](../../cmd/app/main.go). `RegisterV1` supplies the HTTP `/api/v1`
-   prefix; the gRPC adapter registers its generated service. For new background work, define its startup and shutdown owner.
+    prefix; the gRPC adapter registers its generated service. For new background work, define its startup and shutdown
+    owner.
 6. Run the [generation workflow](#generated-files-and-dependencies). A new HTTP contract also needs generator directives
-   in [api/generate.go](../../api/generate.go); the existing directives name the authentication contract explicitly.
+    in [api/generate.go](../../api/generate.go); the existing directives name the authentication contract explicitly.
 7. Test the service and transport behavior, including validation, missing permissions, and dependency failure. When both
-   transports expose an operation, verify both mappings. Run applicable API compatibility checks before review.
+    transports expose an operation, verify both mappings. Run applicable API compatibility checks before review.
 8. Update the owning handbook page, requirement evidence, and any affected operating instructions with the change.
 
 For persisted-data or message-format changes, include the [migration handoff](deployment.md#migrations-and-change-handoff).

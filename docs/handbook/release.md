@@ -18,17 +18,17 @@ when dispatching it. A tag push or a merge does not trigger this workflow.
 Before dispatching:
 
 1. Wait for a successful, completed `push` run of
-   [Unified CI](../../.github/workflows/100-unified-workflow.yaml) for the current `master` commit in this repository.
-   Pull request and manually dispatched CI runs do not satisfy this check.
+    [Unified CI](../../.github/workflows/100-unified-workflow.yaml) for the current `master` commit in this repository.
+    Pull request and manually dispatched CI runs do not satisfy this check.
 2. Choose an unused version such as `v1.2.3` or `v1.2.3-rc.1`: a `v` prefix and valid SemVer are required, build metadata
-   such as `+build.7` is rejected, and the complete string must be at most 128 characters. Neither a Git tag nor a GitHub
-   release may already exist for this version.
+    such as `+build.7` is rejected, and the complete string must be at most 128 characters. Neither a Git tag nor a GitHub
+    release may already exist for this version.
 3. Configure repository variables `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_NAME`, and secret `RELEASE_APP_PRIVATE_KEY`
-   for the release GitHub App. Its installation must cover this repository and permit Contents write access.
-   `RELEASE_APP_NAME` must match the App slug. These values are used in the publication job, after the image is pushed.
+    for the release GitHub App. Its installation must cover this repository and permit Contents write access.
+    `RELEASE_APP_NAME` must match the App slug. These values are used in the publication job, after the image is pushed.
 4. Ensure the workflow's `GITHUB_TOKEN` can publish the `go42` package to GHCR. The build job declares Packages write,
-   Contents read, Actions read, Attestations write, and ID token write permissions; repository and organization settings
-   must allow those operations.
+    Contents read, Actions read, Attestations write, and ID token write permissions; repository and organization settings
+    must allow those operations.
 
 The validation job requires the workflow definition and dispatch SHA to match the selected `master` commit. If `master`
 advances before validation checks its head, validation fails; dispatch again after CI succeeds for the new head. Dispatches
@@ -84,13 +84,13 @@ a multi-platform build tagged `ghcr.io/go42-dev/go42:dev` without a push or load
 After the workflow completes:
 
 1. Confirm all three release jobs succeeded. Open the linked GitHub release and compare its source SHA with the commit
-   shown by the linked successful Unified CI run. Confirm the tag resolves to that SHA and the prerelease status matches
-   the requested version.
+    shown by the linked successful Unified CI run. Confirm the tag resolves to that SHA and the prerelease status matches
+    the requested version.
 2. Open the image package in GHCR and check the version tag and manifest digest against the release's immutable image
-   reference. Confirm the image contains both `linux/amd64` and `linux/arm64` manifests.
+    reference. Confirm the image contains both `linux/amd64` and `linux/arm64` manifests.
 3. Inspect the build's provenance and SBOM attestation summaries and download the named SBOM from the workflow artifacts.
-   Confirm their subject digest matches the release image. These establish the published artifact's identity and
-   inventory; verify the deployed application separately using the [deployment guide](deployment.md).
+    Confirm their subject digest matches the release image. These establish the published artifact's identity and
+    inventory; verify the deployed application separately using the [deployment guide](deployment.md).
 
 The image is pushed before attestations, SBOM generation, and GitHub release creation. A later failure can therefore leave
 an image or attestations without a GitHub release; the workflow has no automatic rollback. Inspect the failed step and

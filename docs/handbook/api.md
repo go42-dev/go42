@@ -74,8 +74,10 @@ def call(method, path, body=None, token=None):
         content = response.read()
         return response.status, json.loads(content) if content else None
 
-credentials = {"email": "docs-" + secrets.token_hex(12) + "@example.invalid",
-               "password": secrets.token_urlsafe(32)}
+credentials = {
+    "email": "docs-" + secrets.token_hex(12) + "@example.invalid",
+    "password": secrets.token_urlsafe(32),
+}
 status, user = call("POST", "/auth/signup", credentials)
 assert status == 201
 status, tokens = call("POST", "/auth/login", credentials)
