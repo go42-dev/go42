@@ -509,10 +509,9 @@ jobs:
         run: >-
           sqlfluff lint --config etc/sqlfluff.ini --disable-progress-bar ${{ matrix.path }} --dialect ${{ matrix.dialect }}
 
-  # TOML formatting and lint rules.
-  # @see https://github.com/tombi-toml/tombi
-  toml-lint:
-    name: toml-lint
+  # JSON, YAML, and TOML formatting and lint rules.
+  config-lint:
+    name: config-lint
     runs-on: ${{ inputs.runs_on }}
     continue-on-error: ${{ inputs.continue_on_error }}
     timeout-minutes: ${{ inputs.timeout_minutes }}
@@ -528,11 +527,21 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: 'Install pinned Task and Tombi'
+      - name: 'Setup Go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: false
+      - name: 'Install pinned Task, jsonfmt, yamlfmt, and Tombi'
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           version: '2026.9.1'
-          install_args: --locked task tombi
+          install_args: >-
+            --locked task go:github.com/caarlos0/jsonfmt go:github.com/google/yamlfmt/cmd/yamlfmt tombi
+      - name: 'Check JSON formatting'
+        run: task --exit-code lint:json
+      - name: 'Check YAML formatting'
+        run: task --exit-code lint:yaml
       - name: 'Check TOML formatting and lint rules'
         run: task --exit-code lint:toml
 
