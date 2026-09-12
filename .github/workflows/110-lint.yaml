@@ -293,6 +293,8 @@ jobs:
           trap 'echo "::remove-matcher owner=hadolint::"' EXIT
           hadolint --failure-threshold info Dockerfile
 
+  # Linter for helm charts.
+  # @see https://helm.sh/docs/helm/helm_lint/
   helm-lint:
     name: helm-lint
     runs-on: ${{ inputs.runs_on }}
@@ -435,6 +437,8 @@ jobs:
         shell: bash
         run: actionlint -oneline --config-file etc/actionlint.yaml
 
+  # Action security audit.
+  # @see https://github.com/zizmor-labs/zizmor
   zizmor-lint:
     name: zizmor-lint
     runs-on: ${{ inputs.runs_on }}
@@ -510,6 +514,9 @@ jobs:
           sqlfluff lint --config etc/sqlfluff.ini --disable-progress-bar ${{ matrix.path }} --dialect ${{ matrix.dialect }}
 
   # JSON, YAML, and TOML formatting and lint rules.
+  # @see https://github.com/caarlos0/jsonfmt
+  # @see https://github.com/google/yamlfmt
+  # @see https://github.com/pelletier/go-toml
   config-lint:
     name: config-lint
     runs-on: ${{ inputs.runs_on }}

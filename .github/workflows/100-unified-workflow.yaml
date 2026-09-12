@@ -42,9 +42,6 @@ concurrency:
 
 jobs:
 
-  # stage 1: linting
-
-  # Common entry point for every full CI run.
   gate-start:
     name: gate-start
     runs-on: ubuntu-latest
@@ -52,6 +49,8 @@ jobs:
     steps:
       - name: Start full CI
         run: echo "Full CI started."
+
+  # stage 1: linting
 
   lint:
     uses: ./.github/workflows/110-lint.yaml
