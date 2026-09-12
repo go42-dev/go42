@@ -145,6 +145,8 @@ jobs:
           DATABASE_MYSQL_SLAVE_HOST: mysql
           DATABASE_PGSQL_MASTER_HOST: pgsql
           DATABASE_PGSQL_SLAVE_HOST: pgsql
+          # Both pools share one server with max_connections=100; leave room for health checks.
+          DATABASE_PGSQL_MAX_OPEN_CONNS: 40
         options: >-
           --health-cmd "curl -f http://localhost:8080/health || exit 1" --health-start-period 1s --health-interval 5s --health-timeout
           5s --health-retries 10
