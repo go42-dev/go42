@@ -1,0 +1,68 @@
+{
+  "runOnSave.defaultRunIn": "backend",
+  "runOnSave.ignoreFilesBy": [
+    ".gitignore"
+  ],
+  "runOnSave.commands": [
+    {
+      "match": "\\.proto$",
+      "command": "task --silent --exit-code --dir \"${workspaceFolder}\" fmt:proto -- \"${file}\"",
+      "async": false,
+      "notMatch": "(^|[\\\\/])(\\.git|\\.idea|\\.vscode|\\.tools|\\.build|node_modules)([\\\\/]|$)"
+    },
+    {
+      "match": "\\.ya?ml$",
+      "notMatch": "(^|[\\\\/])(\\.git|\\.idea|\\.vscode|\\.tools|\\.build|node_modules)([\\\\/]|$)|(^|[\\\\/])infra[\\\\/]helm[\\\\/].*[\\\\/]templates[\\\\/]",
+      "command": "task --silent --exit-code --dir \"${workspaceFolder}\" fmt:yaml -- \"${file}\"",
+      "async": false
+    },
+    {
+      "match": "\\.json$",
+      "command": "task --silent --exit-code --dir \"${workspaceFolder}\" fmt:json -- \"${file}\"",
+      "async": false,
+      "notMatch": "(^|[\\\\/])(\\.git|\\.idea|\\.vscode|\\.tools|\\.build|node_modules)([\\\\/]|$)"
+    },
+    {
+      "match": "\\.go$",
+      "command": "task --silent --exit-code --dir \"${workspaceFolder}\" fmt:go -- \"${file}\"",
+      "async": false,
+      "notMatch": "(^|[\\\\/])(\\.git|\\.idea|\\.vscode|\\.tools|\\.build|node_modules)([\\\\/]|$)"
+    },
+    {
+      "match": "\\.go$",
+      "command": "task --silent --exit-code --dir \"${workspaceFolder}\" lint:go -- \"./${fileDirnameRelative}\"",
+      "async": false,
+      "notMatch": "(^|[\\\\/])(\\.git|\\.idea|\\.vscode|\\.tools|\\.build|node_modules)([\\\\/]|$)"
+    },
+    {
+      "match": "\\.md$",
+      "command": "task --silent --exit-code --dir \"${workspaceFolder}\" fmt:markdown -- \"${file}\"",
+      "async": false,
+      "notMatch": "(^|[\\\\/])(\\.git|\\.idea|\\.vscode|\\.tools|\\.build|node_modules)([\\\\/]|$)"
+    },
+    {
+      "globMatch": "migrate/mysql/*.sql",
+      "command": "task --silent --exit-code --dir \"${workspaceFolder}\" fmt:sql DIALECT=mysql -- \"${file}\"",
+      "async": false,
+      "notMatch": "(^|[\\\\/])(\\.git|\\.idea|\\.vscode|\\.tools|\\.build|node_modules)([\\\\/]|$)"
+    },
+    {
+      "globMatch": "migrate/sqlite/*.sql",
+      "command": "task --silent --exit-code --dir \"${workspaceFolder}\" fmt:sql DIALECT=sqlite -- \"${file}\"",
+      "async": false,
+      "notMatch": "(^|[\\\\/])(\\.git|\\.idea|\\.vscode|\\.tools|\\.build|node_modules)([\\\\/]|$)"
+    },
+    {
+      "globMatch": "migrate/pgsql/*.sql",
+      "command": "task --silent --exit-code --dir \"${workspaceFolder}\" fmt:sql DIALECT=postgres -- \"${file}\"",
+      "async": false,
+      "notMatch": "(^|[\\\\/])(\\.git|\\.idea|\\.vscode|\\.tools|\\.build|node_modules)([\\\\/]|$)"
+    },
+    {
+      "match": "\\.toml$",
+      "command": "task --silent --exit-code --dir \"${workspaceFolder}\" fmt:toml -- \"${file}\"",
+      "async": false,
+      "notMatch": "(^|[\\\\/])(\\.git|\\.idea|\\.vscode|\\.tools|\\.build|node_modules)([\\\\/]|$)"
+    }
+  ]
+}

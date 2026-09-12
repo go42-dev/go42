@@ -3,6 +3,12 @@
 name: prepare-env
 description: 'Prepare the shared Go development environment'
 
+inputs:
+  setup-task:
+    description: 'Task used to install project dependencies'
+    required: false
+    default: 'setup'
+
 runs:
   using: composite
   steps:
@@ -27,9 +33,9 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ github.workspace }}/.tools
-        # Save at the end of the job, after task setup installs the full toolset.
-        key: mise-tools-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('etc/mise.toml', 'etc/mise.lock', 'go.mod', '.github/actions/prepare-env/action.yaml')
-          }}
+        # Cache each setup task separately and save its tools at job completion.
+        key: mise-tools-v3-${{ inputs.setup-task }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('etc/mise.toml', 'etc/mise.lock',
+          'go.mod', 'Taskfile.yaml', '.github/actions/prepare-env/action.yaml') }}
     # -----
     - name: 'Install mise and pinned Task'
       uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
@@ -39,5 +45,7 @@ runs:
         cache: false
     # -----
     - name: 'Setup project dependencies'
-      run: task setup
       shell: bash
+      env:
+        PROJECT_SETUP_TASK: ${{ inputs.setup-task }}
+      run: task "$PROJECT_SETUP_TASK"

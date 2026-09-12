@@ -29,6 +29,9 @@ task setup
 This installs the tools locked in [etc/mise.lock](../../etc/mise.lock), including Task, syncs Vale styles, and downloads
 Go modules. `task setup-mcp` additionally installs gopls and pulls the pinned GitHub MCP image.
 
+For code generation, `task setup-generators` installs the generators and their supporting tools from the same lockfile.
+Run it before `task generate` to prepare only the tools needed for generation.
+
 Create `.env` from [.env.example](../../.env.example) if it does not already exist, then adjust the local settings:
 
 ```sh
@@ -189,7 +192,14 @@ markdownlint-cli2 --config etc/.markdownlint-cli2.yaml --no-globs --fix "$FILE"
 `--no-globs` prevents the configured documentation glob from expanding a file-specific fix. Direct Tombi calls need `etc/`
 as the working directory and an absolute file path. Shared JetBrains watcher definitions live in
 [etc/.ide/jetbrains/watchers.xml](../../etc/.ide/jetbrains/watchers.xml); keep imported settings aligned with the workflow.
-Per-project `.idea/` and `.vscode/` settings are ignored by Git.
+
+For VS Code, install [Run on Save](https://marketplace.visualstudio.com/items?itemName=pucelle.run-on-save)
+and copy or merge [etc/.ide/vscode/settings.json](../../etc/.ide/vscode/settings.json)
+into `.vscode/settings.json` at the repository root.
+Make Go and Task available on VS Code's `PATH`, then run `task setup` to install the project tools. The preset invokes
+Task formatters on save, with Go formatting followed by package linting. It preserves the SQL migration dialect scopes,
+skips Helm templates for YAML formatting, and runs commands in sequence. Task supplies the mise environment and Tombi's
+working directory. Per-project `.idea/` and `.vscode/` settings are ignored by Git.
 
 ## Testing and verification
 
@@ -280,8 +290,9 @@ CI installs the tools each job needs through mise using the same pins and lockfi
 `MISE_DEFAULT_CONFIG_FILENAME=etc/mise.toml` and the project tool paths. Go test jobs install Task, load-test jobs add k6,
 and documentation jobs install Task and the documentation tools.
 
-The shared [environment action](../../.github/actions/prepare-env/action.yaml) installs Task, then invokes `task setup`.
-Its project-tool cache is saved at successful job completion so subsequent jobs can reuse the installed tools.
+The shared [environment action](../../.github/actions/prepare-env/action.yaml) installs Task, then runs the task selected
+by its `setup-task` input, which defaults to `setup`. The `project-lint` job selects `setup-generators`. Each setup task
+has a separate project-tool cache, saved at successful job completion so subsequent jobs can reuse the installed tools.
 
 Every test workflow invokes its Task command. GitHub Actions manages matrices, service containers, caches, timeouts,
 artifacts, and reporting. Fuzz and load steps use `--exit-code` to preserve the underlying command's failure code.

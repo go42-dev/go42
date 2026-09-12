@@ -53,6 +53,10 @@ function validateMetadata(page, ids) {
   if (typeof metadata.title !== 'string' || !metadata.title.trim()) {
     throw new Error(`${source}: title is required`);
   }
+  if (collection === 'handbook' &&
+      (!Number.isSafeInteger(metadata.sidebar_position) || metadata.sidebar_position < 1)) {
+    throw new Error(`${source}: handbook sidebar_position must be a positive integer`);
+  }
   if (ids.has(metadata.id)) {
     throw new Error(`${source}: duplicate id ${metadata.id} (also in ${ids.get(metadata.id).source})`);
   }
@@ -118,6 +122,76 @@ function localTarget(root, page, url) {
   return {source, suffix, directory: fs.statSync(absolute).isDirectory()};
 }
 
+function nodeText(node) {
+  return node.value ?? (node.children ?? []).map(nodeText).join('');
+}
+
+function validateIndex(root, pages, sources) {
+  const overview = pages[0];
+  const entries = new Map(collections.map(collection => [collection.name, []]));
+  const definitions = new Map();
+  visit(overview.tree, 'definition', node => {
+    definitions.set(node.identifier, node.url);
+  });
+
+  let section;
+  for (const node of overview.tree.children) {
+    if (node.type === 'heading') {
+      if (section && node.depth <= section.depth) section = undefined;
+      const name = nodeText(node).trim().toLowerCase();
+      if (entries.has(name)) section = {name, depth: node.depth};
+    }
+    if (node.type !== 'table' || !section) continue;
+    for (const row of node.children.slice(1)) {
+      if (row.children.length !== 2 || !nodeText(row.children[1]).trim()) {
+        throw new Error(`${overview.source}: ${section.name} index rows need a document and a nonempty purpose`);
+      }
+      const links = [];
+      visit(row.children[0], ['link', 'linkReference'], link => {
+        const url = link.type === 'link' ? link.url : definitions.get(link.identifier);
+        const target = localTarget(root, overview, url);
+        links.push(target && sources.get(target.source));
+      });
+      if (links.length !== 1 || !links[0]) {
+        throw new Error(`${overview.source}: each ${section.name} index row must link to one documentation source`);
+      }
+      const page = links[0];
+      if (page.collection !== section.name) {
+        throw new Error(`${overview.source}: ${page.source} belongs in the ${page.collection} index`);
+      }
+      const indexed = entries.get(section.name);
+      if (indexed.includes(page)) {
+        throw new Error(`${overview.source}: duplicate index entry for ${page.source}`);
+      }
+      indexed.push(page);
+    }
+  }
+
+  const positions = new Map();
+  for (const page of pages.filter(page => page.collection === 'handbook')) {
+    const position = page.metadata.sidebar_position;
+    if (positions.has(position)) {
+      throw new Error(`${page.source}: duplicate handbook sidebar_position ${position} (also in ${positions.get(position)})`);
+    }
+    positions.set(position, page.source);
+  }
+  for (const {name} of collections) {
+    const indexed = entries.get(name);
+    const missing = pages.filter(page => page.collection === name && !indexed.includes(page));
+    if (missing.length) {
+      throw new Error(`${overview.source}: missing ${name} index entries: ${missing.map(page => page.source).join(', ')}`);
+    }
+    if (name === 'templates') continue;
+    const order = page => name === 'handbook' ? page.metadata.sidebar_position : BigInt(page.metadata.id.slice(4));
+    for (let index = 1; index < indexed.length; index++) {
+      if (order(indexed[index - 1]) >= order(indexed[index])) {
+        const field = name === 'handbook' ? 'sidebar_position' : 'record number';
+        throw new Error(`${overview.source}: ${name} index must follow ascending ${field} order`);
+      }
+    }
+  }
+}
+
 export function loadDocumentation(root = rootDirectory) {
   const pages = [readPage(root, 'docs/README.md', 'index.md', 'overview')];
   for (const collection of collections) {
@@ -136,6 +210,7 @@ export function loadDocumentation(root = rootDirectory) {
     });
   }
   validateReferences(pages, ids);
+  validateIndex(root, pages, sources);
   // Entry points are read from the checkout, so their links must work there too.
   for (const source of ['README.md', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md', '.github/copilot-instructions.md']) {
     if (!fs.existsSync(path.join(root, source))) continue;
@@ -266,7 +341,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   try {
     if (process.argv.includes('--check')) {
       const bundle = loadDocumentation();
-      console.log(`Validated ${bundle.pages.length} documentation sources, metadata, and local file links.`);
+      console.log(`Validated ${bundle.pages.length} documentation sources, metadata, index, and local file links.`);
     } else {
       console.log(`Assembled ${assemble()} documentation pages.`);
     }

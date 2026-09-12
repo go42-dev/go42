@@ -57,6 +57,18 @@ tasks:
       - '"{{.TOOLS_BIN}}/vale" --config etc/vale.ini sync'
       - "go mod download"
 
+  ## setup-generators | install dependencies for code generation
+  setup-generators:
+    desc: "install dependencies for code generation"
+    cmds:
+      - |
+        mise install --locked \
+          task node yq buf oapi-codegen npm:@redocly/cli \
+          go:go.uber.org/mock/mockgen \
+          go:github.com/ogen-go/ogen/cmd/ogen \
+          go:google.golang.org/protobuf/cmd/protoc-gen-go \
+          go:google.golang.org/grpc/cmd/protoc-gen-go-grpc
+
   ## setup-mcp | setup mcp servers
   setup-mcp:
     desc: "setup mcp servers"
@@ -778,4 +790,4 @@ tasks:
     desc: "run grpcui for debugging gRPC services"
     interactive: true
     cmds:
-      - "grpcui -plaintext localhost:9090"
+      - "grpcui -plaintext localhost:50051"

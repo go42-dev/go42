@@ -29,9 +29,10 @@ Delivery tasks and discussions remain in issues, pull requests, and Git history.
 ### REQ-001.1: Find the application's knowledge
 
 `docs/README.md` is the single entry point for application documentation and becomes the published homepage.
-It provides a reading order and a complete index of handbook pages, requirements, and decisions, grouped by type with
-links and short purposes. Templates are listed separately. Retired requirements and rejected or superseded decisions
-remain discoverable.
+Its complete index lists handbook pages, requirements, and decisions by type with links and short purposes. The handbook
+table provides the reading order, matching unique positive `sidebar_position` values. Requirements and decisions follow
+record number order. Templates are listed separately. Retired requirements and rejected or superseded decisions remain
+discoverable.
 Conventions are a handbook page under `docs/handbook/`. The index links the local documentation ownership rules and the
 external guide.
 
@@ -48,8 +49,9 @@ following the local documentation policy. Application contributions do not requi
 ### REQ-001.4: Validate and publish from the sources
 
 The documented check rejects missing metadata, duplicate IDs, invalid record statuses, missing related records, broken
-local file links, and broken published page links or anchors. Templates appear as authoring resources. Publishing uses
-the source Markdown and shows the source revision.
+local file links, and broken published page links or anchors. It also rejects missing, duplicate, or misplaced index
+entries, empty purposes, invalid or duplicate handbook positions, and incorrect index order. Templates appear as
+authoring resources. Publishing uses the source Markdown and shows the source revision.
 
 ### REQ-001.5: Operate the adopted application
 
@@ -67,11 +69,11 @@ its content. References to that guide remain external web links.
 
 | Criteria | Evidence or gap |
 | --- | --- |
-| REQ-001.1 | [Documentation index](../README.md); compare its entries with the authored files under `docs/` |
+| REQ-001.1 | [Documentation index](../README.md); `task docs-check` checks coverage, grouping, and order against authored pages |
 | REQ-001.2 | [Local policy](../handbook/documentation.md#status-and-implementation) and record metadata checks |
 | REQ-001.3 | [Documentation workflow](../handbook/documentation.md#change-workflow-for-contributors); review checks meaning |
 | REQ-001.4 | `task docs-check`; documentation tooling tests, validation, and the site build |
-| REQ-001.5 | Outstanding: the [application profile](../handbook/project.md#documentation-coverage) identifies the initial coverage gaps |
+| REQ-001.5 | [Development](../handbook/development.md), [architecture](../handbook/architecture.md), [configuration](../handbook/configuration.md), and [operations](../handbook/operations.md) describe current behavior; the [application profile](../handbook/project.md#documentation-coverage) records remaining ownership and operating gaps |
 | REQ-001.6 | [Local source assembly](../../pages/assemble.mjs), [isolated fixtures](../../pages/assemble.test.mjs), and [publishing workflow](../../.github/workflows/210-github-pages.yaml) |
 
 Re-run the relevant checks when changing these sources. Successful tooling checks establish structural validity and

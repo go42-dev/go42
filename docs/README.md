@@ -8,16 +8,8 @@ slug: /
 
 # Application documentation
 
-Start here for the application in this checkout: its purpose, working rules, required behavior, significant decisions,
-and operating instructions.
-
-## Start here
-
-1. Read the [application profile](handbook/project.md) for its purpose and current context.
-2. Read the [project conventions](handbook/conventions.md) for code, architecture, data, runtime, and test design rules.
-3. Follow the [documentation workflow](handbook/documentation.md) to select, write, update, and verify documents.
-4. Use the [development workflow](handbook/development.md) to set up, develop, verify, and prepare a change for review.
-5. Read the handbook guides, requirements, and decisions relevant to the task using the index below.
+This index is the entry point for the application in this checkout: its purpose, working rules, required behavior,
+significant decisions, and operating instructions. The handbook table follows the published sidebar's reading order.
 
 ## Documentation index
 
@@ -29,6 +21,9 @@ and operating instructions.
 | [Maintaining documentation](handbook/documentation.md) | Document types, authoring, maintenance, checks, and publishing               |
 | [Project conventions](handbook/conventions.md)         | Engineering rules for code, architecture, data, runtime, and test design     |
 | [Development workflow](handbook/development.md)        | Setup, local development, formatting, tests, verification, and contributions |
+| [Architecture](handbook/architecture.md)               | Components, request and event flows, persistence, and process lifecycle      |
+| [Configuration](handbook/configuration.md)             | Configuration sources, backend choices, defaults, and deployment settings    |
+| [Operations](handbook/operations.md)                   | Startup checks, health, observability, deployment, and recovery boundaries   |
 
 ### Requirements
 

@@ -20,10 +20,13 @@ For creating a project from the blueprint, see the
 
 ## Documentation coverage
 
-This initial handbook covers the documentation process, engineering conventions, and the current
-[development workflow](development.md), and summarizes current capabilities. Application-specific setup, architecture,
-configuration, release, deployment, recovery, and support guides remain to be written as the application's purpose and
-operating environment are established.
+The handbook covers documentation maintenance, engineering conventions, the [development workflow](development.md),
+the current [architecture](architecture.md), [configuration](configuration.md), and [operations](operations.md).
+These guides describe the checked-out implementation, including inherited defaults.
+
+The application's purpose, users, owners, target environments, and support contacts still need to be recorded.
+Deployment promotion, secret delivery, backup and restore procedures, and recovery objectives depend on that operating
+context and remain outstanding. No application-specific business requirements have been recorded.
 
 ## System overview
 

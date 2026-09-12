@@ -553,8 +553,10 @@ jobs:
         with:
           persist-credentials: false
       # -----
-      - name: 'Prepare project environment'
+      - name: 'Prepare code generation environment'
         uses: ./.github/actions/prepare-env
+        with:
+          setup-task: setup-generators
       # -----
       - name: 'Generate code'
         run: task generate
@@ -565,7 +567,7 @@ jobs:
             echo "The following files have changes:"
             git status --porcelain
             echo ""
-            echo "Please run 'task setup && task generate' locally and commit the changes."
+            echo "Please run 'task setup-generators && task generate' locally and commit the changes."
             exit 1
           else
             echo "No uncommitted changes detected"

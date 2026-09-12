@@ -1,12 +1,14 @@
 ---
 id: template-handbook
 title: Handbook template
+sidebar_position: 1
 related: []
 ---
 
 # Handbook template
 
-Follow the [authoring workflow](../handbook/documentation.md#creating-a-document). Adapt headings to the subject and
+Follow the [authoring workflow](../handbook/documentation.md#creating-a-document). Choose an unused positive integer for
+`sidebar_position` and place the new page in that order in the documentation index. Adapt headings to the subject and
 remove optional sections when they add no useful information.
 
 ## Purpose
