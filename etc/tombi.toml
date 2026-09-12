@@ -1,0 +1,21 @@
+# @see https://tombi-toml.github.io/tombi/docs/configuration/
+# Tombi discovers this file when invoked from etc/.
+
+toml-version = "v1.0.0"
+
+[format.rules]
+indent-style = "space"
+indent-width = 2
+line-ending = "lf"
+line-width = 120
+# Keep literal regex strings readable in the Gitleaks configuration.
+string-quote-style = "preserve"
+
+[lint.rules]
+dotted-keys-out-of-order = "error"
+key-empty = "error"
+tables-out-of-order = "error"
+
+[schema.catalog]
+# Use the schemas bundled with the pinned Tombi release.
+paths = ["tombi://www.schemastore.org/api/json/catalog.json"]

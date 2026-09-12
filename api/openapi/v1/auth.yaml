@@ -542,9 +542,8 @@ components:
           minLength: 8
           maxLength: 72
           description: >-
-            At least 8 Unicode characters and at most 72 UTF-8 bytes.
-            Used exactly as supplied, including whitespace.
-            New passwords must also meet the configured strength requirement.
+            At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including whitespace. New
+            passwords must also meet the configured strength requirement.
           example: "12#$abCD%$"
     LoginRequest:
       type: object
@@ -561,8 +560,7 @@ components:
           minLength: 8
           maxLength: 72
           description: >-
-            At least 8 Unicode characters and at most 72 UTF-8 bytes.
-            Used exactly as supplied, including whitespace.
+            At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including whitespace.
           example: "12#$abCD%$"
     RefreshRequest:
       type: object
@@ -599,9 +597,8 @@ components:
           minLength: 8
           maxLength: 72
           description: >-
-            At least 8 Unicode characters and at most 72 UTF-8 bytes.
-            Used exactly as supplied, including whitespace.
-            New passwords must also meet the configured strength requirement.
+            At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including whitespace. New
+            passwords must also meet the configured strength requirement.
           example: "12#$abCD%$"
     UpdateUserRequest:
       type: object
@@ -615,9 +612,8 @@ components:
           minLength: 8
           maxLength: 72
           description: >-
-            At least 8 Unicode characters and at most 72 UTF-8 bytes.
-            Used exactly as supplied, including whitespace.
-            New passwords must also meet the configured strength requirement.
+            At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including whitespace. New
+            passwords must also meet the configured strength requirement.
           example: "12#$abCD%$"
     UpdateSelfRequest:
       type: object
@@ -638,7 +634,6 @@ components:
           minLength: 8
           maxLength: 72
           description: >-
-            At least 8 Unicode characters and at most 72 UTF-8 bytes.
-            Used exactly as supplied, including whitespace.
-            New passwords must also meet the configured strength requirement.
+            At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including whitespace. New
+            passwords must also meet the configured strength requirement.
           example: "12#$abCD%$"

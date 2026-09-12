@@ -37,6 +37,11 @@ jobs:
     permissions:
       contents: read
       packages: read
+    env:
+      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
+      MISE_DATA_DIR: ${{ github.workspace }}/.tools
+      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
+      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     strategy:
       fail-fast: false
       matrix:
@@ -155,6 +160,11 @@ jobs:
           restore-keys: |
             ${{ env.GO_CACHE_PREFIX }}-${{ hashFiles('go.mod', 'go.sum') }}-
             ${{ env.GO_CACHE_PREFIX }}-
+      - name: 'Install pinned Task'
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: '2026.9.1'
+          install_args: --locked task
       - name: 'Download Go modules'
         run: go mod download
       - name: 'Enable MySQL deadlock logging'
@@ -163,7 +173,7 @@ jobs:
           docker exec -e MYSQL_PWD=root "${{ job.services.mysql.id }}" \
             mysql -uroot -e "SET GLOBAL innodb_print_all_deadlocks = ON;"
       - name: 'Run integration tests with coverage'
-        run: make test-integration
+        run: task test-integration
         # environment variables read by integration tests
         env:
           CGO_ENABLED: 1 # needed for -race

@@ -60,31 +60,6 @@ url = "https://github.com/bufbuild/buf/releases/download/v1.55.0/buf-Darwin-x86_
 url_api = "https://api.github.com/repos/bufbuild/buf/releases/assets/264799802"
 provenance = "minisign"
 
-[[tools.checkmake]]
-version = "0.3.2"
-backend = "aqua:checkmake/checkmake"
-specifiers = ["0.3.2"]
-
-[tools.checkmake."platforms.linux-arm64"]
-checksum = "sha256:409167c4abb99407bd232c3bbd351b8a39df57997feafde5a08bddffb0f2dcb4"
-url = "https://github.com/checkmake/checkmake/releases/download/v0.3.2/checkmake-v0.3.2.linux.arm64"
-url_api = "https://api.github.com/repos/checkmake/checkmake/releases/assets/338779065"
-
-[tools.checkmake."platforms.linux-x64"]
-checksum = "sha256:e2effb876913f3ee2caef0ba35f6202c5e8a3cd55a077d8d2b9ce2034257b6af"
-url = "https://github.com/checkmake/checkmake/releases/download/v0.3.2/checkmake-v0.3.2.linux.amd64"
-url_api = "https://api.github.com/repos/checkmake/checkmake/releases/assets/338779060"
-
-[tools.checkmake."platforms.macos-arm64"]
-checksum = "sha256:d5dab7169d1cb246b380ed5e7fc1e6aded301d453db258f858e774422d25961f"
-url = "https://github.com/checkmake/checkmake/releases/download/v0.3.2/checkmake-v0.3.2.darwin.arm64"
-url_api = "https://api.github.com/repos/checkmake/checkmake/releases/assets/338779063"
-
-[tools.checkmake."platforms.macos-x64"]
-checksum = "sha256:82942043a4766b9fb3ffe6c77584df7d6c832bfa00571f234d257799f492fdd7"
-url = "https://github.com/checkmake/checkmake/releases/download/v0.3.2/checkmake-v0.3.2.darwin.amd64"
-url_api = "https://api.github.com/repos/checkmake/checkmake/releases/assets/338779062"
-
 [[tools.editorconfig-checker]]
 version = "3.11.3"
 backend = "aqua:editorconfig-checker/editorconfig-checker"
@@ -504,6 +479,60 @@ url_api = "https://api.github.com/repos/koalaman/shellcheck/releases/assets/2790
 checksum = "sha256:3c89db4edcab7cf1c27bff178882e0f6f27f7afdf54e859fa041fca10febe4c6"
 url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.x86_64.tar.xz"
 url_api = "https://api.github.com/repos/koalaman/shellcheck/releases/assets/279056930"
+
+[[tools.task]]
+version = "3.53.1"
+backend = "aqua:go-task/task"
+specifiers = ["3.53.1"]
+
+[tools.task."platforms.linux-arm64"]
+checksum = "sha256:e3ad19101493a0112e1f22ae8ccc54bf03e533b1076a0ca1e6c782a09ad2e588"
+url = "https://github.com/go-task/task/releases/download/v3.53.1/task_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/go-task/task/releases/assets/519645523"
+
+[tools.task."platforms.linux-x64"]
+checksum = "sha256:a54a408f6861ff921f6e87774180db31bacd8c1e7c944ca696db9fea49a82fc7"
+url = "https://github.com/go-task/task/releases/download/v3.53.1/task_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/go-task/task/releases/assets/519645449"
+
+[tools.task."platforms.macos-arm64"]
+checksum = "sha256:85d2d96c2380b33d7855b07b3f7a20dc7ca0eda999a26efa0fb5f6f32b366cd7"
+url = "https://github.com/go-task/task/releases/download/v3.53.1/task_darwin_arm64.tar.gz"
+url_api = "https://api.github.com/repos/go-task/task/releases/assets/519645491"
+
+[tools.task."platforms.macos-x64"]
+checksum = "sha256:7f1a702d54a789cb818a636039a83df071f4179893133afafa4eba351a7e19ef"
+url = "https://github.com/go-task/task/releases/download/v3.53.1/task_darwin_amd64.tar.gz"
+url_api = "https://api.github.com/repos/go-task/task/releases/assets/519645492"
+
+[[tools.tombi]]
+version = "1.5.4"
+backend = "aqua:tombi-toml/tombi"
+specifiers = ["1.5.4"]
+
+[tools.tombi."platforms.linux-arm64"]
+checksum = "sha256:c715b9430b18c37e4f719cb5282e1d3352629dc027a8098d3bd116571f9cf034"
+url = "https://github.com/tombi-toml/tombi/releases/download/v1.5.4/tombi-cli-1.5.4-aarch64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/tombi-toml/tombi/releases/assets/552962827"
+provenance = "github-attestations"
+
+[tools.tombi."platforms.linux-x64"]
+checksum = "sha256:072a1d61e61d9137bcea2754568181370f8f3dcde85bef457c2c07529699ee6e"
+url = "https://github.com/tombi-toml/tombi/releases/download/v1.5.4/tombi-cli-1.5.4-x86_64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/tombi-toml/tombi/releases/assets/552962856"
+provenance = "github-attestations"
+
+[tools.tombi."platforms.macos-arm64"]
+checksum = "sha256:753a8ad56b658965a6f248438373c96465f991704ef59fe8bc04fcc31a4f4c88"
+url = "https://github.com/tombi-toml/tombi/releases/download/v1.5.4/tombi-cli-1.5.4-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/tombi-toml/tombi/releases/assets/552962824"
+provenance = "github-attestations"
+
+[tools.tombi."platforms.macos-x64"]
+checksum = "sha256:a4a79dca35dcaa9bc535eef05ebd164829023977f97ba4e3b88f63468d9d6762"
+url = "https://github.com/tombi-toml/tombi/releases/download/v1.5.4/tombi-cli-1.5.4-x86_64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/tombi-toml/tombi/releases/assets/552962825"
+provenance = "github-attestations"
 
 [[tools.uv]]
 version = "0.12.10"

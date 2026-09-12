@@ -86,7 +86,7 @@ func startTestApplication(t *testing.T, httpAddress string, grpcAddress string) 
 	t.Helper()
 	binary := os.Getenv(resilienceAppBinaryEnv)
 	if len(binary) == 0 {
-		t.Fatalf("%s is not set; run this test through make test-resilience", resilienceAppBinaryEnv)
+		t.Fatalf("%s is not set; run this test through task test-resilience", resilienceAppBinaryEnv)
 	}
 
 	logFile, err := os.CreateTemp(t.TempDir(), "application-*.log")

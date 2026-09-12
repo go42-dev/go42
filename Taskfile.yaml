@@ -1,0 +1,781 @@
+---
+
+# Reference:
+#   https://taskfile.dev/docs/reference/schema
+# JSON schema:
+#   https://taskfile.dev/schema.json
+
+# ╭────────────────────----------------──────────╮
+# │                     go42                     │
+# ╰─────────────────────----------------─────────╯
+#
+# Before running any commands, ensure you have the following tools are installed:
+# - go @see https://go.dev/
+# - docker @see https://www.docker.com/
+# - mise @see https://mise.jdx.dev/
+# - task @see https://taskfile.dev/
+#
+# Also, ensure you have logged in to GitHub Container Registry:
+#   docker login ghcr.io -u YOUR_GITHUB_USERNAME --password YOUR_GITHUB_TOKEN
+# @see https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry
+#
+# This file can be executed manually, from CI, by IDE and invoked by AI.
+
+version: '3'
+
+set:
+  - errexit
+  - pipefail
+
+vars:
+  # Task's env cannot override an inherited PATH; resolve pinned tools explicitly.
+  TOOLS_BIN: '{{.ROOT_DIR}}/.tools/shims'
+
+env:
+  GOTOOLCHAIN: local
+  MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
+  MISE_DATA_DIR: '{{.ROOT_DIR}}/.tools'
+  MISE_CACHE_DIR: '{{.ROOT_DIR}}/.tools/cache'
+  MISE_STATE_DIR: '{{.ROOT_DIR}}/.tools/state'
+  MISE_EXEC_AUTO_INSTALL: 'false'
+  TASK_TEMP_DIR: '{{.ROOT_DIR}}/.tools/task'
+
+tasks:
+
+  help:
+    desc: "List available tasks in Taskfile order"
+    aliases:
+      - default
+    cmds:
+      - "task --list --sort none"
+
+  ## setup | install dependencies
+  setup:
+    desc: "install dependencies"
+    cmds:
+      - "mise install --locked"
+      - '"{{.TOOLS_BIN}}/vale" --config etc/vale.ini sync'
+      - "go mod download"
+
+  ## setup-mcp | setup mcp servers
+  setup-mcp:
+    desc: "setup mcp servers"
+    cmds:
+      - |
+        mise install --locked \
+          go:golang.org/x/tools/gopls
+      - "docker pull ghcr.io/github/github-mcp-server:v1.12.0@sha256:46cdbbd810faf6f7aed1745ea04057443f5cb9fcadc15c7308add18cf9a83e33"
+
+  # ╭────────────────────----------------──────────╮
+  # │                   Testing                    │
+  # ╰─────────────────────----------------─────────╯
+
+  ## test-unit | run unit tests with coverage, or selected packages with race detection
+  # -count=1 is needed to prevent caching of test results.
+  test-unit:
+    desc: "run unit tests with coverage, or selected packages with race detection"
+    summary: "Usage: task test-unit [-- PACKAGE ...]. Defaults to the full unit suite with coverage."
+    preconditions:
+      - &package_paths
+        sh: |
+          set -- {{.CLI_ARGS}}
+          for package do
+            case "$package" in
+              ./*) [ ! -d "${package%/...}" ] || continue ;;
+            esac
+            printf 'Expected a local Go package or subtree: %s\n' "$package" >&2
+            exit 2
+          done
+        msg: "Pass local Go packages after --."
+    cmds:
+      - |
+        set -eo pipefail
+        set -- {{.CLI_ARGS}}
+        if [ "$#" -gt 0 ]; then
+          exec go test -count=1 -race -skip '^Fuzz' "$@"
+        fi
+        mkdir -p .build
+        unit_packages=$(go list ./...)
+        unit_exclude_pattern=$(printf '%s\n' api/gen mocks tests | paste -sd '|' -)
+        unit_packages=$(printf '%s\n' "$unit_packages" | grep -vE "/($unit_exclude_pattern)(/|$)")
+        # go list returns separate package names; preserve word splitting here.
+        # shellcheck disable=SC2086
+        go test -count=1 -v -race -skip '^Fuzz' -covermode=atomic \
+          -coverpkg="$(printf '%s\n' "$unit_packages" | paste -sd, -)" \
+          -coverprofile=.build/coverage.out $unit_packages \
+          | sed -E 's/(coverage: [0-9.]+% of statements) in .*/\1/'
+        go tool cover -html=.build/coverage.out -o=.build/coverage.html
+        go tool cover -func=.build/coverage.out | grep '^total:'
+
+  ## test-fuzz | run all fuzz targets (30 seconds per target by default)
+  test-fuzz:
+    desc: "run all fuzz targets (30 seconds per target by default)"
+    summary: "Usage: task test-fuzz [FUZZ_TIME=30s]. Also accepts FUZZ_TIME from the environment."
+    vars:
+      FUZZ_TIME: '{{.FUZZ_TIME | default "30s"}}'
+    cmds:
+      - 'go run ./cmd/fuzz -fuzztime {{.FUZZ_TIME | shellQuote}}'
+
+  ## test-integration | run integration tests with coverage
+  # -count=1 is needed to prevent caching of test results.
+  # Uses application settings from .env when present.
+  test-integration:
+    desc: "run integration tests with coverage"
+    cmds:
+      - "mkdir -p .build"
+      - |
+        set -eo pipefail
+        # The optional runtime configuration is supplied by the contributor.
+        # shellcheck disable=SC1091
+        if [ -f .env ]; then set -a; . ./.env; set +a; fi
+        coverage_packages=$(go list -deps -test -f '{{`{{if .Module}}{{if .Module.Main}}{{.ImportPath}}{{end}}{{end}}`}}' ./tests/integration/...)
+        coverage_exclude_pattern=$(printf '%s\n' api/gen mocks tests | paste -sd '|' -)
+        coverage_packages=$(printf '%s\n' "$coverage_packages" | grep -vE "/($coverage_exclude_pattern)(/|$)" | paste -sd, -)
+        go test -count=1 -v -race -covermode=atomic -coverpkg="$coverage_packages" \
+          -coverprofile=.build/coverage-integration.out ./tests/integration/... \
+          | sed -E 's/(coverage: [0-9.]+% of statements) in .*/\1/'
+      - "go tool cover -html=.build/coverage-integration.out -o=.build/coverage-integration.html"
+      - "go tool cover -func=.build/coverage-integration.out | grep '^total:'"
+
+  ## test-resilience | verify dependency recovery with coverage
+  # Resilience tests are build-tagged and excluded from all other test targets.
+  # @note Requires `toxiproxy pgsql mysql redis memcached nats kafka rabbitmq`
+  test-resilience:
+    desc: "verify dependency recovery with coverage"
+    cmds:
+      - "rm -rf .build/coverage-resilience{.out,.out.tmp,.html,-tests,-app}"
+      - "mkdir -p .build/coverage-resilience-{tests,app}"
+      - |
+        set -eo pipefail
+        coverage_exclude_pattern=$(printf '%s\n' api/gen mocks tests | paste -sd '|' -)
+        app_packages=$(go list -deps -f '{{`{{if .Module}}{{if .Module.Main}}{{.ImportPath}}{{end}}{{end}}`}}' ./cmd/app)
+        app_packages=$(printf '%s\n' "$app_packages" | grep -vE "/($coverage_exclude_pattern)(/|$)" | paste -sd, -)
+        resilience_packages=$(go list -deps -test -tags=resilience -f '{{`{{if .Module}}{{if .Module.Main}}{{.ImportPath}}{{end}}{{end}}`}}' ./tests/resilience/...)
+        resilience_packages=$(printf '%s\n' "$resilience_packages" | grep -vE "/($coverage_exclude_pattern)(/|$)" | paste -sd, -)
+        go build -race -cover -covermode=atomic -coverpkg="$app_packages" -o .build/resilience-app ./cmd/app
+        export RESILIENCE_APP_BINARY="${PWD}/.build/resilience-app"
+        export RESILIENCE_APP_COVERDIR="${PWD}/.build/coverage-resilience-app"
+        go test -count=1 -v -tags=resilience -cover -covermode=atomic \
+          -coverpkg="$resilience_packages" ./tests/resilience/... \
+          -args -test.gocoverdir="${PWD}/.build/coverage-resilience-tests" \
+          | sed -E 's/(coverage: [0-9.]+% of statements) in .*/\1/'
+      - "ls .build/coverage-resilience-{tests,app}/cov{meta,counters}.* > /dev/null"
+      - |
+        go tool covdata textfmt \
+          -i=.build/coverage-resilience-tests,.build/coverage-resilience-app \
+          -o=.build/coverage-resilience.out.tmp
+      - "mv .build/coverage-resilience.out.tmp .build/coverage-resilience.out"
+      - "go tool cover -html=.build/coverage-resilience.out -o=.build/coverage-resilience.html"
+      - "go tool cover -func=.build/coverage-resilience.out | grep '^total:'"
+
+  ## test-load | run load tests (http and grpc by default, or one explicit suite)
+  test-load:
+    desc: "run load tests (http and grpc by default, or one explicit suite)"
+    summary: "Usage: task test-load [K6_TEST_PATH=FILE.js K6_SUMMARY_PATH=FILE.json]. Also accepts both from the environment."
+    vars:
+      K6_TEST_PATH: '{{.K6_TEST_PATH | default ""}}'
+      K6_SUMMARY_PATH: '{{.K6_SUMMARY_PATH | default ""}}'
+    preconditions:
+      - sh: |
+          load_test_path={{.K6_TEST_PATH | shellQuote}}
+          load_summary_path={{.K6_SUMMARY_PATH | shellQuote}}
+          if [ -z "$load_test_path" ] && [ -z "$load_summary_path" ]; then exit 0; fi
+          [ -f "$load_test_path" ] && [ -n "$load_summary_path" ]
+        msg: "For one load suite, set K6_TEST_PATH to an existing file and K6_SUMMARY_PATH to its output path."
+    cmds:
+      - |
+        load_test_path={{.K6_TEST_PATH | shellQuote}}
+        load_summary_path={{.K6_SUMMARY_PATH | shellQuote}}
+        if [ -n "$load_test_path" ]; then
+          rm -f -- "$load_summary_path"
+          mkdir -p "$(dirname "$load_summary_path")"
+          "{{.TOOLS_BIN}}/k6" version
+          exec "{{.TOOLS_BIN}}/k6" run --summary-export="$load_summary_path" "$load_test_path"
+        fi
+        rm -f .build/k6-summary-{http,grpc}-v1.json
+        mkdir -p .build
+        "{{.TOOLS_BIN}}/k6" version
+        load_status=0
+        for protocol in http grpc; do
+          "{{.TOOLS_BIN}}/k6" run --summary-export=.build/k6-summary-$protocol-v1.json \
+            tests/load/$protocol/v1/auth_test.js || load_status=$?
+        done
+        exit $load_status
+
+  # ╭────────────────────----------------──────────╮
+  # │               General workflow               │
+  # ╰─────────────────────----------------─────────╯
+
+  ## run | run application
+  # `-N -l` disables compiler optimizations and inlining, which makes debugging easier.
+  # `[ $? -eq 1 ]` treats exit code 1 as success. Exit after signal will always be != 0.
+  run:
+    desc: "run application"
+    interactive: true
+    cmds:
+      - task: "check-env"
+      - |
+        # Load KEY=value settings and preserve application exit-code handling.
+        # shellcheck disable=SC2046,SC2015
+        export $(grep -v '^#' .env.example | xargs) && \
+        export $(grep -v '^#' .env | xargs) && \
+        export DATABASE_MIGRATE_PATH="$PWD/migrate" && \
+        export SERVER_HTTP_STATIC_ROOT="$PWD/static" && \
+        export SERVER_HTTP_SWAGGER_ROOT="$PWD/api/openapi" && \
+        go run -gcflags="all=-N -l" -race ./cmd/app/main.go || [ $? -eq 1 ]
+
+  ## run-docker | run application in docker container (linux environment)
+  # `-N -l` disables compiler optimizations and inlining, which makes debugging easier.
+  # Using golang image version from go.mod file.
+  # `[ $? -eq 1 ]` treats exit code 1 as success. Exit after signal will always be != 0.
+  run-docker:
+    desc: "run application in docker container (linux environment)"
+    interactive: true
+    cmds:
+      - task: "check-env"
+      - |
+        # Load KEY=value settings and preserve application exit-code handling.
+        # shellcheck disable=SC2046,SC2015
+        export $(grep -v '^#' .env.example | xargs) && \
+        export $(grep -v '^#' .env | xargs) && \
+        docker run --rm -it --init \
+        --env-file .env.example \
+        --env-file .env \
+        --env DATABASE_MIGRATE_PATH=/app/migrate \
+        --env SERVER_HTTP_STATIC_ROOT=/app/static \
+        --env SERVER_HTTP_SWAGGER_ROOT=/app/api/openapi \
+        -p "${PPROF_LISTEN#:}:${PPROF_LISTEN#:}" \
+        -p "${SERVER_HTTP_LISTEN#:}:${SERVER_HTTP_LISTEN#:}" \
+        -p "${SERVER_GRPC_LISTEN#:}:${SERVER_GRPC_LISTEN#:}" \
+        -v go-cache:/root/.cache/go-build \
+        -v go-mod-cache:/go/pkg/mod \
+        -v "$PWD:/app" \
+        -w /app \
+        "golang:$(grep '^go ' go.mod | awk '{print $2}')" \
+        go run -gcflags="all=-N -l" -race ./cmd/app/main.go || [ $? -eq 1 ]
+
+  ## debug | run application with delve debugger
+  debug:
+    desc: "run application with delve debugger"
+    interactive: true
+    cmds:
+      - task: "check-env"
+      - |
+        # Load KEY=value settings for the debugger.
+        # shellcheck disable=SC2046,SC2015
+        export $(grep -v '^#' .env.example | xargs) && \
+        export $(grep -v '^#' .env | xargs) && \
+        export DATABASE_MIGRATE_PATH="$PWD/migrate" && \
+        export SERVER_HTTP_STATIC_ROOT="$PWD/static" && \
+        export SERVER_HTTP_SWAGGER_ROOT="$PWD/api/openapi" && \
+        "{{.TOOLS_BIN}}/dlv" debug ./cmd/app --headless --listen=:2345 --accept-multiclient --api-version=2
+
+  ## build | build development version of binary
+  build:
+    desc: "build development version of binary"
+    cmds:
+      - "go build -gcflags=\"all=-N -l\" -race -v -o ./.build/app ./cmd/app/main.go"
+      - "file -h ./.build/app && du -h ./.build/app && sha256sum ./.build/app && go tool buildid ./.build/app"
+
+  ## image | build docker image
+  # @see https://reproducible-builds.org/docs/source-date-epoch/
+  image:
+    desc: "build docker image"
+    cmds:
+      - |
+        export SOURCE_DATE_EPOCH=0 && \
+        docker buildx build --no-cache --platform linux/amd64,linux/arm64 \
+        --build-arg "GO_VERSION=$(grep '^go ' go.mod | awk '{print $2}')" \
+        --build-arg "COMMIT_HASH=$(git rev-parse HEAD 2>/dev/null || echo '')" \
+        --build-arg "RELEASE_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo '')" \
+        -t ghcr.io/go42-dev/go42:dev \
+        .
+
+  ## generate | generate code for all modules
+  # Side effects of this command should to be commited.
+  generate:
+    desc: "generate code for all modules"
+    cmds:
+      - "go mod tidy -e"
+      - "rm -rf api/gen"
+      - '"{{.TOOLS_BIN}}/buf" generate api --template api/buf.gen.yaml'
+      - |
+        # go generate launches the project's generators by name.
+        export PATH="{{.TOOLS_BIN}}:$PATH"
+        go generate ./...
+      - "go run cmd/cfg2env/main.go"
+      - '"{{.TOOLS_BIN}}/redocly" join api/openapi/v1/*.yaml -o api/openapi/v1/.combined.yaml'
+      - |
+        "{{.TOOLS_BIN}}/yq" eval '.info.title = "v1 combined specification"' -i api/openapi/v1/.combined.yaml
+
+  # ╭────────────────────----------------──────────╮
+  # │                  Formatters                  │
+  # ╰─────────────────────----------------─────────╯
+
+  fmt:go:
+    desc: "Format explicit Go source files (writes)"
+    summary: "Usage: task fmt:go -- FILE.go [FILE.go ...]"
+    preconditions: &files
+      - sh: |
+          set -- {{.CLI_ARGS}}
+          [ "$#" -gt 0 ]
+        msg: "Pass explicit file paths after --."
+      - &file_paths
+        sh: |
+          set -- {{.CLI_ARGS}}
+          for file do
+            case "$file" in
+              -*|!*|*\**|*\?*|*\[*|*\]*|*\{*|*\}*) printf 'Expected a literal file path: %s\n' "$file" >&2; exit 2 ;;
+            esac
+            [ -f "$file" ] || { printf 'Expected an existing file: %s\n' "$file" >&2; exit 2; }
+          done
+        msg: "Pass explicit existing file paths after --."
+    cmds:
+      - |
+        set -- {{.CLI_ARGS}}
+        "{{.TOOLS_BIN}}/golangci-lint" fmt --config etc/.golangci.yml "$@"
+
+  fmt:yaml:
+    desc: "Format explicit plain YAML files (writes)"
+    summary: "Usage: task fmt:yaml -- FILE.yaml [FILE.yaml ...]; exclude Helm templates."
+    preconditions: *files
+    cmds:
+      - |
+        set -- {{.CLI_ARGS}}
+        "{{.TOOLS_BIN}}/yamlfmt" -conf etc/yamlfmt.yaml "$@"
+
+  fmt:json:
+    desc: "Format explicit JSON files (writes)"
+    summary: "Usage: task fmt:json -- FILE.json [FILE.json ...]"
+    preconditions: *files
+    cmds:
+      - |
+        set -- {{.CLI_ARGS}}
+        "{{.TOOLS_BIN}}/jsonfmt" -w "$@"
+
+  fmt:toml:
+    desc: "Format explicit TOML files (writes)"
+    summary: "Usage: task fmt:toml -- FILE.toml [FILE.toml ...]"
+    preconditions: *files
+    cmds:
+      - |
+        set -- {{.CLI_ARGS}}
+        for file do
+          case "$file" in
+            /*) ;;
+            *) file="$PWD/$file" ;;
+          esac
+          # Tombi discovers etc/tombi.toml from its working directory.
+          (cd etc && "{{.TOOLS_BIN}}/tombi" format --offline "$file")
+        done
+
+  fmt:markdown:
+    desc: "Fix explicit Markdown files (writes; remaining diagnostics can fail)"
+    summary: "Usage: task fmt:markdown -- FILE.md [FILE.md ...]"
+    preconditions: *files
+    cmds:
+      - |
+        set -- {{.CLI_ARGS}}
+        "{{.TOOLS_BIN}}/markdownlint-cli2" --config etc/.markdownlint-cli2.yaml --no-globs --fix "$@"
+
+  fmt:proto:
+    desc: "Format explicit Protobuf source files (writes)"
+    summary: "Usage: task fmt:proto -- FILE.proto [FILE.proto ...]"
+    preconditions: *files
+    cmds:
+      - |
+        set -- {{.CLI_ARGS}}
+        for file do
+          "{{.TOOLS_BIN}}/buf" format -w "$file"
+        done
+
+  fmt:sql:
+    desc: "Fix explicit SQL files for one dialect (writes)"
+    summary: "Usage: task fmt:sql DIALECT=sqlite|mysql|postgres -- FILE.sql [FILE.sql ...]"
+    requires:
+      vars:
+        - name: DIALECT
+          enum:
+            - sqlite
+            - mysql
+            - postgres
+    env:
+      SQL_DIALECT: "{{.DIALECT}}"
+    preconditions: *files
+    cmds:
+      - |
+        set -- {{.CLI_ARGS}}
+        for file do
+          "{{.TOOLS_BIN}}/sqlfluff" fix --config etc/sqlfluff.ini --dialect "$SQL_DIALECT" "$file"
+        done
+
+  # ╭────────────────────----------------──────────╮
+  # │                   Linters                    │
+  # ╰─────────────────────----------------─────────╯
+
+  ## lint | run code and project linters
+  lint:
+    desc: "run code and project linters"
+    preconditions:
+      - sh: |
+          set -- {{.CLI_ARGS}}
+          [ "$#" -eq 0 ]
+        msg: "Use a lint:* task for file or package arguments."
+    cmds:
+      - task: "lint:commits"
+      - task: "lint:go"
+      - task: "lint:nilaway"
+      - task: "lint:go-security"
+      - task: "lint:vulnerabilities"
+      - task: "lint:licenses"
+      - task: "lint:capabilities"
+      - task: "lint:sql"
+      - task: "lint:docker"
+      - task: "lint:helm"
+      - task: "lint:openapi"
+      - task: "lint:openapi-breaking"
+      - task: "lint:proto"
+      - task: "lint:proto-breaking"
+      - task: "lint:secrets"
+      - task: "lint:actions"
+      - task: "lint:editorconfig"
+      - task: "lint:yaml"
+      - task: "lint:json"
+      - task: "lint:toml"
+
+  lint:commits:
+    desc: "Check commit messages against origin/master"
+    cmds:
+      - |
+        "{{.TOOLS_BIN}}/commitlint" --config etc/.commitlintrc.yaml \
+          --extends "$(mise where npm:@commitlint/config-conventional)/node_modules/@commitlint/config-conventional/lib/index.js" \
+          --from origin/master --to HEAD --verbose
+
+  lint:go:
+    desc: "Lint all Go packages, or explicit local packages and subtrees (read only)"
+    summary: "Usage: task lint:go [-- ./internal/metrics ./internal/auth/...]"
+    preconditions:
+      - *package_paths
+    cmds:
+      - |
+        set -- {{.CLI_ARGS}}
+        "{{.TOOLS_BIN}}/golangci-lint" config verify --config etc/.golangci.yml
+        "{{.TOOLS_BIN}}/golangci-lint" run --config etc/.golangci.yml "$@"
+
+  lint:nilaway:
+    desc: "Run advisory nil-safety analysis on all Go packages"
+    cmds:
+      - |
+        go vet -vettool="$(mise which nilaway)" \
+          -include-pkgs=github.com/go42-dev/go42 \
+          -exclude-file-docstrings='Code generated' \
+          -include-errors-in-files="$(pwd -P)" \
+          -pretty-print=false \
+          -print-full-file-path=true \
+          ./... || true
+
+  lint:go-security:
+    desc: "Check handwritten Go code with Gosec"
+    cmds:
+      - '"{{.TOOLS_BIN}}/gosec" -terse -exclude-generated ./...'
+
+  lint:vulnerabilities:
+    desc: "Check application vulnerabilities for Linux amd64 and arm64"
+    cmds:
+      - 'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 "{{.TOOLS_BIN}}/govulncheck" ./cmd/app'
+      - 'CGO_ENABLED=0 GOOS=linux GOARCH=arm64 "{{.TOOLS_BIN}}/govulncheck" ./cmd/app'
+
+  lint:licenses:
+    desc: "Check dependency licenses, including tests"
+    silent: true
+    cmds:
+      - |
+        # go-licenses logs warnings and unknown licenses even when the check passes.
+        if licenses_output=$("{{.TOOLS_BIN}}/go-licenses" check --include_tests --confidence_threshold=0.9 \
+          --disallowed_types=forbidden,restricted ./... 2>&1); then
+          printf 'Dependency licenses: OK\n'
+        else
+          licenses_status=$?
+          printf '%s\n' "$licenses_output" >&2
+          exit "$licenses_status"
+        fi
+
+  lint:capabilities:
+    desc: "Compare Go package capabilities with origin/master in both directions"
+    silent: true
+    cmds:
+      - |
+        capabilities_base=$(git rev-parse origin/master)
+        # Resolve the pinned analyzer before entering the baseline checkout.
+        capabilities_bin=$(mise which capslock)
+        capabilities_dir=$(mktemp -d "${CAPSLOCKTOOLSTMPDIR:-${TMPDIR:-/tmp}}/go42-capabilities.XXXXXX")
+        trap 'rm -rf "$capabilities_dir"' EXIT
+        git clone --shared --quiet --no-checkout -- "{{.ROOT_DIR}}" "$capabilities_dir/source"
+        git -C "$capabilities_dir/source" checkout --quiet --detach "$capabilities_base"
+        (
+          cd "$capabilities_dir/source"
+          "$capabilities_bin" -packages=./... -granularity=package -capabilities= -output=json
+        ) > "$capabilities_dir/baseline.json"
+        # Native comparison reports additions and removals without repeating either analysis.
+        "$capabilities_bin" -packages=./... -granularity=package -capabilities= -output=compare \
+          "$capabilities_dir/baseline.json"
+        printf 'Dependency capabilities: OK\n'
+
+  lint:sql:
+    desc: "Lint all SQL migrations, one dialect, or explicit files (read only)"
+    summary: "Usage: task lint:sql [DIALECT=sqlite|mysql|postgres [-- FILE.sql ...]]; explicit files require a dialect."
+    vars:
+      DIALECT: '{{.DIALECT | default "all"}}'
+    requires:
+      vars:
+        - name: DIALECT
+          enum:
+            - all
+            - sqlite
+            - mysql
+            - postgres
+    env:
+      SQL_DIALECT: "{{.DIALECT}}"
+    preconditions:
+      - *file_paths
+      - sh: |
+          set -- {{.CLI_ARGS}}
+          [ "$#" -eq 0 ] || [ "$SQL_DIALECT" != all ]
+        msg: "Select DIALECT=sqlite, mysql, or postgres when passing SQL files."
+    cmds:
+      - |
+        set -- {{.CLI_ARGS}}
+        if [ "$#" -gt 0 ]; then
+          for file do
+            "{{.TOOLS_BIN}}/sqlfluff" lint --config etc/sqlfluff.ini --disable-progress-bar --dialect "$SQL_DIALECT" "$file"
+          done
+        else
+          for dialect in sqlite mysql postgres; do
+            if [ "$SQL_DIALECT" != all ] && [ "$SQL_DIALECT" != "$dialect" ]; then continue; fi
+            directory="$dialect"
+            if [ "$dialect" = postgres ]; then directory=pgsql; fi
+            "{{.TOOLS_BIN}}/sqlfluff" lint --config etc/sqlfluff.ini --disable-progress-bar migrate/"$directory"/*.sql --dialect "$dialect"
+          done
+        fi
+
+  lint:docker:
+    desc: "Check Dockerfile instructions with Hadolint"
+    cmds:
+      - '"{{.TOOLS_BIN}}/hadolint" --failure-threshold info Dockerfile'
+
+  lint:helm:
+    desc: "Check the Helm chart with both tag and digest image references"
+    cmds:
+      - '"{{.TOOLS_BIN}}/helm" lint --strict infra/helm/app --set-string image.tag=ci-validation'
+      - '"{{.TOOLS_BIN}}/helm" lint --strict infra/helm/app --set-string image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000'
+
+  lint:openapi:
+    desc: "Validate OpenAPI source definitions"
+    cmds:
+      - '"{{.TOOLS_BIN}}/redocly" lint --config etc/redocly.yaml --format stylish api/openapi/**/*.yaml'
+
+  lint:openapi-breaking:
+    desc: "Check OpenAPI compatibility against origin/master"
+    cmds:
+      - |
+        "{{.TOOLS_BIN}}/oasdiff" breaking --fail-on ERR --allow-external-refs=false \
+          origin/master:api/openapi/v1/.combined.yaml api/openapi/v1/.combined.yaml
+
+  lint:proto:
+    desc: "Build, lint, and check formatting of the entire api Protobuf module (read only)"
+    cmds:
+      - '"{{.TOOLS_BIN}}/buf" build api'
+      - '"{{.TOOLS_BIN}}/buf" lint api'
+      - '"{{.TOOLS_BIN}}/buf" format --diff --exit-code api'
+
+  lint:proto-breaking:
+    desc: "Check Protobuf compatibility against origin/master"
+    cmds:
+      - '"{{.TOOLS_BIN}}/buf" breaking api --against ".git#commit=$(git rev-parse origin/master),subdir=api"'
+
+  lint:secrets:
+    desc: "Scan Git history for secrets with Gitleaks"
+    cmds:
+      - '"{{.TOOLS_BIN}}/gitleaks" git --config etc/gitleaks.toml --no-banner --redact -v'
+
+  lint:actions:
+    desc: "Check all GitHub Actions, or explicit workflow files (read only)"
+    summary: "Usage: task lint:actions [-- .github/workflows/FILE.yaml ...]; defaults include composite actions in Zizmor."
+    preconditions:
+      - *file_paths
+    cmds:
+      - |
+        set -- {{.CLI_ARGS}}
+        "{{.TOOLS_BIN}}/actionlint" -oneline --config-file etc/actionlint.yaml "$@"
+        if [ "$#" -eq 0 ]; then set -- .; fi
+        "{{.TOOLS_BIN}}/zizmor" -q --persona regular --min-severity high --min-confidence high \
+          --offline --format plain --color never --no-progress "$@"
+
+  lint:editorconfig:
+    desc: "Check EditorConfig rules for the project, or explicit files (read only)"
+    summary: "Usage: task lint:editorconfig [-- FILE ...]"
+    preconditions:
+      - *file_paths
+    cmds:
+      - |
+        set -- {{.CLI_ARGS}}
+        "{{.TOOLS_BIN}}/ec" "$@"
+
+  lint:yaml:
+    desc: "Check plain YAML source formatting, or explicit files (read only)"
+    summary: "Usage: task lint:yaml [-- FILE.yaml ...]; defaults exclude Helm templates and combined OpenAPI output."
+    vars:
+      SOURCE_FILES:
+        sh: |
+          {{if not .CLI_ARGS}}
+          git ls-files --cached --others --exclude-standard -z -- '*.yaml' '*.yml' \
+            ':!:infra/helm/app/templates/**' ':!:api/openapi/**/.combined.yaml'
+          {{end}}
+    preconditions:
+      - *file_paths
+    cmds:
+      - |
+        set -- {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}{{range splitList "\x00" .SOURCE_FILES}}{{if .}}{{. | shellQuote}} {{end}}{{end}}{{end}}
+        for file do
+          if [ -f "$file" ]; then
+            "{{.TOOLS_BIN}}/yamlfmt" -conf etc/yamlfmt.yaml -lint "$file"
+          fi
+        done
+
+  lint:json:
+    desc: "Check JSON source formatting, or explicit files (read only)"
+    summary: "Usage: task lint:json [-- FILE.json ...]; defaults exclude package-lock.json."
+    vars:
+      SOURCE_FILES:
+        sh: |
+          {{if not .CLI_ARGS}}
+          git ls-files --cached --others --exclude-standard -z -- '*.json' ':!:**/package-lock.json'
+          {{end}}
+    preconditions:
+      - *file_paths
+    cmds:
+      - |
+        set -- {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}{{range splitList "\x00" .SOURCE_FILES}}{{if .}}{{. | shellQuote}} {{end}}{{end}}{{end}}
+        for file do
+          if [ -f "$file" ]; then
+            "{{.TOOLS_BIN}}/jsonfmt" "$file"
+          fi
+        done
+
+  lint:toml:
+    desc: "Check TOML source formatting and lint rules, or explicit files (read only)"
+    summary: "Usage: task lint:toml [-- FILE.toml ...]; defaults to Git source files ending in .toml."
+    vars:
+      SOURCE_FILES:
+        sh: |
+          {{if not .CLI_ARGS}}
+          git ls-files --cached --others --exclude-standard -z -- '*.toml'
+          {{end}}
+    preconditions:
+      - *file_paths
+    cmds:
+      - |
+        set -- {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}{{range splitList "\x00" .SOURCE_FILES}}{{if .}}{{. | shellQuote}} {{end}}{{end}}{{end}}
+        for file do
+          if [ -f "$file" ]; then
+            case "$file" in
+              /*) ;;
+              *) file="$PWD/$file" ;;
+            esac
+            # Tombi discovers etc/tombi.toml from its working directory.
+            (
+              cd etc
+              "{{.TOOLS_BIN}}/tombi" format --offline --check "$file"
+              "{{.TOOLS_BIN}}/tombi" lint --offline --error-on-warnings "$file"
+            )
+          fi
+        done
+
+  lint:markdown:
+    desc: "Lint documentation Markdown, or explicit files (read only)"
+    summary: "Usage: task lint:markdown [-- FILE.md ...]; defaults to docs/**/*.md."
+    preconditions:
+      - *file_paths
+    cmds:
+      - |
+        set -- {{.CLI_ARGS}}
+        if [ "$#" -eq 0 ]; then
+          "{{.TOOLS_BIN}}/markdownlint-cli2" --config etc/.markdownlint-cli2.yaml
+        else
+          "{{.TOOLS_BIN}}/markdownlint-cli2" --config etc/.markdownlint-cli2.yaml --no-globs "$@"
+        fi
+
+  lint:prose:
+    desc: "Check documentation prose, or explicit files (read only)"
+    summary: "Usage: task lint:prose [-- FILE.md ...]; defaults to docs/."
+    preconditions:
+      - *file_paths
+    cmds:
+      - |
+        set -- {{.CLI_ARGS}}
+        if [ "$#" -eq 0 ]; then set -- docs/; fi
+        "{{.TOOLS_BIN}}/vale" --config etc/vale.ini "$@"
+
+  # ╭────────────────────----------------──────────╮
+  # │                Documentation                 │
+  # ╰─────────────────────----------------─────────╯
+
+  ## docs-check | validate documentation
+  docs-check:
+    desc: "validate documentation"
+    cmds:
+      - task: "lint:markdown"
+        vars:
+          CLI_ARGS: ""
+      - task: "lint:prose"
+        vars:
+          CLI_ARGS: ""
+      - '"{{.TOOLS_BIN}}/npm" --prefix pages ci --no-audit --no-fund'
+      - '"{{.TOOLS_BIN}}/npm" --prefix pages run check'
+
+  ## docs-serve | build and serve documentation locally
+  docs-serve:
+    desc: "build and serve documentation locally"
+    interactive: true
+    cmds:
+      - '"{{.TOOLS_BIN}}/npm" --prefix pages ci --no-audit --no-fund'
+      - '"{{.TOOLS_BIN}}/npm" --prefix pages run build'
+      - '"{{.TOOLS_BIN}}/npm" --prefix pages run serve'
+
+  # ╭────────────────────----------------──────────╮
+  # │                Miscellaneous                 │
+  # ╰─────────────────────----------------─────────╯
+
+  ## check-env | check if .env file exists
+  check-env:
+    desc: "check if .env file exists"
+    cmds:
+      - |
+        if [ ! -f .env ]; then \
+          echo "Error: .env file is missing. Please create it from .env.example"
+          exit 1
+        fi
+
+  ## generate-migration-id | generate migration file prefix
+  generate-migration-id:
+    desc: "generate migration file prefix"
+    cmds:
+      - "date +%Y%m%d%H%M%S"
+
+  ## generate-dep-graph | generate dependency graph
+  # Dependencies:
+  #   * brew install graphviz
+  #   * go install github.com/loov/goda@latest
+  generate-dep-graph:
+    desc: "generate dependency graph"
+    cmds:
+      - "goda graph \"github.com/go42-dev/go42/...\" | dot -Tsvg -o dep-graph.svg"
+
+  ## grpcui | run grpcui for debugging gRPC services
+  # Dependencies:
+  #   * brew install grpcui
+  grpcui:
+    desc: "run grpcui for debugging gRPC services"
+    interactive: true
+    cmds:
+      - "grpcui -plaintext localhost:9090"

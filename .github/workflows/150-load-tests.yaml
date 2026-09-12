@@ -34,6 +34,11 @@ jobs:
     permissions:
       contents: read
       packages: read
+    env:
+      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
+      MISE_DATA_DIR: ${{ github.workspace }}/.tools
+      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
+      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     strategy:
       fail-fast: false
       matrix:
@@ -148,14 +153,17 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: 'Setup K6'
-        uses: grafana/setup-k6-action@db07bd9765aac508ef18982e52ab937fe633a065 # v1.2.1
-      - name: 'Run K6 load tests'
-        uses: grafana/run-k6-action@de51a7390bdf0ac85a3bef493691bd71d4c7c158 # v1.4.0
+      - name: 'Install pinned Task and k6'
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
-          path: ${{ matrix.test_path }}
-          flags: --summary-export=k6-summary-${{ matrix.protocol }}-${{ matrix.database }}-v1.json
+          version: '2026.9.1'
+          install_args: --locked task k6
+      - name: 'Run K6 load tests'
+        shell: bash
+        run: task --exit-code test-load
         env:
+          K6_TEST_PATH: ${{ matrix.test_path }}
+          K6_SUMMARY_PATH: k6-summary-${{ matrix.protocol }}-${{ matrix.database }}-v1.json
           ${{ matrix.server_address_env }}: ${{ matrix.protocol == 'http' && format('http://localhost:{0}', matrix.app_port)
             || format('localhost:{0}', matrix.grpc_port) }}
           GRPC_API_KEY: api_kXqdf2uQ7hmOARp-pZrhA6_IsZSeKCmSEM4YFKBGIzA

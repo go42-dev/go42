@@ -192,9 +192,7 @@ jobs:
         # Some packages may miss license files or link to external libraries.
         # Add `unknown` to disallowed_types for stricter checks.
         shell: bash
-        run: >-
-          go-licenses check --include_tests --confidence_threshold=0.9
-          --disallowed_types=forbidden,restricted ./...
+        run: go-licenses check --include_tests --confidence_threshold=0.9 --disallowed_types=forbidden,restricted ./...
 
   # Keep pull request analysis OIDC-free. Master publishing is isolated in
   # 205-scorecard-publish.yaml to satisfy the Scorecard workflow restrictions.
@@ -255,10 +253,8 @@ jobs:
       - name: 'Check for capabilities added since master'
         shell: bash
         run: >-
-          mise exec -- capslock-git-diff -granularity=package -capabilities=
-          "$(git rev-parse origin/master)" . ./...
+          mise exec -- capslock-git-diff -granularity=package -capabilities= "$(git rev-parse origin/master)" . ./...
       - name: 'Check for capabilities removed since master'
         shell: bash
         run: >-
-          mise exec -- capslock-git-diff -granularity=package -capabilities=
-          . "$(git rev-parse origin/master)" ./...
+          mise exec -- capslock-git-diff -granularity=package -capabilities= . "$(git rev-parse origin/master)" ./...

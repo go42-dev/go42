@@ -23,13 +23,21 @@ runs:
         echo "MISE_CACHE_DIR=$GITHUB_WORKSPACE/.tools/cache" >> "$GITHUB_ENV"
         echo "MISE_STATE_DIR=$GITHUB_WORKSPACE/.tools/state" >> "$GITHUB_ENV"
     # -----
-    - name: 'Install mise and pinned tools'
+    - name: 'Restore and save project tools'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ github.workspace }}/.tools
+        # Save at the end of the job, after task setup installs the full toolset.
+        key: mise-tools-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('etc/mise.toml', 'etc/mise.lock', 'go.mod', '.github/actions/prepare-env/action.yaml')
+          }}
+    # -----
+    - name: 'Install mise and pinned Task'
       uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
       with:
         version: '2026.9.1'
-        install_args: --locked
-        cache_key_prefix: mise-tools-${{ hashFiles('go.mod') }}
+        install_args: --locked task
+        cache: false
     # -----
     - name: 'Setup project dependencies'
-      run: make setup
+      run: task setup
       shell: bash

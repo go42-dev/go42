@@ -10,7 +10,7 @@ runs:
       uses: ./.github/actions/prepare-env
     # -----
     - name: 'Setup MCP servers'
-      run: make setup-mcp
+      run: task setup-mcp
       shell: bash
     # -----
     - name: 'Build inverted index'

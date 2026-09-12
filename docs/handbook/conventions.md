@@ -1,47 +1,15 @@
 ---
 id: conventions
 title: Project conventions
-sidebar_position: 2
+sidebar_position: 3
 ---
 
 # Project conventions
 
-These rules and preferences guide contributors and AI agents when changing the application in this repository.
-Paths and commands are relative to the repository root. Preferences and exceptions are stated explicitly.
-
-## Contribution workflow
-
-* Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) with the types and rules configured in
-  `etc/.commitlintrc.yaml`.
-* Branch names must match `^[A-Za-z0-9/_.-]+$`, be descriptive, and include a task identifier when applicable.
-* Prefer merge commits over rebasing, and keep rebase disabled.
-* Use `.gitkeep` to preserve empty directories in Git.
-* Use the `gh` client to access GitHub resources.
-* Destructive operations require user confirmation in interactive mode. In non-interactive mode, allow them only when
-  explicitly requested by the user.
-* Follow the [documentation policy](documentation.md) and update affected documentation alongside implementation changes.
-* Use the [pull request template](../../.github/pull_request_template.md) for PRs created through the web interface or tools.
-  Keep the description proportional to the change. Report checks and results as described under
-  [Testing and verification](#testing-and-verification).
-* Describe the problem and resulting behavior, with a brief before/after example when useful. Keep the title and
-  description aligned with the final change.
-* Link relevant issues, requirements, decisions, and project documentation. Keep durable rationale and operating
-  instructions in the project documentation.
-* Add a `Deployment` section when adopting the change requires action. Describe relevant migrations, configuration or
-  compatibility changes, rollout requirements, and rollback limitations. Link detailed operating instructions.
-* Use [Semantic Versioning](https://semver.org/) for releases.
-
-## Tools and generated files
-
-* Use the tools managed by mise in `.tools/`, installed through the Make setup targets.
-* Declare Go's version in `go.mod` and development-tool versions in `etc/mise.toml`. Update tool pins and corresponding
-  `etc/mise.lock` entries together, preserving supported platform coverage. Keep any duplicate CI pins aligned.
-* Keep tool configuration files in `etc/`.
-* Record vendored dependencies' versions and upstream sources in adjacent `.versions.yaml` files. Update these records
-  together with the vendored files, retain upstream license notices, and regenerate affected outputs.
-* Edit source definitions or generator configuration, then regenerate derived files with `make generate`. This includes
-  regenerating `.env.example` through `cmd/cfg2env`. Commit source changes and corresponding tracked generated outputs
-  together. After setup, running `make generate` from a clean checkout must produce no changes.
+These engineering rules and preferences guide changes to the application in this repository. Follow the
+[development workflow](development.md) for setup, tooling, generation, verification, and contribution procedures, and the
+[documentation policy](documentation.md) when updating application knowledge.
+Paths are relative to the repository root. Preferences and exceptions are stated explicitly.
 
 ## Code conventions
 
@@ -78,8 +46,8 @@ Paths and commands are relative to the repository root. Preferences and exceptio
   together. Document operations where event recording is best effort.
 * Use UUIDs for entity references in public APIs and events intended for consumers outside this application. Keep numeric
   database IDs internal. Authorization must be enforced independently of identifier format.
-* Keep migration files in `migrate/{engine}/`. Name them `YYYYMMDDHHMMSS_description.sql`. Generate the prefix once with
-  `make generate-migration-id` and use the same filename for the corresponding migration across database engines.
+* Keep migration files in `migrate/{engine}/`. Name them `YYYYMMDDHHMMSS_description.sql` and use the same filename for
+  the corresponding migration across database engines.
 * Repeated migration runs through Goose must preserve existing schema and application data. Require raw SQL replay safety
   only when a documented recovery procedure depends on it. Include `Up` and `Down` sections in the same file. Rollback must
   target only changes introduced by that migration; document any data loss or irreversible changes.
@@ -104,16 +72,10 @@ Paths and commands are relative to the repository root. Preferences and exceptio
 * Use `slog.Any("error", err)` for logged errors. Prefer context-aware slog methods, such as `InfoContext`, when a context
   is available.
 
-## Testing and verification
+## Testing
 
-* Prefer `make lint` for code and project files and `make docs-check` for documentation. Use the linters and configurations
-  defined by these targets.
 * Test observable behavior and failure paths.
 * Keep unit tests for `foo.go` together in `foo_test.go` in the same directory, regardless of suite size. Do not split them
   into separate files by behavior. Use descriptive names for package-wide, integration, and fuzz tests.
 * Keep tests requiring external services in `tests/integration` or `tests/resilience`, with isolated resources, cleanup,
   and bounded waits. Prefer synchronization or `testing/synctest` over fixed sleeps for in-process concurrency.
-* Run focused checks during development and applicable `make test-*` targets before review.
-* In the pull request's `Verification` section, report checks actually performed and their results, including commands,
-  suites, backends, and relevant manual checks. Distinguish completed checks from planned checks, identify anything left
-  unverified, and explain material skips.

@@ -352,7 +352,7 @@ func (s *Server) parseSpecDir(dir string, prefix string) map[string]string {
 		return specURLs
 	}
 	for _, file := range specDir {
-		// ignore .combined.yaml - it should be generated with `make generate`
+		// ignore .combined.yaml - it should be generated with `task generate`
 		if file.IsDir() || file.Name() == ".combined.yaml" {
 			continue
 		}

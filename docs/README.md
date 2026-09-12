@@ -14,30 +14,32 @@ and operating instructions.
 ## Start here
 
 1. Read the [application profile](handbook/project.md) for its purpose and current context.
-2. Read the [project conventions](handbook/conventions.md) for rules on code, testing, tools, and collaboration.
+2. Read the [project conventions](handbook/conventions.md) for code, architecture, data, runtime, and test design rules.
 3. Follow the [documentation workflow](handbook/documentation.md) to select, write, update, and verify documents.
-4. Read the handbook guides, requirements, and decisions relevant to the task using the index below.
+4. Use the [development workflow](handbook/development.md) to set up, develop, verify, and prepare a change for review.
+5. Read the handbook guides, requirements, and decisions relevant to the task using the index below.
 
 ## Documentation index
 
 ### Handbook
 
-| Document | Purpose |
-| --- | --- |
-| [Application profile](handbook/project.md) | Purpose, ownership, current capabilities, and documentation gaps |
-| [Project conventions](handbook/conventions.md) | Rules for contributions, tools, code, architecture, runtime, and verification |
-| [Maintaining application documentation](handbook/documentation.md) | Document types, authoring, maintenance, checks, and publishing |
+| Document                                               | Purpose                                                                      |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| [Application profile](handbook/project.md)             | Purpose, ownership, current capabilities, and documentation gaps             |
+| [Maintaining documentation](handbook/documentation.md) | Document types, authoring, maintenance, checks, and publishing               |
+| [Project conventions](handbook/conventions.md)         | Engineering rules for code, architecture, data, runtime, and test design     |
+| [Development workflow](handbook/development.md)        | Setup, local development, formatting, tests, verification, and contributions |
 
 ### Requirements
 
-| Document | Purpose |
-| --- | --- |
+| Document                                                                | Purpose                                                    |
+|-------------------------------------------------------------------------|------------------------------------------------------------|
 | [REQ-001: Application documentation](requirements/001-documentation.md) | Outcomes and acceptance criteria for project documentation |
 
 ### Decisions
 
-| Document | Purpose |
-| --- | --- |
+| Document                                                                                      | Purpose                                                         |
+|-----------------------------------------------------------------------------------------------|-----------------------------------------------------------------|
 | [ADR-001: Keep application documentation with its code](decisions/001-documentation-model.md) | Rationale for maintaining application knowledge beside the code |
 
 ## Templates
@@ -45,11 +47,11 @@ and operating instructions.
 Start new documents from a template and follow the
 [authoring workflow](handbook/documentation.md#creating-a-document).
 
-| Template | Purpose |
-| --- | --- |
-| [Handbook](templates/handbook.md) | Current behavior, architecture, and working instructions |
+| Template                                | Purpose                                                        |
+|-----------------------------------------|----------------------------------------------------------------|
+| [Handbook](templates/handbook.md)       | Current behavior, architecture, and working instructions       |
 | [Requirement](templates/requirement.md) | Desired outcomes, scope, acceptance criteria, and verification |
-| [Decision](templates/decision.md) | Significant choices, alternatives, reasoning, and consequences |
+| [Decision](templates/decision.md)       | Significant choices, alternatives, reasoning, and consequences |
 
 ## References
 

@@ -17,6 +17,7 @@ config:
     line_length: 120
     heading_line_length: 120
     code_block_line_length: 120
+    tables: false # Allow aligned tables to exceed line length limit.
 
 globs:
   - docs/**/*.md

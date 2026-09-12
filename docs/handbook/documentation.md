@@ -1,14 +1,14 @@
 ---
 id: documentation
 title: Maintaining application documentation
-sidebar_position: 3
+sidebar_position: 2
 ---
 
 # Maintaining application documentation
 
 ## Purpose and scope
 
-Keep enough durable context in this repository for a new person or AI to understand the application, change it, verify
+Keep enough durable context in this repository for a new contributor to understand the application, change it, verify
 the change, and operate it. Git history and pull requests preserve delivery history; these documents preserve the
 knowledge that future work depends on.
 
@@ -18,11 +18,7 @@ Start at the [documentation index](../README.md) for the application profile, co
 ## Documentation ownership
 
 Maintain this application's purpose, requirements, decisions, development instructions, deployment details, and runbooks
-in this repository. This responsibility belongs to the application's contributors and AI agents.
-
-Go42's author solely maintains the external [go42 operational guide](https://github.com/go42-dev/go42-docs) for the go42
-project. Users can consult it online; cloning go42 or an application does not include that repository. Application work
-does not require cloning, accessing, or updating it. Documentation checks and the website build use this checkout's sources.
+in this repository. This responsibility belongs to the application's contributors.
 
 The handbook must describe the effective local setup, including inherited defaults. Include the instructions needed for
 routine development and operation, and use links to the external guide for additional explanation. Identify the applicable
@@ -33,11 +29,11 @@ adoption. Review them when adopting or upgrading go42; they must describe the ru
 
 ## Document types
 
-| Type | Question | Contents | Update rule |
-| --- | --- | --- | --- |
-| Handbook | How does it work today? | Behavior, architecture, instructions | Update with code |
-| Requirement | What must it do? | Outcomes, scope, criteria, evidence | Revise when intent changes |
-| Decision | Why this approach? | Context, options, choice, consequences | Supersede when replaced |
+| Type        | Question                | Contents                               | Update rule                |
+|-------------|-------------------------|----------------------------------------|----------------------------|
+| Handbook    | How does it work today? | Behavior, architecture, instructions   | Update with code           |
+| Requirement | What must it do?        | Outcomes, scope, criteria, evidence    | Revise when intent changes |
+| Decision    | Why this approach?      | Context, options, choice, consequences | Supersede when replaced    |
 
 A current architecture diagram belongs in the handbook. A reliability target belongs in requirements. The reasoning
 behind an architectural choice belongs in a decision. Link the documents when they concern the same capability.
@@ -52,8 +48,12 @@ Keep [the documentation index](../README.md) complete. List every handbook page,
 collection, with a link and a one-line purpose. List templates separately. Keep statuses, ownership, and other record
 metadata in the documents themselves.
 
-Update the index in the same change when a document is added, renamed, removed, or its purpose changes. Retain entries
-for retired requirements and rejected or superseded decisions so their history remains discoverable.
+Keep the handbook table in ascending `sidebar_position` order, matching the published sidebar. Define that reading order
+in each handbook page's front matter and keep its filename descriptive. List requirements and decisions in ascending
+order by record number. The index tables are maintained manually.
+
+Update the index in the same change when a document is added, renamed, removed, reordered, or its purpose changes.
+Retain entries for retired requirements and rejected or superseded decisions so their history remains discoverable.
 
 ## Creating a document
 
@@ -67,11 +67,11 @@ for retired requirements and rejected or superseded decisions so their history r
 
 Templates are reusable starting points for new documents:
 
-| Template | Destination |
-| --- | --- |
-| [Handbook](../templates/handbook.md) | `docs/handbook/topic.md` |
+| Template                                   | Destination                           |
+|--------------------------------------------|---------------------------------------|
+| [Handbook](../templates/handbook.md)       | `docs/handbook/topic.md`              |
 | [Requirement](../templates/requirement.md) | `docs/requirements/NNN-capability.md` |
-| [Decision](../templates/decision.md) | `docs/decisions/NNN-choice.md` |
+| [Decision](../templates/decision.md)       | `docs/decisions/NNN-choice.md`        |
 
 For example, from the repository root:
 
@@ -139,7 +139,7 @@ Record delivery separately through a requirement's verification evidence and out
 the checked-out implementation and labels planned behavior explicitly. Resolve disagreements between requirements,
 documentation, and code; an observed defect does not silently change the agreed behavior.
 
-## Change workflow for people and AI
+## Change workflow for contributors
 
 1. Read this policy, the application profile, and the relevant requirements, decisions, and conventions.
 2. Identify changes to desired behavior, significant choices, and current instructions or explanations.
@@ -152,26 +152,17 @@ material as needed rather than loading the entire decision history for every cha
 
 ## Verification
 
-From the repository root, install the pinned tools through `make setup-common setup-linters`, then run:
+Follow the [environment setup instructions](development.md#environment-setup) and install the pinned tools through
+`task setup`, then run:
 
 ```sh
-make docs-check
-```
-
-This runs Markdown linting and Vale, installs the locked website dependencies, tests the documentation tooling, validates
-metadata and local file links, checks TypeScript, and builds the site with strict page and anchor checks. CI runs the same
-checks through its `docs-lint` job. Markdown linting and Vale scan only `docs/`.
-
-For a quick metadata and source-link check after installing dependencies:
-
-```sh
-npm --prefix pages run validate-docs
+task docs-check
 ```
 
 Preview the built website with:
 
 ```sh
-make docs-serve
+task docs-serve
 ```
 
 Document any application-specific verification required by the change. CI checks document structure and links; reviewers

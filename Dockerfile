@@ -1,7 +1,7 @@
 # @note all COPY commands are restricted to list of files in .dockerignore file.
 
 # We want to fail if arguments were not passed.
-# This value is passed either from CI pipeline or makefile (via bash).
+# This value is passed either from CI or Taskfile.
 ARG GO_VERSION=INVALID
 
 # For build stage we use standard debian version of image.

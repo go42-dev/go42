@@ -227,9 +227,9 @@ jobs:
             ${{ steps.nilaway-cache.outputs.go-build }}
             ${{ steps.nilaway-cache.outputs.go-mod }}
           # Refresh per commit; reuse compatible entries after dependency/config changes.
-          key: ${{ env.NILAWAY_CACHE_PREFIX }}-${{ hashFiles('Makefile', 'go.mod', 'go.sum') }}-${{ github.sha }}
+          key: ${{ env.NILAWAY_CACHE_PREFIX }}-${{ hashFiles('Taskfile.yaml', 'go.mod', 'go.sum') }}-${{ github.sha }}
           restore-keys: |-
-            ${{ env.NILAWAY_CACHE_PREFIX }}-${{ hashFiles('Makefile', 'go.mod', 'go.sum') }}-
+            ${{ env.NILAWAY_CACHE_PREFIX }}-${{ hashFiles('Taskfile.yaml', 'go.mod', 'go.sum') }}-
             ${{ env.NILAWAY_CACHE_PREFIX }}-
       - name: 'Run NilAway'
         shell: bash
@@ -292,33 +292,6 @@ jobs:
           echo "::add-matcher::$RUNNER_TEMP/hadolint-matcher.json"
           trap 'echo "::remove-matcher owner=hadolint::"' EXIT
           hadolint --failure-threshold info Dockerfile
-
-  # Linter for Makefiles.
-  # @see https://github.com/checkmake/checkmake
-  make-lint:
-    name: make-lint
-    runs-on: ${{ inputs.runs_on }}
-    continue-on-error: ${{ inputs.continue_on_error }}
-    timeout-minutes: ${{ inputs.timeout_minutes }}
-    permissions:
-      contents: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Install pinned checkmake
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
-        with:
-          version: '2026.9.1'
-          install_args: --locked checkmake
-      - name: Run checkmake
-        run: checkmake --config etc/checkmake.ini Makefile
 
   helm-lint:
     name: helm-lint
@@ -534,11 +507,37 @@ jobs:
       - name: 'Run SQLFluff linter'
         shell: bash
         run: >-
-          sqlfluff lint --config etc/sqlfluff.toml --disable-progress-bar ${{ matrix.path }} --dialect ${{ matrix.dialect
-          }}
+          sqlfluff lint --config etc/sqlfluff.ini --disable-progress-bar ${{ matrix.path }} --dialect ${{ matrix.dialect }}
+
+  # TOML formatting and lint rules.
+  # @see https://github.com/tombi-toml/tombi
+  toml-lint:
+    name: toml-lint
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    env:
+      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
+      MISE_DATA_DIR: ${{ github.workspace }}/.tools
+      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
+      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 'Install pinned Task and Tombi'
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: '2026.9.1'
+          install_args: --locked task tombi
+      - name: 'Check TOML formatting and lint rules'
+        run: task --exit-code lint:toml
 
   # Linter specific to current project.
-  # This workflow checks for uncommitted changes after running 'make generate'.
+  # This workflow checks for uncommitted changes after running 'task generate'.
   # It is used to ensure that the relevant generated files are committed to the repository.
   project-lint:
     name: project-lint
@@ -558,15 +557,15 @@ jobs:
         uses: ./.github/actions/prepare-env
       # -----
       - name: 'Generate code'
-        run: make generate
+        run: task generate
       - name: 'Check for uncommitted changes'
         run: |-
           if [[ -n $(git status --porcelain) ]]; then
-            echo "Uncommitted changes detected after running 'make generate'"
+            echo "Uncommitted changes detected after running 'task generate'"
             echo "The following files have changes:"
             git status --porcelain
             echo ""
-            echo "Please run 'make setup && make generate' locally and commit the changes."
+            echo "Please run 'task setup && task generate' locally and commit the changes."
             exit 1
           else
             echo "No uncommitted changes detected"
@@ -623,9 +622,9 @@ jobs:
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           version: '2026.9.1'
-          install_args: --locked node markdownlint-cli2 vale
+          install_args: --locked task node markdownlint-cli2 vale
       - name: 'Sync pinned Vale styles'
         shell: bash
         run: vale --config etc/vale.ini sync
       - name: 'Check documentation and build the website'
-        run: make docs-check
+        run: task docs-check

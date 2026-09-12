@@ -11,7 +11,7 @@ related:
 
 ## Outcome
 
-A new contributor or AI can locate the current application's context, required behavior, significant decisions, and
+A new contributor can locate the current application's context, required behavior, significant decisions, and
 operating instructions from its checkout. The repository can publish the same knowledge as a browsable website.
 
 This initial requirement is a draft for review and adoption by the application maintainer. It records the intended
@@ -42,7 +42,7 @@ delivery are distinguished. Superseded decisions link to a replacement, while th
 
 ### REQ-001.3: Maintain documentation with changes
 
-Contributors and AI agents update affected requirements, decisions, and handbook pages alongside implementation changes,
+Contributors update affected requirements, decisions, and handbook pages alongside implementation changes,
 following the local documentation policy. Application contributions do not require changes to go42-docs.
 
 ### REQ-001.4: Validate and publish from the sources
@@ -69,8 +69,8 @@ its content. References to that guide remain external web links.
 | --- | --- |
 | REQ-001.1 | [Documentation index](../README.md); compare its entries with the authored files under `docs/` |
 | REQ-001.2 | [Local policy](../handbook/documentation.md#status-and-implementation) and record metadata checks |
-| REQ-001.3 | [Documentation workflow](../handbook/documentation.md#change-workflow-for-people-and-ai); review checks meaning |
-| REQ-001.4 | `make docs-check`; documentation tooling tests, validation, and the site build |
+| REQ-001.3 | [Documentation workflow](../handbook/documentation.md#change-workflow-for-contributors); review checks meaning |
+| REQ-001.4 | `task docs-check`; documentation tooling tests, validation, and the site build |
 | REQ-001.5 | Outstanding: the [application profile](../handbook/project.md#documentation-coverage) identifies the initial coverage gaps |
 | REQ-001.6 | [Local source assembly](../../pages/assemble.mjs), [isolated fixtures](../../pages/assemble.test.mjs), and [publishing workflow](../../.github/workflows/210-github-pages.yaml) |
 

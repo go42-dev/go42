@@ -1,0 +1,332 @@
+<TaskOptions>
+  <TaskOptions>
+    <option name="arguments" value="format -w &quot;$FilePath$&quot;" />
+    <option name="checkSyntaxErrors" value="true" />
+    <option name="description" />
+    <option name="exitCodeBehavior" value="ERROR" />
+    <option name="fileExtension" value="proto" />
+    <option name="immediateSync" value="false" />
+    <option name="name" value="buf format" />
+    <option name="output" value="$FilePath$" />
+    <option name="outputFilters">
+      <array />
+    </option>
+    <option name="outputFromStdout" value="false" />
+    <option name="program" value="$ProjectFileDir$/.tools/shims/buf" />
+    <option name="runOnExternalChanges" value="false" />
+    <option name="scopeName" value="Project Files" />
+    <option name="trackOnlyRoot" value="true" />
+    <option name="workingDir" value="$ProjectFileDir$" />
+    <envs>
+      <env name="GOROOT" value="$GOROOT$" />
+      <env name="GOPATH" value="$GOPATH$" />
+      <env name="PATH" value="$ProjectFileDir$/.tools/shims:$GoBinDirs$:$PATH$" />
+      <env name="MISE_DEFAULT_CONFIG_FILENAME" value="etc/mise.toml" />
+      <env name="MISE_DATA_DIR" value="$ProjectFileDir$/.tools" />
+      <env name="MISE_CACHE_DIR" value="$ProjectFileDir$/.tools/cache" />
+      <env name="MISE_STATE_DIR" value="$ProjectFileDir$/.tools/state" />
+      <env name="GOTOOLCHAIN" value="local" />
+    </envs>
+  </TaskOptions>
+  <TaskOptions>
+    <option name="arguments" value="-conf &quot;$ProjectFileDir$/etc/yamlfmt.yaml&quot; &quot;$FilePath$&quot;" />
+    <option name="checkSyntaxErrors" value="true" />
+    <option name="description" />
+    <option name="exitCodeBehavior" value="ERROR" />
+    <option name="fileExtension" value="yml" />
+    <option name="immediateSync" value="false" />
+    <option name="name" value="yamlfmt" />
+    <option name="output" value="" />
+    <option name="outputFilters">
+      <array />
+    </option>
+    <option name="outputFromStdout" value="false" />
+    <option name="program" value="$ProjectFileDir$/.tools/shims/yamlfmt" />
+    <option name="runOnExternalChanges" value="false" />
+    <option name="scopeName" value="Project Files" />
+    <option name="trackOnlyRoot" value="false" />
+    <option name="workingDir" value="$ProjectFileDir$" />
+    <envs>
+      <env name="PATH" value="$ProjectFileDir$/.tools/shims:$GoBinDirs$:$PATH$" />
+      <env name="MISE_DEFAULT_CONFIG_FILENAME" value="etc/mise.toml" />
+      <env name="MISE_DATA_DIR" value="$ProjectFileDir$/.tools" />
+      <env name="MISE_CACHE_DIR" value="$ProjectFileDir$/.tools/cache" />
+      <env name="MISE_STATE_DIR" value="$ProjectFileDir$/.tools/state" />
+      <env name="GOTOOLCHAIN" value="local" />
+    </envs>
+  </TaskOptions>
+  <TaskOptions>
+    <option name="arguments" value="-w &quot;$FilePath$&quot;" />
+    <option name="checkSyntaxErrors" value="true" />
+    <option name="description" />
+    <option name="exitCodeBehavior" value="ERROR" />
+    <option name="fileExtension" value="json" />
+    <option name="immediateSync" value="false" />
+    <option name="name" value="jsonfmt" />
+    <option name="output" value="" />
+    <option name="outputFilters">
+      <array />
+    </option>
+    <option name="outputFromStdout" value="false" />
+    <option name="program" value="$ProjectFileDir$/.tools/shims/jsonfmt" />
+    <option name="runOnExternalChanges" value="false" />
+    <option name="scopeName" value="Project Files" />
+    <option name="trackOnlyRoot" value="false" />
+    <option name="workingDir" value="$ProjectFileDir$" />
+    <envs>
+      <env name="PATH" value="$ProjectFileDir$/.tools/shims:$GoBinDirs$:$PATH$" />
+      <env name="MISE_DEFAULT_CONFIG_FILENAME" value="etc/mise.toml" />
+      <env name="MISE_DATA_DIR" value="$ProjectFileDir$/.tools" />
+      <env name="MISE_CACHE_DIR" value="$ProjectFileDir$/.tools/cache" />
+      <env name="MISE_STATE_DIR" value="$ProjectFileDir$/.tools/state" />
+      <env name="GOTOOLCHAIN" value="local" />
+    </envs>
+  </TaskOptions>
+  <TaskOptions>
+    <option name="arguments" value="write --skip-vendor --skip-generated --custom-order -s standard -s default -s localmodule -s blank -s dot &quot;$FilePath$&quot;" />
+    <option name="checkSyntaxErrors" value="true" />
+    <option name="description" />
+    <option name="exitCodeBehavior" value="ERROR" />
+    <option name="fileExtension" value="go" />
+    <option name="immediateSync" value="false" />
+    <option name="name" value="gci write" />
+    <option name="output" value="" />
+    <option name="outputFilters">
+      <array />
+    </option>
+    <option name="outputFromStdout" value="false" />
+    <option name="program" value="$ProjectFileDir$/.tools/shims/gci" />
+    <option name="runOnExternalChanges" value="false" />
+    <option name="scopeName" value="Project Files" />
+    <option name="trackOnlyRoot" value="false" />
+    <option name="workingDir" value="$ProjectFileDir$" />
+    <envs>
+      <env name="PATH" value="$ProjectFileDir$/.tools/shims:$GoBinDirs$:$PATH$" />
+      <env name="MISE_DEFAULT_CONFIG_FILENAME" value="etc/mise.toml" />
+      <env name="MISE_DATA_DIR" value="$ProjectFileDir$/.tools" />
+      <env name="MISE_CACHE_DIR" value="$ProjectFileDir$/.tools/cache" />
+      <env name="MISE_STATE_DIR" value="$ProjectFileDir$/.tools/state" />
+      <env name="GOTOOLCHAIN" value="local" />
+    </envs>
+  </TaskOptions>
+  <TaskOptions>
+    <option name="arguments" value="-w &quot;$FilePath$&quot; -m 120" />
+    <option name="checkSyntaxErrors" value="true" />
+    <option name="description" />
+    <option name="exitCodeBehavior" value="ERROR" />
+    <option name="fileExtension" value="go" />
+    <option name="immediateSync" value="false" />
+    <option name="name" value="golines" />
+    <option name="output" value="" />
+    <option name="outputFilters">
+      <array />
+    </option>
+    <option name="outputFromStdout" value="false" />
+    <option name="program" value="$ProjectFileDir$/.tools/shims/golines" />
+    <option name="runOnExternalChanges" value="false" />
+    <option name="scopeName" value="Project Files" />
+    <option name="trackOnlyRoot" value="false" />
+    <option name="workingDir" value="$ProjectFileDir$" />
+    <envs>
+      <env name="PATH" value="$ProjectFileDir$/.tools/shims:$GoBinDirs$:$PATH$" />
+      <env name="MISE_DEFAULT_CONFIG_FILENAME" value="etc/mise.toml" />
+      <env name="MISE_DATA_DIR" value="$ProjectFileDir$/.tools" />
+      <env name="MISE_CACHE_DIR" value="$ProjectFileDir$/.tools/cache" />
+      <env name="MISE_STATE_DIR" value="$ProjectFileDir$/.tools/state" />
+      <env name="GOTOOLCHAIN" value="local" />
+    </envs>
+  </TaskOptions>
+  <TaskOptions>
+    <option name="arguments" value="run --config &quot;$ProjectFileDir$/etc/.golangci.yml&quot; &quot;$FileDir$&quot;" />
+    <option name="checkSyntaxErrors" value="true" />
+    <option name="description" />
+    <option name="exitCodeBehavior" value="ERROR" />
+    <option name="fileExtension" value="go" />
+    <option name="immediateSync" value="false" />
+    <option name="name" value="golangci-lint run" />
+    <option name="output" value="" />
+    <option name="outputFilters">
+      <array />
+    </option>
+    <option name="outputFromStdout" value="false" />
+    <option name="program" value="$ProjectFileDir$/.tools/shims/golangci-lint" />
+    <option name="runOnExternalChanges" value="false" />
+    <option name="scopeName" value="Project Files" />
+    <option name="trackOnlyRoot" value="true" />
+    <option name="workingDir" value="$ProjectFileDir$" />
+    <envs>
+      <env name="GOPATH" value="$GOPATH$" />
+      <env name="GOROOT" value="$GOROOT$" />
+      <env name="PATH" value="$ProjectFileDir$/.tools/shims:$GoBinDirs$:$PATH$" />
+      <env name="MISE_DEFAULT_CONFIG_FILENAME" value="etc/mise.toml" />
+      <env name="MISE_DATA_DIR" value="$ProjectFileDir$/.tools" />
+      <env name="MISE_CACHE_DIR" value="$ProjectFileDir$/.tools/cache" />
+      <env name="MISE_STATE_DIR" value="$ProjectFileDir$/.tools/state" />
+      <env name="GOTOOLCHAIN" value="local" />
+    </envs>
+  </TaskOptions>
+  <TaskOptions>
+    <option name="arguments" value="fmt &quot;$FilePath$&quot;" />
+    <option name="checkSyntaxErrors" value="true" />
+    <option name="description" />
+    <option name="exitCodeBehavior" value="ERROR" />
+    <option name="fileExtension" value="go" />
+    <option name="immediateSync" value="false" />
+    <option name="name" value="go fmt" />
+    <option name="output" value="$FilePath$" />
+    <option name="outputFilters">
+      <array />
+    </option>
+    <option name="outputFromStdout" value="false" />
+    <option name="program" value="$GoExecPath$" />
+    <option name="runOnExternalChanges" value="false" />
+    <option name="scopeName" value="Project Files" />
+    <option name="trackOnlyRoot" value="true" />
+    <option name="workingDir" value="$ProjectFileDir$" />
+    <envs>
+      <env name="GOROOT" value="$GOROOT$" />
+      <env name="GOPATH" value="$GOPATH$" />
+      <env name="PATH" value="$ProjectFileDir$/.tools/shims:$GoBinDirs$:$PATH$" />
+      <env name="MISE_DEFAULT_CONFIG_FILENAME" value="etc/mise.toml" />
+      <env name="MISE_DATA_DIR" value="$ProjectFileDir$/.tools" />
+      <env name="MISE_CACHE_DIR" value="$ProjectFileDir$/.tools/cache" />
+      <env name="MISE_STATE_DIR" value="$ProjectFileDir$/.tools/state" />
+      <env name="GOTOOLCHAIN" value="local" />
+    </envs>
+  </TaskOptions>
+  <TaskOptions>
+    <option name="arguments" value="--config etc/.markdownlint-cli2.yaml --no-globs --fix &quot;$FilePath$&quot;" />
+    <option name="checkSyntaxErrors" value="true" />
+    <option name="description" />
+    <option name="exitCodeBehavior" value="ERROR" />
+    <option name="fileExtension" value="md" />
+    <option name="immediateSync" value="true" />
+    <option name="name" value="markdownlint-cli2" />
+    <option name="output" value="$FilePath$" />
+    <option name="outputFilters">
+      <array />
+    </option>
+    <option name="outputFromStdout" value="false" />
+    <option name="program" value="$ProjectFileDir$/.tools/shims/markdownlint-cli2" />
+    <option name="runOnExternalChanges" value="true" />
+    <option name="scopeName" value="Project Files" />
+    <option name="trackOnlyRoot" value="false" />
+    <option name="workingDir" value="$ProjectFileDir$" />
+    <envs>
+      <env name="PATH" value="$ProjectFileDir$/.tools/shims:$GoBinDirs$:$PATH$" />
+      <env name="MISE_DEFAULT_CONFIG_FILENAME" value="etc/mise.toml" />
+      <env name="MISE_DATA_DIR" value="$ProjectFileDir$/.tools" />
+      <env name="MISE_CACHE_DIR" value="$ProjectFileDir$/.tools/cache" />
+      <env name="MISE_STATE_DIR" value="$ProjectFileDir$/.tools/state" />
+      <env name="GOTOOLCHAIN" value="local" />
+    </envs>
+  </TaskOptions>
+  <TaskOptions>
+    <option name="arguments" value="fix &quot;$FilePath$&quot; --dialect mysql --config etc/sqlfluff.ini" />
+    <option name="checkSyntaxErrors" value="true" />
+    <option name="description" />
+    <option name="exitCodeBehavior" value="ERROR" />
+    <option name="fileExtension" value="sql" />
+    <option name="immediateSync" value="true" />
+    <option name="name" value="sqlfluff fix (mysql)" />
+    <option name="output" value="$FilePath$" />
+    <option name="outputFilters">
+      <array />
+    </option>
+    <option name="outputFromStdout" value="false" />
+    <option name="program" value="$ProjectFileDir$/.tools/shims/sqlfluff" />
+    <option name="runOnExternalChanges" value="true" />
+    <option name="scopeName" value="mysql-migration" />
+    <option name="trackOnlyRoot" value="false" />
+    <option name="workingDir" value="$ProjectFileDir$" />
+    <envs>
+      <env name="PATH" value="$ProjectFileDir$/.tools/shims:$GoBinDirs$:$PATH$" />
+      <env name="MISE_DEFAULT_CONFIG_FILENAME" value="etc/mise.toml" />
+      <env name="MISE_DATA_DIR" value="$ProjectFileDir$/.tools" />
+      <env name="MISE_CACHE_DIR" value="$ProjectFileDir$/.tools/cache" />
+      <env name="MISE_STATE_DIR" value="$ProjectFileDir$/.tools/state" />
+      <env name="GOTOOLCHAIN" value="local" />
+    </envs>
+  </TaskOptions>
+  <TaskOptions>
+    <option name="arguments" value="fix &quot;$FilePath$&quot; --dialect sqlite --config etc/sqlfluff.ini" />
+    <option name="checkSyntaxErrors" value="true" />
+    <option name="description" />
+    <option name="exitCodeBehavior" value="ERROR" />
+    <option name="fileExtension" value="sql" />
+    <option name="immediateSync" value="true" />
+    <option name="name" value="sqlfluff fix (sqlite)" />
+    <option name="output" value="$FilePath$" />
+    <option name="outputFilters">
+      <array />
+    </option>
+    <option name="outputFromStdout" value="false" />
+    <option name="program" value="$ProjectFileDir$/.tools/shims/sqlfluff" />
+    <option name="runOnExternalChanges" value="true" />
+    <option name="scopeName" value="sqlite-migration" />
+    <option name="trackOnlyRoot" value="false" />
+    <option name="workingDir" value="$ProjectFileDir$" />
+    <envs>
+      <env name="PATH" value="$ProjectFileDir$/.tools/shims:$GoBinDirs$:$PATH$" />
+      <env name="MISE_DEFAULT_CONFIG_FILENAME" value="etc/mise.toml" />
+      <env name="MISE_DATA_DIR" value="$ProjectFileDir$/.tools" />
+      <env name="MISE_CACHE_DIR" value="$ProjectFileDir$/.tools/cache" />
+      <env name="MISE_STATE_DIR" value="$ProjectFileDir$/.tools/state" />
+      <env name="GOTOOLCHAIN" value="local" />
+    </envs>
+  </TaskOptions>
+  <TaskOptions>
+    <option name="arguments" value="fix &quot;$FilePath$&quot; --dialect postgres --config etc/sqlfluff.ini" />
+    <option name="checkSyntaxErrors" value="true" />
+    <option name="description" />
+    <option name="exitCodeBehavior" value="ERROR" />
+    <option name="fileExtension" value="sql" />
+    <option name="immediateSync" value="true" />
+    <option name="name" value="sqlfluff fix (pgsql)" />
+    <option name="output" value="$FilePath$" />
+    <option name="outputFilters">
+      <array />
+    </option>
+    <option name="outputFromStdout" value="false" />
+    <option name="program" value="$ProjectFileDir$/.tools/shims/sqlfluff" />
+    <option name="runOnExternalChanges" value="true" />
+    <option name="scopeName" value="pgsql-migration" />
+    <option name="trackOnlyRoot" value="false" />
+    <option name="workingDir" value="$ProjectFileDir$" />
+    <envs>
+      <env name="PATH" value="$ProjectFileDir$/.tools/shims:$GoBinDirs$:$PATH$" />
+      <env name="MISE_DEFAULT_CONFIG_FILENAME" value="etc/mise.toml" />
+      <env name="MISE_DATA_DIR" value="$ProjectFileDir$/.tools" />
+      <env name="MISE_CACHE_DIR" value="$ProjectFileDir$/.tools/cache" />
+      <env name="MISE_STATE_DIR" value="$ProjectFileDir$/.tools/state" />
+      <env name="GOTOOLCHAIN" value="local" />
+    </envs>
+  </TaskOptions>
+  <TaskOptions>
+    <option name="arguments" value="format --offline &quot;$FilePath$&quot;" />
+    <option name="checkSyntaxErrors" value="true" />
+    <option name="description" />
+    <option name="exitCodeBehavior" value="ERROR" />
+    <option name="fileExtension" value="toml" />
+    <option name="immediateSync" value="false" />
+    <option name="name" value="tombi format" />
+    <option name="output" value="" />
+    <option name="outputFilters">
+      <array />
+    </option>
+    <option name="outputFromStdout" value="false" />
+    <option name="program" value="$ProjectFileDir$/.tools/shims/tombi" />
+    <option name="runOnExternalChanges" value="false" />
+    <option name="scopeName" value="Project Files" />
+    <option name="trackOnlyRoot" value="false" />
+    <option name="workingDir" value="$ProjectFileDir$/etc" />
+    <envs>
+      <env name="PATH" value="$ProjectFileDir$/.tools/shims:$GoBinDirs$:$PATH$" />
+      <env name="MISE_DEFAULT_CONFIG_FILENAME" value="etc/mise.toml" />
+      <env name="MISE_DATA_DIR" value="$ProjectFileDir$/.tools" />
+      <env name="MISE_CACHE_DIR" value="$ProjectFileDir$/.tools/cache" />
+      <env name="MISE_STATE_DIR" value="$ProjectFileDir$/.tools/state" />
+      <env name="GOTOOLCHAIN" value="local" />
+    </envs>
+  </TaskOptions>
+</TaskOptions>

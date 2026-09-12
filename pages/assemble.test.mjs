@@ -61,11 +61,11 @@ test('publishes source documents without changing sources', t => {
 
 test('resolves table and reference links, source files, and images but leaves code examples alone', t => {
   const root = fixture(t);
-  write(root, 'Makefile', 'help:\n\t@echo help\n');
+  write(root, 'Taskfile.yaml', "version: '3'\ntasks:\n  help:\n    cmds: [task --list --sort none]\n");
   write(root, 'pages/static/img/diagram.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>\n');
   fs.appendFileSync(path.join(root, 'docs/handbook/project.md'), [
     '\n| Resource | Link |', '| --- | --- |', '| Rules | [Rules](conventions.md) |',
-    '\n[Build](../../Makefile#L1)', '\n![Architecture][diagram]',
+    '\n[Build](../../Taskfile.yaml#L1)', '\n![Architecture][diagram]',
     '\n[diagram]: ../../pages/static/img/diagram.svg', '\n[Requirement][req]',
     '\n![Overview](../../pages/static/img/diagram.svg)',
     '\n[req]: ../requirements/001-documentation.md',
@@ -75,7 +75,7 @@ test('resolves table and reference links, source files, and images but leaves co
   assemble({root, context: {...context, dirty: true}});
   const output = fs.readFileSync(path.join(root, 'pages/docs/handbook/project.md'), 'utf8');
   assert.match(output, /\[Rules\]\(\.\/conventions\.md\)/);
-  assert.match(output, /example\/application\/blob\/abc123\/Makefile#L1/);
+  assert.match(output, /example\/application\/blob\/abc123\/Taskfile\.yaml#L1/);
   assert.match(output, /\[req\]: \.\.\/requirements\/001-documentation\.md/);
   assert.match(output, /\[diagram\]: \.\.\/\.\.\/static\/img\/diagram\.svg/);
   assert.match(output, /!\[Overview\]\(\.\.\/\.\.\/static\/img\/diagram\.svg\)/);

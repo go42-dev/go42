@@ -13,7 +13,7 @@ related:
 ## Context
 
 The application needs documentation that describes its own purpose, requirements, choices, and operating environment.
-Contributors and AI need instructions that apply to the checked-out code, including after it diverges from go42 defaults.
+Contributors need instructions that apply to the checked-out code, including after it diverges from go42 defaults.
 
 The external [go42 operational guide](https://github.com/go42-dev/go42-docs) is maintained solely by go42's authors and
 describes go42 as a whole. Application users consult it online; it is outside the application checkout and its contributors'
@@ -34,7 +34,7 @@ acceptance. The local policy and tooling can be evaluated while the record remai
 ## Decision
 
 Keep this application's handbook, requirements, decisions, conventions, and authoring templates beside its code.
-Contributors and AI maintain those sources in this repository. Review inherited defaults during adoption and upgrades.
+Contributors maintain those sources in this repository. Review inherited defaults during adoption and upgrades.
 Treat go42-docs as an external reference; application changes do not require cloning or updating it.
 
 Maintain one living requirement per capability or concern. Keep the handbook aligned with the current implementation.
