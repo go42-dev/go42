@@ -209,7 +209,7 @@ the SQL dialect described below.
 | Protobuf | `task fmt:proto -- "$FILE"` | `task lint:proto` checks the entire `api` module |
 | SQL migrations | `task fmt:sql DIALECT="$DIALECT" -- "$FILE"` | `task lint:sql DIALECT="$DIALECT" -- "$FILE"` |
 
-Go formatting runs the formatters enabled in [the Go configuration](../../etc/.golangci.yml), which owns line length and
+Go formatting runs the formatters enabled in [the Go configuration](../../etc/golangci.yaml), which owns line length and
 import grouping. Use `go mod edit -fmt` for `go.mod` layout.
 
 YAML, JSON, and TOML checks without file arguments select tracked and untracked source files that Git does not ignore,
@@ -253,7 +253,7 @@ a GoLand Markdown watcher can use program `task`, arguments `fmt:markdown -- "$F
 When invoking a tool directly, use the pinned tool environment above and the same configuration as Taskfile. For Markdown:
 
 ```sh
-markdownlint-cli2 --config etc/.markdownlint-cli2.yaml --no-globs --fix "$FILE"
+markdownlint-cli2 --config etc/markdownlint-cli2.yaml --no-globs --fix "$FILE"
 ```
 
 `--no-globs` prevents the configured documentation glob from expanding a file-specific fix. Direct Tombi calls need `etc/`
@@ -348,7 +348,7 @@ and application-specific evidence. CI runs its configured jobs independently of 
 ## Preparing a pull request
 
 Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) with the types and rules in
-[etc/.commitlintrc.yaml](../../etc/.commitlintrc.yaml). Branch names must match `^[A-Za-z0-9/_.-]+$`, be descriptive, and
+[etc/commitlint.yaml](../../etc/commitlint.yaml). Branch names must match `^[A-Za-z0-9/_.-]+$`, be descriptive, and
 include a task identifier when applicable. Prefer merge commits over rebasing, and keep rebase disabled. Use `.gitkeep`
 to preserve empty directories in Git and the `gh` client to access GitHub resources. Use
 [Semantic Versioning](https://semver.org/) for releases; follow [Release](release.md) for publishing artifacts.

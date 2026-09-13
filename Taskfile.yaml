@@ -345,7 +345,7 @@ tasks:
     cmds:
       - |
         set -- {{.CLI_ARGS}}
-        "{{.TOOLS_BIN}}/golangci-lint" fmt --config etc/.golangci.yml "$@"
+        "{{.TOOLS_BIN}}/golangci-lint" fmt --config etc/golangci.yaml "$@"
 
   fmt:yaml:
     desc: "Format explicit plain YAML files (writes)"
@@ -388,7 +388,7 @@ tasks:
     cmds:
       - |
         set -- {{.CLI_ARGS}}
-        "{{.TOOLS_BIN}}/markdownlint-cli2" --config etc/.markdownlint-cli2.yaml --no-globs --fix "$@"
+        "{{.TOOLS_BIN}}/markdownlint-cli2" --config etc/markdownlint-cli2.yaml --no-globs --fix "$@"
 
   fmt:proto:
     desc: "Format explicit Protobuf source files (writes)"
@@ -459,7 +459,7 @@ tasks:
     desc: "Check commit messages against origin/master"
     cmds:
       - |
-        "{{.TOOLS_BIN}}/commitlint" --config etc/.commitlintrc.yaml \
+        "{{.TOOLS_BIN}}/commitlint" --config etc/commitlint.yaml \
           --extends "$(mise where npm:@commitlint/config-conventional)/node_modules/@commitlint/config-conventional/lib/index.js" \
           --from origin/master --to HEAD --verbose
 
@@ -471,8 +471,8 @@ tasks:
     cmds:
       - |
         set -- {{.CLI_ARGS}}
-        "{{.TOOLS_BIN}}/golangci-lint" config verify --config etc/.golangci.yml
-        "{{.TOOLS_BIN}}/golangci-lint" run --config etc/.golangci.yml "$@"
+        "{{.TOOLS_BIN}}/golangci-lint" config verify --config etc/golangci.yaml
+        "{{.TOOLS_BIN}}/golangci-lint" run --config etc/golangci.yaml "$@"
 
   lint:nilaway:
     desc: "Run advisory nil-safety analysis on all Go packages"
@@ -712,9 +712,9 @@ tasks:
       - |
         set -- {{.CLI_ARGS}}
         if [ "$#" -eq 0 ]; then
-          "{{.TOOLS_BIN}}/markdownlint-cli2" --config etc/.markdownlint-cli2.yaml
+          "{{.TOOLS_BIN}}/markdownlint-cli2" --config etc/markdownlint-cli2.yaml
         else
-          "{{.TOOLS_BIN}}/markdownlint-cli2" --config etc/.markdownlint-cli2.yaml --no-globs "$@"
+          "{{.TOOLS_BIN}}/markdownlint-cli2" --config etc/markdownlint-cli2.yaml --no-globs "$@"
         fi
 
   lint:prose:

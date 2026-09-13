@@ -137,7 +137,7 @@
     </envs>
   </TaskOptions>
   <TaskOptions>
-    <option name="arguments" value="run --config &quot;$ProjectFileDir$/etc/.golangci.yml&quot; &quot;$FileDir$&quot;" />
+    <option name="arguments" value="run --config &quot;$ProjectFileDir$/etc/golangci.yaml&quot; &quot;$FileDir$&quot;" />
     <option name="checkSyntaxErrors" value="true" />
     <option name="description" />
     <option name="exitCodeBehavior" value="ERROR" />
@@ -195,7 +195,7 @@
     </envs>
   </TaskOptions>
   <TaskOptions>
-    <option name="arguments" value="--config etc/.markdownlint-cli2.yaml --no-globs --fix &quot;$FilePath$&quot;" />
+    <option name="arguments" value="--config etc/markdownlint-cli2.yaml --no-globs --fix &quot;$FilePath$&quot;" />
     <option name="checkSyntaxErrors" value="true" />
     <option name="description" />
     <option name="exitCodeBehavior" value="ERROR" />
