@@ -2,7 +2,7 @@
 
 name: ai-prepare-env
 description: 'Prepares the environment for ai agents'
-# Prepares the environment for ai agents.
+
 runs:
   using: composite
   steps:
@@ -14,7 +14,7 @@ runs:
       shell: bash
     # -----
     - name: 'Build inverted index'
-      run: go42x kwb build
+      run: task x -- kwb build
       shell: bash
     # -----
     - name: 'Generate ai agent environment'
@@ -29,5 +29,5 @@ runs:
         GITHUB_SHA: ${{ github.sha }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_RUN_ID: ${{ github.run_id }}
-      run: go42x agentenv generate
+      run: task x -- agentenv generate
       shell: bash

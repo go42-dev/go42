@@ -54,4 +54,4 @@ oapi-codegen = "2.8.0"
   "gopls",
 ] }
 
-"go:github.com/go42-dev/go42x" = "0.19.1"
+"go:github.com/go42-dev/go42x" = "0.22.0"

@@ -151,9 +151,9 @@ backend = "go:github.com/go-delve/delve/cmd/dlv"
 specifiers = ["1.27.1"]
 
 [[tools."go:github.com/go42-dev/go42x"]]
-version = "0.19.1"
+version = "0.22.0"
 backend = "go:github.com/go42-dev/go42x"
-specifiers = ["0.19.1"]
+specifiers = ["0.22.0"]
 
 [[tools."go:github.com/google/capslock/cmd/..."]]
 version = "0.3.3"

@@ -49,6 +49,14 @@ tasks:
     cmds:
       - "task --list --sort none"
 
+  ## x | run go42x
+  x:
+    desc: "run go42x"
+    summary: "Usage: task x [-- COMMAND ...]"
+    interactive: true
+    cmds:
+      - '"{{.TOOLS_BIN}}/go42x" {{.CLI_ARGS}}'
+
   ## setup | install dependencies
   setup:
     desc: "install dependencies"
