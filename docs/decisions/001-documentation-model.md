@@ -1,6 +1,7 @@
 ---
 id: ADR-001
 title: "ADR-001: Keep application documentation with its code"
+collection: decisions
 status: proposed
 date: 2026-09-11
 related:

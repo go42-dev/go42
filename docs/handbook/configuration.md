@@ -1,6 +1,7 @@
 ---
 id: configuration
 title: Configuration
+collection: handbook
 sidebar_position: 4
 ---
 
@@ -51,7 +52,7 @@ leave a default in effect. Compare the exact name with the configuration model a
 relevant non-secret settings in a diagnosis: `.env` and `Config.String()` can expose credentials.
 
 Use [configuration tests](../../internal/config/config_test.go) to find accepted and rejected cases. The
-[integration test environment](development.md#integration-test-environment) has its own process settings and precedence.
+[integration test environment](testing.md#integration-test-environment) has its own process settings and precedence.
 
 ## Storage and events
 

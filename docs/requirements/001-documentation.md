@@ -1,6 +1,7 @@
 ---
 id: REQ-001
 title: "REQ-001: Application documentation"
+collection: requirements
 status: draft
 related:
   - ADR-001

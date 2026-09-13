@@ -1,6 +1,7 @@
 ---
 id: template-requirement
 title: Requirement template
+collection: templates
 status: draft
 related: []
 ---
@@ -9,6 +10,8 @@ related: []
 
 Follow the [authoring workflow](../handbook/documentation.md#creating-a-document) and
 [acceptance rules](../handbook/documentation.md#status-and-implementation).
+
+When copying this template, change `collection` from `templates` to `requirements`.
 
 ## Outcome
 

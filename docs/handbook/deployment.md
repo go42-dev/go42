@@ -1,7 +1,8 @@
 ---
 id: deployment
 title: Deployment
-sidebar_position: 9
+collection: handbook
+sidebar_position: 10
 ---
 
 # Deployment
@@ -76,7 +77,7 @@ Before handing off a change to schema or message format, record:
 Keep migration naming and authoring rules in [conventions](conventions.md#architecture-and-data). Existing
 [migration integration tests](../../tests/integration/database/migrate_test.go) exercise repeated runs, failures, and
 concurrent runners for MySQL/PostgreSQL; [SQLite tests](../../tests/integration/database/sqlite_test.go) cover that engine.
-Run the relevant engine cases with the [test environment](development.md#integration-test-environment) configured.
+Run the relevant engine cases with the [test environment](testing.md#integration-test-environment) configured.
 A passing SQLite run does not establish behavior on the other engines; MySQL DDL can commit implicitly.
 
 Review the last attempted migration and the actual schema/data before retrying a failed upgrade. A failed process does

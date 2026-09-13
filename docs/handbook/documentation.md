@@ -1,6 +1,7 @@
 ---
 id: documentation
 title: Maintaining application documentation
+collection: handbook
 sidebar_position: 2
 ---
 
@@ -114,11 +115,12 @@ stable test/source links and material limitations in the documentation.
 
 ## Metadata and filenames
 
-Every page has YAML front matter. IDs are unique across published pages and remain stable when titles change.
+Every page has YAML front matter. Set `collection` to `overview`, `handbook`, `requirements`, `decisions`, or `templates`.
+IDs are unique across published pages and remain stable when titles change.
 
 | Applies to           | Metadata                                                                                      |
 |----------------------|-----------------------------------------------------------------------------------------------|
-| All pages            | `id` and `title`; optional `related` list of published document IDs                           |
+| All pages            | `id`, `title`, and `collection`; optional `related` list of published document IDs            |
 | Handbook             | Lowercase descriptive `id`; unique positive integer `sidebar_position`                        |
 | Requirements         | `id: REQ-NNN` and `status`                                                                    |
 | Decisions            | `id: ADR-NNN`, `status`, and a real `date` in `YYYY-MM-DD` form                               |

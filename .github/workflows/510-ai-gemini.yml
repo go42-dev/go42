@@ -150,7 +150,7 @@ jobs:
         id: gemini
         env:
           GITHUB_TOKEN: ${{ steps.generate_token.outputs.token || secrets.GITHUB_TOKEN }}
-          GH_MCP_KEY: ${{ secrets.GH_MCP_KEY || secrets.GITHUB_TOKEN }}
+          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GH_MCP_KEY || secrets.GITHUB_TOKEN }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.5-pro' }}
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}

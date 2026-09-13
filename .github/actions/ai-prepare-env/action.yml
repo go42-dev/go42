@@ -9,10 +9,6 @@ runs:
     - name: 'Prepare project environment'
       uses: ./.github/actions/prepare-env
     # -----
-    - name: 'Setup MCP servers'
-      run: task setup-mcp
-      shell: bash
-    # -----
     - name: 'Build inverted index'
       run: task x -- kwb build
       shell: bash
@@ -20,6 +16,8 @@ runs:
     - name: 'Generate ai agent environment'
       env:
         CI: true
+        CI_MODE: auto
+        GITHUB_ACTIONS: true
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}

@@ -1,6 +1,7 @@
 ---
 id: project
 title: Application profile
+collection: handbook
 sidebar_position: 1
 ---
 

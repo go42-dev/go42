@@ -1,6 +1,7 @@
 ---
 id: conventions
 title: Project conventions
+collection: handbook
 sidebar_position: 3
 ---
 

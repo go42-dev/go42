@@ -1,7 +1,8 @@
 ---
 id: monitoring
 title: Monitoring
-sidebar_position: 11
+collection: handbook
+sidebar_position: 12
 ---
 
 # Monitoring

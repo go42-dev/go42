@@ -1,0 +1,379 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/go42-dev/go42x/agentenv/schema/v1.0",
+  "title": "AgentEnv Configuration Schema",
+  "description": "Schema for .go42x/go42x.yaml configuration file",
+  "type": "object",
+  "required": [
+    "version",
+    "project",
+    "context",
+    "providers"
+  ],
+  "definitions": {
+    "providerEnabled": {
+      "type": "boolean",
+      "description": "Whether to generate configuration for this provider. Disabling preserves existing settings and removes generated CLAUDE.md/GEMINI.md imports. Shared AGENTS.md is always generated.",
+      "default": true
+    },
+    "autoApproveTools": {
+      "type": "array",
+      "description": "Native tool approval rules; does not filter tool availability",
+      "items": {
+        "type": "string",
+        "pattern": "\\S"
+      }
+    },
+    "toolApprovalProvider": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "$ref": "#/definitions/providerEnabled"
+        },
+        "auto-approve-tools": {
+          "$ref": "#/definitions/autoApproveTools"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "providers": {
+            "anyOf": [
+              {
+                "required": [
+                  "claude"
+                ],
+                "properties": {
+                  "claude": {
+                    "properties": {
+                      "enabled": {
+                        "const": true
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "required": [
+                  "crush"
+                ],
+                "properties": {
+                  "crush": {
+                    "properties": {
+                      "enabled": {
+                        "const": true
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "mcp": {
+            "additionalProperties": {
+              "if": {
+                "properties": {
+                  "enabled": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "cwd": {
+                    "const": ""
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Configuration version",
+      "pattern": "^\\d+\\.\\d+$",
+      "examples": [
+        "1.0"
+      ]
+    },
+    "project": {
+      "type": "object",
+      "description": "Project metadata",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Project name",
+          "minLength": 1
+        },
+        "language": {
+          "type": "string",
+          "description": "Primary programming language",
+          "examples": [
+            "go",
+            "python",
+            "javascript",
+            "typescript",
+            "rust"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "description": "Project description"
+        },
+        "tags": {
+          "type": "array",
+          "description": "Project tags",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional project metadata",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "env": {
+      "type": "array",
+      "description": "Environment variable names whose values should appear in the generated shared context",
+      "items": {
+        "type": "string"
+      }
+    },
+    "context": {
+      "type": "object",
+      "description": "Shared instructions rendered to AGENTS.md; Claude and Gemini import this file.",
+      "required": [
+        "template"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "template": {
+          "type": "string",
+          "description": "Template file path",
+          "minLength": 1
+        },
+        "chunks-dir": {
+          "type": "string",
+          "description": "Chunk directory relative to .go42x; immediate *.tpl.md files load in filename order. Omit to include no chunks."
+        }
+      }
+    },
+    "providers": {
+      "type": "object",
+      "description": "AI provider configurations",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "claude": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "$ref": "#/definitions/providerEnabled"
+            },
+            "agents": {
+              "type": "array",
+              "description": "Agent templates",
+              "items": {
+                "type": "string"
+              }
+            },
+            "auto-approve-tools": {
+              "$ref": "#/definitions/autoApproveTools"
+            }
+          },
+          "additionalProperties": false
+        },
+        "codex": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "$ref": "#/definitions/providerEnabled"
+            },
+            "approval-policy": {
+              "type": "string",
+              "description": "Codex command approval policy. Omit to preserve the existing policy. Does not change sandbox settings.",
+              "enum": [
+                "on-request",
+                "never"
+              ]
+            },
+            "mcp-approval": {
+              "type": "string",
+              "description": "Default tool approval mode for every enabled MCP server. Omit to use the client's default. Does not filter tool availability.",
+              "enum": [
+                "auto",
+                "prompt",
+                "writes",
+                "approve"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "gemini": {
+          "$ref": "#/definitions/toolApprovalProvider"
+        },
+        "crush": {
+          "$ref": "#/definitions/toolApprovalProvider"
+        },
+        "copilot": {
+          "type": "object",
+          "description": "All MCP tools are available. Tool approvals are managed in Copilot's user settings.",
+          "properties": {
+            "enabled": {
+              "$ref": "#/definitions/providerEnabled"
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "description": "MCP (Model Context Protocol) server configurations",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether this MCP server is enabled",
+            "default": false
+          },
+          "type": {
+            "type": "string",
+            "description": "Server connection type",
+            "enum": [
+              "stdio",
+              "http",
+              "sse"
+            ],
+            "default": "stdio"
+          },
+          "name": {
+            "type": "string",
+            "description": "Server name",
+            "minLength": 1
+          },
+          "url": {
+            "type": "string",
+            "description": "Server URL (for http/sse types)",
+            "format": "uri"
+          },
+          "command": {
+            "type": "string",
+            "description": "Command to execute (for stdio type)",
+            "minLength": 1
+          },
+          "args": {
+            "type": "array",
+            "description": "Command arguments",
+            "items": {
+              "type": "string"
+            }
+          },
+          "env": {
+            "type": "object",
+            "description": "Environment variables for the server",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "Known raw MCP tool names for context descriptions and client approval settings, without a client or server prefix. All tools from enabled servers remain available, including tools omitted from this list.",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]+$",
+              "not": {
+                "pattern": "^mcp__"
+              },
+              "maxLength": 128
+            },
+            "uniqueItems": true
+          },
+          "headers": {
+            "type": "object",
+            "description": "HTTP headers (for http/sse types)",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Literal working directory for stdio servers. Relative paths resolve from the project directory; omit or leave empty for the client's default. Supported by Codex, Gemini, and Copilot; rejected on enabled servers when Claude or Crush is enabled. Environment variables and home expansion are not supported.",
+            "pattern": "^$|\\S",
+            "not": {
+              "pattern": "\u0000|\\$(?:[A-Za-z_]|\\{|\\()|%[A-Za-z_][A-Za-z0-9_]*%|^~"
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "stdio"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "command"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "enum": [
+                    "http",
+                    "sse"
+                  ]
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            "then": {
+              "required": [
+                "url"
+              ],
+              "properties": {
+                "cwd": {
+                  "const": ""
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

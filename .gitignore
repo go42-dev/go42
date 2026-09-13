@@ -14,7 +14,6 @@ coverage.out
 dep-graph.svg
 
 # go42x generated files
-.go42x/
 .go42x/kwb/
 .go42x/backups/
 .mcp.json

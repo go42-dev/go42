@@ -1,7 +1,8 @@
 ---
 id: architecture
 title: Architecture
-sidebar_position: 6
+collection: handbook
+sidebar_position: 7
 ---
 
 # Architecture

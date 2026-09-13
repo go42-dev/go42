@@ -1,7 +1,8 @@
 ---
 id: api
 title: Using the API
-sidebar_position: 7
+collection: handbook
+sidebar_position: 8
 ---
 
 # Using the API

@@ -1,6 +1,7 @@
 ---
 id: development
 title: Development workflow
+collection: handbook
 sidebar_position: 5
 ---
 
@@ -17,8 +18,8 @@ and their locked versions. This guide explains which commands to use, their scop
 ## Environment setup
 
 Install Go, mise, and Task and ensure their executables are on `PATH`. Use the Go version from [go.mod](../../go.mod) and
-the minimum mise version from [etc/mise.toml](../../etc/mise.toml). Install Docker for container workflows and optional
-MCP setup. If Task is missing, use the bootstrap instructions below.
+the minimum mise version from [etc/mise.toml](../../etc/mise.toml). Install Docker for container workflows.
+If Task is missing, use the bootstrap instructions below.
 
 From the repository root, install the project tools:
 
@@ -26,8 +27,16 @@ From the repository root, install the project tools:
 task setup
 ```
 
-This installs the tools locked in [etc/mise.lock](../../etc/mise.lock), including Task, syncs Vale styles, and downloads
-Go modules. `task setup-mcp` additionally installs gopls and pulls the pinned GitHub MCP image.
+This installs all tools locked in [etc/mise.lock](../../etc/mise.lock), including Task and gopls. It also syncs Vale styles
+and downloads Go modules.
+
+The [MCP configuration](../../.go42x/go42x.yaml) runs the local servers through `task tool -- gopls mcp` and
+`task tool -- go42x mcp`, using the tool versions and environment configured by mise.
+
+GitHub MCP uses [GitHub's hosted HTTP server](https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md)
+at `https://api.githubcopilot.com/mcp/`. Export `GITHUB_PERSONAL_ACCESS_TOKEN` in the MCP client's environment; the
+configuration uses it for bearer authentication and sets `X-MCP-Toolsets: all`. After changing the MCP configuration,
+run `task x -- agentenv generate` and restart the client.
 
 For code generation, `task setup-generators` installs the generators and their supporting tools from the same lockfile.
 Run it before `task generate` to prepare only the tools needed for generation.
@@ -40,9 +49,9 @@ if [ ! -f .env ]; then
 fi
 ```
 
-Task invokes installed tools through `.tools/shims` and supplies mise's project paths, so Task commands work without
-shell exports. Existing exported mise settings override Taskfile defaults. Go commands use the installed `go` executable;
-Task defaults to `GOTOOLCHAIN=local` and adds the project shims to `PATH` for generators.
+Task supplies mise's project paths, so Task commands work without shell exports. Tasks invoke installed tools through
+`.tools/shims` or `mise exec`. Existing exported mise settings override Taskfile defaults. Go commands use the installed
+`go` executable; Task defaults to `GOTOOLCHAIN=local` and adds the project shims to `PATH` for generators.
 
 ### Bootstrapping Task and invoking tools directly
 
@@ -78,6 +87,15 @@ task fmt:yaml -- .github/workflows/150-load-tests.yaml
 task lint:yaml -- Taskfile.yaml .github/workflows/150-load-tests.yaml
 task lint:go -- ./internal/metrics
 task test-unit -- ./internal/metrics
+```
+
+Use `task tool -- COMMAND [ARGS...]` to run a command with mise's project versions and environment. Pass the executable
+name and its arguments after `--`; the task preserves standard input and output:
+
+```sh
+task tool -- gopls version
+task tool -- node --version
+task tool -- go42x kwb build
 ```
 
 Formatters require existing individual files. Linters that accept file arguments also reject directories, literal globs,
@@ -189,7 +207,7 @@ task test-unit -- ./internal/auth/... ./internal/api/...
 
 The [HTTP integration clients](../../tests/integration/http/v1/users_clients_test.go) exercise both generated HTTP SDKs;
 [gRPC integration tests](../../tests/integration/grpc/v1/auth_test.go) exercise the generated gRPC client. Follow the
-[integration prerequisites](#integration-test-environment) before running `task test-integration`.
+[integration prerequisites](testing.md#integration-test-environment) before running `task test-integration`.
 
 ## Formatting and linting
 
@@ -270,80 +288,16 @@ working directory. Per-project `.idea/` and `.vscode/` settings are ignored by G
 
 ## Testing and verification
 
-While editing, run the matching focused checks and tests for the affected behavior. Check Go packages together, including
-callers when interfaces change. Follow the [test design conventions](conventions.md#testing).
-
-| Command                                | Purpose and scope                                                                                                                  |
-|----------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
-| `task test-unit`                       | Full unit suite with race detection and coverage; excludes generated, mock, and external test trees                                |
-| `task test-unit -- ./internal/metrics` | Selected local packages with race detection, without coverage reports                                                              |
-| `task test-fuzz`                       | All fuzz targets, with 30 seconds per target by default                                                                            |
-| `task test-integration`                | Integration suite with coverage; loads `.env` when present and needs configured services                                           |
-| `task test-resilience`                 | Dependency recovery tests with an instrumented application and combined coverage; needs Toxiproxy and the suite's backing services |
-| `task test-load`                       | HTTP and gRPC k6 suites against a running application by default                                                                   |
-
-Coverage reports are written under `.build/`. Resilience tests are build-tagged and excluded from other test tasks.
-Use the [resilience suite](../../tests/resilience/application_test.go) and
-[CI service configuration](../../.github/workflows/120-resilience-tests.yaml) to identify its required backends.
-
-Fuzz tests accept `FUZZ_TIME` as a Go duration or iteration count. Load tests accept `K6_TEST_PATH` and `K6_SUMMARY_PATH`
-together to select an existing script and its summary output. These values can be Task variables or environment variables:
-
-```sh
-task test-fuzz FUZZ_TIME=5m
-task test-load K6_TEST_PATH=tests/load/http/v1/auth_test.js \
-  K6_SUMMARY_PATH=.build/k6-summary-http-v1.json
-```
-
-Without load-test selectors, both protocols run, even if the first fails, and write `.build/k6-summary-{http,grpc}-v1.json`.
-Each invocation removes previous summaries for its selected scope before running k6 and reports failures through its exit
-status.
+Use the [testing guide](testing.md) to select suites, prepare dependencies, and check results.
 
 ### Integration test environment
 
-`task test-integration` runs the full suite; it does not start the application. Use a dedicated test application because
-the API tests create, update, and delete user records. The repository tests separately create isolated databases through
-the [test helper](../../tests/integration/helpers.go).
-
-| Test process setting | Required setup |
-| --- | --- |
-| `HTTP_SERVER_ADDRESS` | Application base URL, default `http://localhost:8080`; omit the `/api/v1` suffix |
-| `GRPC_SERVER_ADDRESS` | Application address, default `localhost:50051`; the current client uses plaintext gRPC |
-| `HTTP_API_KEY` | Explicit key with `users:list`, `users:read_others`, `users:create`, `users:update`, and `users:delete` |
-| `GRPC_API_KEY` | Key with the same permissions; set it explicitly instead of relying on the helper's inherited test key |
-| `DATABASE_*` | Select the engine and test database service; MySQL/PostgreSQL credentials need create/drop database privileges |
-
-Start the application with its own configuration and verify [readiness](operations.md#run-and-verify-locally). Supply the
-test settings through `.env` or the test process environment; the Task command loads `.env` when present but does not load
-`.env.example`. Values loaded from `.env` override inherited environment values, including `DATABASE_*` and test addresses
-or keys. Check that file when an exported override appears ineffective. The app and test runner are separate processes,
-so changing the runner's settings does not reconfigure the app. Keep `SERVER_GRPC_AUTHORIZATION_ENABLED=true` on the test
-application: the suite tests denied requests too. SQLite repository tests use temporary files and need no database service.
-
-The [integration CI workflow](../../.github/workflows/150-integration-tests.yaml) is a complete example of application,
-backend, address, and test-credential setup. It disables the application's authentication rate limiter for its test load.
-Keep such overrides scoped to the test application. If the suite reports a missing HTTP key, follow this section; its
-current failure message refers to an obsolete `tests/integration/README.md` path.
+Follow [integration setup](testing.md#integration-test-environment) for application settings, test credentials, and
+backend requirements.
 
 ### Choosing checks before review
 
-* Run applicable `task test-*` commands for the changed behavior, using the suites and backends relevant to the change.
-* Use `task lint` for full code and project validation, changes spanning several areas, or shared tooling and dependency
-  changes. It includes Go analysis, security, licenses, capabilities, commit history, API compatibility, and source checks.
-  Individual checks remain available through `task help`.
-* Use `task docs-check` for documentation or website changes. It runs Markdown and prose checks, installs locked website
-  dependencies, then tests the tooling, validates documents, builds the site, and checks TypeScript.
-* For a focused change, select the relevant checks above. A workflow edit can use its YAML and GitHub Actions checks.
-  Repeat checks after relevant edits or failures, and report material checks left unrun.
-
-`task lint` and `task docs-check` run their checks in sequence and stop at the first failure, except that NilAway remains
-advisory in `task lint`. A failed invocation does not mean every check ran. Neither command selects checks automatically
-from changed files or applies formatting fixes. History and compatibility comparisons require `origin/master`.
-
-For a documentation preview, use `task docs-serve`. For a focused metadata and source-link check after installing website
-dependencies, use `npm --prefix pages run validate-docs` with the pinned tool environment. The full documentation build
-also checks published links and anchors. Follow the [documentation policy](documentation.md#verification) for publishing
-and application-specific evidence. CI runs its configured jobs independently of the local checks selected here.
+Follow the [review checks](testing.md#choosing-checks-before-review) and report commands, results, backends, and skips.
 
 ## Preparing a pull request
 
@@ -379,6 +333,16 @@ Keep Go's version in `go.mod`, tool versions in `etc/mise.toml`, and formatter a
 Keep `Taskfile.yaml` at the repository root. Update tool pins and their `etc/mise.lock` entries together, preserving
 supported platform coverage and keeping duplicate CI pins aligned. Update this guide when commands, prerequisites,
 formatters, or check scopes change.
+
+To set a mise-managed tool to a specific version, pass its key from `etc/mise.toml` and the desired version:
+
+```sh
+task bump TOOL=go:github.com/go42-dev/go42x VERSION=0.23.0
+task bump TOOL=node VERSION=26.7.0
+```
+
+`TOOL` and `VERSION` are required. The task installs the requested version, records an exact pin in `etc/mise.toml`, and
+refreshes that tool's `etc/mise.lock` entries for the existing platforms. Review and commit both files together.
 
 CI installs the tools each job needs through mise using the same pins and lockfile as local setup. Jobs configure
 `MISE_DEFAULT_CONFIG_FILENAME=etc/mise.toml` and the project tool paths. Go test jobs install Task, load-test jobs add k6,

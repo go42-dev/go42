@@ -1,0 +1,288 @@
+---
+
+# yaml-language-server: $schema=go42x.schema.json
+
+version: "1.0"
+
+project:
+  name: go42
+  language: go
+  description: 'Golang project operation blueprint.'
+  tags:
+    - go42
+    - golang
+    - blueprint
+    - service
+  metadata:
+    repository: github.com/go42-dev/go42
+    documentation-entrypoint: docs/README.md
+
+# Environment variable names whose values should appear in the shared context.
+env: []
+
+# Shared instructions for every enabled provider, rendered once to AGENTS.md.
+# The chunk directory is relative to .go42x; immediate *.tpl.md files load in filename order.
+context:
+  template: agents.tpl.md
+  chunks-dir: 'chunks/'
+
+# Generation makes all tools from enabled MCP servers available and updates tool approvals.
+# auto-approve-tools configures native tool approvals for Claude, Gemini, and Crush.
+# Other existing settings are preserved; defaults fill only missing fields.
+# Set enabled: false to skip a provider; omitted enabled defaults to true.
+# Disabling preserves existing settings and removes generated CLAUDE.md/GEMINI.md imports.
+# Shared AGENTS.md is still generated when all providers are disabled.
+providers:
+  # -------------------------
+  #          Claude
+  # -------------------------
+  claude:
+    enabled: false
+    auto-approve-tools:
+      - Agent
+      - AskUserQuestion
+      - Bash
+      - Edit
+      - Glob
+      - Grep
+      - NotebookEdit
+      - Read
+      - Skill
+      - TaskCreate
+      - TaskGet
+      - TaskList
+      - TaskUpdate
+      - TaskStop
+      - WebFetch
+      - WebSearch
+      - Write
+
+  # -------------------------
+  #           Codex
+  # -------------------------
+  codex:
+    enabled: true
+    # Omit to preserve the existing approval policy. Sandbox settings are preserved.
+    approval-policy: on-request
+    # Approval mode for every enabled MCP server: auto, prompt, writes, or approve.
+    mcp-approval: approve
+
+  # -------------------------
+  #          Gemini
+  # -------------------------
+  gemini:
+    enabled: false
+    auto-approve-tools:
+      - list_directory
+      - read_file
+      - write_file
+      - grep_search
+      - glob
+      - replace
+      - run_shell_command
+      - web_fetch
+      - google_web_search
+      - ask_user
+      - write_todos
+      - activate_skill
+      - list_mcp_resources
+      - read_mcp_resource
+
+  # -------------------------
+  #           Crush
+  # -------------------------
+  crush:
+    enabled: false
+    auto-approve-tools:
+      - view
+      - ls
+      - grep
+      - glob
+      - edit
+      - write
+      - multiedit
+      - bash
+
+  # -------------------------
+  #      Github Copilot
+  # -------------------------
+  # All MCP tools are available. Tool approvals are managed in Copilot's user settings.
+  copilot:
+    enabled: false
+
+mcp:
+  # All tools from enabled servers are available, including tools omitted from these lists.
+  # Lists use raw tool names for context descriptions and client approval settings.
+  # Set enabled: false to disable a server.
+  # Optional cwd is a literal path for stdio servers; relative paths use the project directory.
+  # Codex, Gemini, and Copilot support cwd. Enabled Claude or Crush providers reject it.
+  # Omit cwd to use the client's default working directory.
+  gopls:
+    enabled: true
+    type: stdio
+    name: gopls
+    command: task
+    args:
+      - tool
+      - --
+      - gopls
+      - mcp
+    tools:
+      - go_diagnostics
+      - go_file_context
+      - go_package_api
+      - go_rename_symbol
+      - go_search
+      - go_symbol_references
+      - go_vulncheck
+      - go_workspace
+
+  go42x:
+    enabled: true
+    type: stdio
+    name: go42x
+    command: task
+    args:
+      - tool
+      - --
+      - go42x
+      - mcp
+    tools:
+      - project_context
+      - docs_get
+      - docs_impact
+      - kwb_get_file
+      - kwb_list_files
+      - kwb_search
+      - kwb_stats
+
+  context7:
+    enabled: true
+    type: http
+    name: context7
+    url: https://mcp.context7.com/mcp
+    headers:
+      Authorization: "Bearer ${CONTEXT7_API_KEY}"
+    tools:
+      - resolve-library-id
+      - query-docs
+
+  github:
+    enabled: true
+    type: http
+    name: github
+    url: https://api.githubcopilot.com/mcp/
+    headers:
+      Authorization: "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      X-MCP-Toolsets: all
+    tools:
+      - actions_get
+      - actions_list
+      - actions_run_trigger
+      - add_comment_to_pending_review
+      - add_issue_comment
+      - add_reply_to_pull_request_comment
+      - assign_copilot_to_issue
+      - assign_copilot_to_issue_with_intent
+      - create_branch
+      - create_gist
+      - create_or_update_file
+      - create_pull_request
+      - create_repository
+      - create_repository_ruleset
+      - custom_properties_read
+      - custom_properties_write
+      - delete_file
+      - discussion_comment_write
+      - dismiss_notification
+      - fork_repository
+      - get_code_quality_finding
+      - get_code_scanning_alert
+      - get_commit
+      - get_dependabot_alert
+      - get_discussion
+      - get_discussion_comments
+      - get_file_contents
+      - get_gist
+      - get_global_security_advisory
+      - get_job_logs
+      - get_label
+      - get_latest_release
+      - get_me
+      - get_notification_details
+      - get_release_by_tag
+      - get_repository_tree
+      - get_secret_scanning_alert
+      - get_tag
+      - get_team_members
+      - get_teams
+      - issue_read
+      - issue_write
+      - label_write
+      - list_branches
+      - list_code_scanning_alerts
+      - list_commits
+      - list_dependabot_alerts
+      - list_discussion_categories
+      - list_discussions
+      - list_gists
+      - list_global_security_advisories
+      - list_issue_fields
+      - list_issue_types
+      - list_issues
+      - list_label
+      - list_notifications
+      - list_org_repository_security_advisories
+      - list_pull_requests
+      - list_releases
+      - list_repository_collaborators
+      - list_repository_security_advisories
+      - list_secret_scanning_alerts
+      - list_starred_repositories
+      - list_tags
+      - manage_notification_subscription
+      - manage_repository_notification_subscription
+      - mark_all_notifications_read
+      - merge_pull_request
+      - projects_get
+      - projects_list
+      - projects_write
+      - pull_request_read
+      - pull_request_review_write
+      - push_files
+      - repository_ruleset_read
+      - request_copilot_review
+      - search_code
+      - search_commits
+      - search_issues
+      - search_orgs
+      - search_pull_requests
+      - search_repositories
+      - search_users
+      - star_repository
+      - sub_issue_write
+      - unstar_repository
+      - update_gist
+      - update_pull_request
+      - update_pull_request_branch
+
+  # Primary Jira tools plus discovery/execution for the deferred catalog.
+  # Available tools depend on the authenticated Atlassian account and scopes.
+  jira:
+    enabled: false
+    type: http
+    name: jira
+    url: https://mcp.atlassian.com/v2/mcp
+    tools:
+      - atlassianUserInfo
+      - getAccessibleAtlassianResources
+      - discover
+      - executeRead
+      - executeWrite
+      - executeDestructive
+      - getJiraIssue
+      - createJiraIssue
+      - editJiraIssue
+      - transitionJiraIssue
+      - addOrEditJiraIssueComment
+      - searchJiraIssuesUsingJql

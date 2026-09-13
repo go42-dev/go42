@@ -1,7 +1,8 @@
 ---
 id: release
 title: Release
-sidebar_position: 8
+collection: handbook
+sidebar_position: 9
 ---
 
 # Release

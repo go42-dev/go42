@@ -53,6 +53,9 @@ function validateMetadata(page, ids) {
   if (typeof metadata.title !== 'string' || !metadata.title.trim()) {
     throw new Error(`${source}: title is required`);
   }
+  if (metadata.collection !== collection) {
+    throw new Error(`${source}: collection must be ${collection}`);
+  }
   if (collection === 'handbook' &&
       (!Number.isSafeInteger(metadata.sidebar_position) || metadata.sidebar_position < 1)) {
     throw new Error(`${source}: handbook sidebar_position must be a positive integer`);

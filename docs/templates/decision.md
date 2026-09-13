@@ -1,6 +1,7 @@
 ---
 id: template-decision
 title: Decision template
+collection: templates
 status: proposed
 date: YYYY-MM-DD
 related: []
@@ -10,6 +11,8 @@ related: []
 
 Follow the [authoring workflow](../handbook/documentation.md#creating-a-document) and
 [decision lifecycle](../handbook/documentation.md#status-and-implementation).
+
+When copying this template, change `collection` from `templates` to `decisions`.
 
 ## Context
 

@@ -57,6 +57,18 @@ tasks:
     cmds:
       - '"{{.TOOLS_BIN}}/go42x" {{.CLI_ARGS}}'
 
+  ## tool | run a command with the project tools
+  tool:
+    desc: "Run a command with the project tools"
+    summary: "Usage: task tool -- COMMAND [ARGS...]"
+    interactive: true
+    silent: true
+    preconditions:
+      - sh: 'test -n {{.CLI_ARGS | shellQuote}}'
+        msg: "Usage: task tool -- COMMAND [ARGS...]"
+    cmds:
+      - 'mise exec -- {{.CLI_ARGS}}'
+
   ## setup | install dependencies
   setup:
     desc: "install dependencies"
@@ -77,14 +89,22 @@ tasks:
           go:google.golang.org/protobuf/cmd/protoc-gen-go \
           go:google.golang.org/grpc/cmd/protoc-gen-go-grpc
 
-  ## setup-mcp | setup mcp servers
-  setup-mcp:
-    desc: "setup mcp servers"
+  ## bump | set a mise tool dependency to a version
+  bump:
+    desc: "Set a mise tool dependency to a version (writes)"
+    summary: "Usage: task bump TOOL=go:github.com/go42-dev/go42x VERSION=0.23.0"
+    requires:
+      vars:
+        - TOOL
+        - VERSION
+    preconditions:
+      - sh: 'test -n {{.TOOL | shellQuote}} && test -n {{.VERSION | shellQuote}}'
+        msg: "TOOL and VERSION must not be empty."
+      - sh: 'test -z {{.CLI_ARGS | shellQuote}}'
+        msg: "Pass TOOL=... VERSION=... without arguments after --."
     cmds:
-      - |
-        mise install --locked \
-          go:golang.org/x/tools/gopls
-      - "docker pull ghcr.io/github/github-mcp-server:v1.12.0@sha256:46cdbbd810faf6f7aed1745ea04057443f5cb9fcadc15c7308add18cf9a83e33"
+      - 'mise use --pin -- {{printf "%s@%s" .TOOL .VERSION | shellQuote}}'
+      - 'mise lock -- {{.TOOL | shellQuote}}'
 
   # ╭────────────────────----------------──────────╮
   # │                   Testing                    │

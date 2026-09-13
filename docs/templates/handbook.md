@@ -1,6 +1,7 @@
 ---
 id: template-handbook
 title: Handbook template
+collection: templates
 sidebar_position: 1
 related: []
 ---
@@ -10,6 +11,8 @@ related: []
 Follow the [authoring workflow](../handbook/documentation.md#creating-a-document). Choose an unused positive integer for
 `sidebar_position` and place the new page in that order in the documentation index. Adapt headings to the subject and
 remove optional sections when they add no useful information.
+
+When copying this template, change `collection` from `templates` to `handbook`.
 
 ## Purpose
 
