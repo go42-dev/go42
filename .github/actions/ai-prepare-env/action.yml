@@ -9,10 +9,6 @@ runs:
     - name: 'Prepare project environment'
       uses: ./.github/actions/prepare-env
     # -----
-    - name: 'Build inverted index'
-      run: task x -- kwb build
-      shell: bash
-    # -----
     - name: 'Generate ai agent environment'
       env:
         CI: true
@@ -28,4 +24,8 @@ runs:
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_RUN_ID: ${{ github.run_id }}
       run: task x -- agentenv generate
+      shell: bash
+    # -----
+    - name: 'Refresh knowledge base after generation'
+      run: task x -- kwb build
       shell: bash

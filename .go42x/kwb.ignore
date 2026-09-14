@@ -1,0 +1,4 @@
+# go42x knowledgebase will ignore the following files and directories
+
+/static/swagger/swagger-ui-bundle.js
+/static/swagger/swagger-ui-standalone-preset.js

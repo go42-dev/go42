@@ -131,6 +131,28 @@ and the project's lint and test commands, and report the limitation.
 Edit the [authored search guidance](../../.go42x/chunks/200-search.tpl.md) to change this workflow, then run
 `task x -- agentenv generate` to refresh the generated instructions.
 
+### Refreshing project knowledge
+
+The [AI preparation action](../../.github/actions/ai-prepare-env/action.yml) refreshes the knowledge base after generating
+agent configuration. Use the same order from the repository root when preparing a local session:
+
+```sh
+task x -- agentenv generate
+task x -- kwb build
+```
+
+The [project exclusions](../../.go42x/kwb.ignore) omit generated Swagger JavaScript bundles while retaining handwritten
+JavaScript. Reading this file, indexing authored `.go42x` configuration and `.env.example`, and `kwb check` require the
+go42x KB-01–06 source changes dated September 14, 2026; they are not included in this repository's pinned 0.28.0 release.
+After adopting a release containing those changes, run `task x -- kwb check --json` to verify freshness without updating
+the index. It exits 0 for a complete, fresh scan and 1 for stale, unavailable, or incomplete results. Build again to apply
+source or exclusion changes. The scan uses recorded build settings and current ignore files.
+
+That version also supports `--context-doc=project,conventions,documentation` in the go42x MCP server's arguments to load
+these authored guidance IDs. Add it to the [MCP configuration](../../.go42x/go42x.yaml) after upgrading, then regenerate
+agent output and restart the client. Context requests can retrieve multiple source ranges and documentation sections
+from one file; supplied files are read directly and directory paths scope searches.
+
 ## Running and debugging
 
 The launch tasks require `.env` through `task check:env`. They load defaults from `.env.example`, then local overrides

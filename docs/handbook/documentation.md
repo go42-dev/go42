@@ -14,25 +14,65 @@ Maintain the knowledge needed to change and operate this application. Start at t
 ### Documentation ownership
 
 Application contributors own current behavior, effective settings, adopted conventions, operating procedures, and local
-requirements and decisions. Record application-specific setup and deviations here.
+requirements and decisions. Record the complete procedures needed by this checkout, including inherited defaults and
+local changes.
 
-Generic Quick start, blueprint adoption, and reusable workflow explanations belong in the external
+Generic quickstart, blueprint adoption, and reusable workflow explanations belong in the external
 [go42 documentation](https://go42.dev), maintained by go42's author. Check the applicable upstream version and review local
 differences when adopting or upgrading the blueprint.
 The [global documentation model](https://go42.dev/docs/documentation/) explains the reusable framework.
+
+The agreed go42x role covers orchestration of setup, shared defaults, validation, and publishing. Use the commands
+actually available in the selected go42x version and label planned capabilities. The application's
+[Taskfile](../../Taskfile.yaml), source, and contracts define its executable workflows and interfaces; application
+contributors own the resulting local configuration, authored documentation, and operating instructions.
+
+## Shared writing rules
+
+The [public documentation policy](https://go42.dev/docs/documentation/) is the editorial home of these rules. This local
+copy keeps them usable in the go42x checkout. Apply each rule to the page's purpose; choose useful headings and remove
+empty or irrelevant template sections.
+
+| Rule                                | Required practice                                                                                                                                                                                                     |
+|-------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| State the scope                     | Identify the reader's task, promised result, prerequisites, and applicable software versions or environments.                                                                                                         |
+| Make procedures executable          | Specify the working directory and required inputs. Separate copyable commands from output, preserve exact identifiers, and show expected results, effects on state, recovery, and cleanup where relevant.             |
+| Support claims with evidence        | Link the relevant source or check. Distinguish inspected code, executed checks, proposals, and delivered behavior. Label assumptions and gaps; use disposable examples and keep credentials out of recorded evidence. |
+| Make content accessible             | Use meaningful headings and links, readable examples, and text alternatives for informative images. Check navigation and the rendered meaning of changed content.                                                     |
+| Maintain documentation with changes | Update the owning document with behavior changes, preserve important URLs and anchors, and explain documentation impact. Update authored inputs and regenerate derived output.                                        |
+| Write consistently                  | Use direct language, stable terminology, and exact technical identifiers. Assume technical competence while explaining knowledge specific to go42.                                                                    |
+
+Use **go42** for the upstream blueprint, **go42x** for its orchestration tool, **application** for a project adopting the
+blueprint, and **local handbook** for that application's effective instructions. Preserve exact command names, flags,
+configuration keys, output fields, and file paths.
 
 ## Change workflow for contributors
 
 Update documentation alongside implementation. Use this table to identify the owning document:
 
-| Change | Review and update |
-| --- | --- |
+| Change                                          | Review and update                                         |
+|-------------------------------------------------|-----------------------------------------------------------|
 | Desired behavior, scope, or acceptance criteria | Requirement, affected handbook, and verification evidence |
-| Significant architectural or operational choice | Decision, affected requirements, and current handbook |
-| Behavior, settings, commands, or procedures | The handbook page that owns the subject |
-| Mechanical change with no documented effect | Explain why no documentation update is needed |
+| Significant architectural or operational choice | Decision, affected requirements, and current handbook     |
+| Behavior, settings, commands, or procedures     | The handbook page that owns the subject                   |
+| Mechanical change with no documented effect     | Explain why no documentation update is needed             |
 
 Report the documentation impact, checks, results, and remaining gaps with the completed change.
+
+### Reviewing related guidance
+
+Use the changed source to identify the procedures that need review:
+
+| Changed source                                | Documentation to inspect                                                                 |
+|-----------------------------------------------|------------------------------------------------------------------------------------------|
+| Taskfile, tool versions, or environment setup | Local development and testing instructions; public setup and workflow examples.          |
+| Configuration or backend defaults             | Local configuration and operating instructions; public trial prerequisites and cleanup.  |
+| Contracts, handlers, or authentication        | Local API guidance and owned reference inputs; public request and first-change examples. |
+| Documentation model or publishing             | This policy, templates, index, source links, and the public documentation-model guide.   |
+
+When reusable public guidance is affected, link the related go42-docs change and identify the software revision it will
+describe. Review go42x guidance when an orchestration command or its effective inputs change. Update the application's
+complete local instructions alongside implementation, including after it diverges from the upstream blueprint.
 
 ### Building task context
 
@@ -55,11 +95,11 @@ Create the destination directory if this is its first record.
 
 ### Document types
 
-| Template | Purpose | Destination |
-| --- | --- | --- |
-| [Handbook](../templates/handbook.md) | Current behavior and procedures | `docs/handbook/topic.md` |
-| [Requirement](../templates/requirement.md) | Desired outcomes and acceptance criteria | `docs/requirements/NNN-capability.md` |
-| [Decision](../templates/decision.md) | Significant choices, alternatives, and consequences | `docs/decisions/NNN-choice.md` |
+| Template                                   | Purpose                                             | Destination                           |
+|--------------------------------------------|-----------------------------------------------------|---------------------------------------|
+| [Handbook](../templates/handbook.md)       | Current behavior and procedures                     | `docs/handbook/topic.md`              |
+| [Requirement](../templates/requirement.md) | Desired outcomes and acceptance criteria            | `docs/requirements/NNN-capability.md` |
+| [Decision](../templates/decision.md)       | Significant choices, alternatives, and consequences | `docs/decisions/NNN-choice.md`        |
 
 Keep one living requirement per capability or concern, with stable criterion IDs such as `REQ-NNN.1`. Several changes
 may implement it. Routine choices can follow existing decisions.
@@ -72,25 +112,25 @@ remain stable across title changes and moves. Allocate the next unused record nu
 The publication rules require `collection` to match its source: `overview` for `docs/README.md`, and `handbook`,
 `requirements`, `decisions`, or `templates` for the corresponding directory under `docs/`.
 
-| Page | Additional metadata |
-| --- | --- |
-| Handbook | Descriptive lowercase `id`; unique positive integer `sidebar_position` |
-| Requirement | `id: REQ-NNN`; `status` |
-| Decision | `id: ADR-NNN`; `status`; real `date` in `YYYY-MM-DD` form |
-| Superseded decision | `superseded_by`: ID of an `accepted` or `superseded` replacement |
-| Template | `template-` ID; change metadata and collection when copying; record status validation does not apply |
+| Page                | Additional metadata                                                                                  |
+|---------------------|------------------------------------------------------------------------------------------------------|
+| Handbook            | Descriptive lowercase `id`; unique positive integer `sidebar_position`                               |
+| Requirement         | `id: REQ-NNN`; `status`                                                                              |
+| Decision            | `id: ADR-NNN`; `status`; real `date` in `YYYY-MM-DD` form                                            |
+| Superseded decision | `superseded_by`: ID of an `accepted` or `superseded` replacement                                     |
+| Template            | `template-` ID; change metadata and collection when copying; record status validation does not apply |
 
 ### Status and implementation
 
-| Record | Status | Meaning |
-| --- | --- | --- |
-| Requirement | `draft` | Awaiting agreement |
-| Requirement | `accepted` | Agreed intent; delivery may have gaps |
-| Requirement | `retired` | No longer required |
-| Decision | `proposed` | Under consideration |
-| Decision | `accepted` | Agreed choice |
-| Decision | `rejected` | Declined choice |
-| Decision | `superseded` | Replaced by another accepted decision |
+| Record      | Status       | Meaning                               |
+|-------------|--------------|---------------------------------------|
+| Requirement | `draft`      | Awaiting agreement                    |
+| Requirement | `accepted`   | Agreed intent; delivery may have gaps |
+| Requirement | `retired`    | No longer required                    |
+| Decision    | `proposed`   | Under consideration                   |
+| Decision    | `accepted`   | Agreed choice                         |
+| Decision    | `rejected`   | Declined choice                       |
+| Decision    | `superseded` | Replaced by another accepted decision |
 
 Acceptance needs recorded maintainer or delegated agreement; passing checks does not grant it.
 
@@ -100,14 +140,30 @@ Describe current implementation in the handbook and label planned behavior.
 
 ### Writing procedures and evidence
 
-- Keep one authoritative explanation per subject and link to it. Adapt headings to the reader's task; remove empty or
-  irrelevant template sections and use bounded examples.
-- Put environment, prerequisites, inputs, expected results, state changes, backend limits, failure checks, and cleanup
-  beside the steps they affect.
-- Link the source or test behind a claim. State the check, environment/backend, result, and unverified gaps; distinguish
-  inspected source from executed tests and observed behavior.
-- Label assumptions, unknowns, and historical inference. Do not invent stakeholders, targets, dates, approvals, or reasoning.
-  Use placeholders or disposable values in examples and keep secrets out of recorded output.
+| Rule                                | Required practice                                                                                                                                                                                                     |
+|-------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| State the scope                     | Identify the reader's task, promised result, prerequisites, and applicable software versions or environments.                                                                                                         |
+| Make procedures executable          | Specify the working directory and required inputs. Separate copyable commands from output, preserve exact identifiers, and show expected results, effects on state, recovery, and cleanup where relevant.             |
+| Support claims with evidence        | Link the relevant source or check. Distinguish inspected code, executed checks, proposals, and delivered behavior. Label assumptions and gaps; use disposable examples and keep credentials out of recorded evidence. |
+| Make content accessible             | Use meaningful headings and links, readable examples, and text alternatives for informative images. Check navigation and the rendered meaning of changed content.                                                     |
+| Maintain documentation with changes | Update the owning document with behavior changes, preserve important URLs and anchors, and explain documentation impact. Update authored inputs and regenerate derived output.                                        |
+| Write consistently                  | Use direct language, stable terminology, and exact technical identifiers. Assume technical competence while explaining knowledge specific to go42.                                                                    |
+
+Use **go42** for the upstream blueprint, **go42x** for its orchestration tool, and **application** for the adopted project.
+Use **local handbook** for its effective instructions. Name the imported commit or release when referring to the upstream
+revision. Keep exact identifiers in commands, configuration, and API examples. Use language-tagged code fences, explain
+placeholders, and keep prompt characters outside copyable commands.
+
+Keep the authoritative local explanation with its subject and link to it. Maintain complete instructions for the
+application's actual environment and backends. Prefer a common workflow across operating systems and record the platforms
+actually verified. Put input requirements, state changes, failure checks, and cleanup beside the affected steps.
+
+Record each check's scope, command or method, environment, relevant software revision, observed result, and unverified
+gaps. Review headings, links, keyboard navigation, and the meaning of rendered examples where relevant. Preserve the
+metadata, agreement, and delivery distinctions defined above; label historical inference and unresolved contradictions.
+
+When adopting a changed shared rule, update this local policy and its edition together. Record the scope and reason for
+local exceptions. Changes that affect reusable guidance also need review in go42-docs and, where relevant, go42x.
 
 ### Maintaining the index
 
@@ -131,6 +187,26 @@ task docs:check
 Preview with `task docs:serve`. Checks cover Markdown, prose, metadata, index coverage and order, links, rendered anchors,
 documentation tooling tests, and type checks. Review accuracy and completeness separately; run the application checks
 needed to substantiate changed instructions. A passing documentation build does not prove runtime behavior.
+
+Run these commands from the repository root. Stop the preview server with Ctrl+C. After editing, inspect the rendered
+page's headings, examples, links, and keyboard navigation. The [documentation lint job](../../.github/workflows/110-lint.yaml)
+runs `task docs:check` in CI. Update Task definitions, CI callers, and this policy together when their commands or coverage
+change.
+
+### Procedure evidence
+
+Rerun affected procedures when commands, prerequisites, defaults, or expected outcomes change. Start from the documented
+state and retain the date, documentation and application revisions, relevant go42x version, local modifications,
+OS/architecture, tools/backends, commands, expected and observed results, recovery, cleanup, and remaining gaps.
+Record only the fields relevant to the check; distinguish source review, execution, and reader observation.
+
+Keep detailed results with the task or implementation review. Link durable evidence from the owning handbook or
+requirement and update the procedure's applicability after a successful rehearsal. Earlier results remain evidence for
+their original revision and environment. A wording-only edit requires documentation checks and relevant rendered review.
+
+For a documentation failure, report the page, failing step, relevant revisions and environment, and expected and actual
+results. Remove credentials from retained output. Verify the correction with the affected procedure before reporting it
+as resolved.
 
 ## Source files and publishing
 
