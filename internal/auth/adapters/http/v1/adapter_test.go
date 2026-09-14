@@ -21,6 +21,7 @@ import (
 	"github.com/go42-dev/go42/internal/auth/adapters/http/v1/mocks"
 	"github.com/go42-dev/go42/internal/auth/domain"
 	"github.com/go42-dev/go42/internal/auth/models"
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 const (
@@ -685,13 +686,17 @@ func TestListUsersPagination(t *testing.T) {
 		wantLimit  int
 		wantOffset int
 	}{
-		{name: "defaults", wantLimit: domain.UserListDefaultLimit},
-		{name: "offset only", query: "?offset=7", wantLimit: domain.UserListDefaultLimit, wantOffset: 7},
-		{name: "zero limit", query: "?limit=0&offset=3", wantLimit: domain.UserListDefaultLimit, wantOffset: 3},
+		{name: "defaults", wantLimit: tools.PaginationDefaultLimit},
+		{name: "offset only", query: "?offset=7", wantLimit: tools.PaginationDefaultLimit, wantOffset: 7},
+		{name: "zero limit", query: "?limit=0&offset=3", wantLimit: tools.PaginationDefaultLimit, wantOffset: 3},
 		{name: "minimum limit", query: "?limit=1&offset=0", wantLimit: 1},
 		{
-			name: "maximum limit", query: fmt.Sprintf("?limit=%d&offset=11", domain.UserListMaximumLimit),
-			wantLimit: domain.UserListMaximumLimit, wantOffset: 11,
+			name: "maximum limit", query: fmt.Sprintf("?limit=%d&offset=11", tools.PaginationMaximumLimit),
+			wantLimit: tools.PaginationMaximumLimit, wantOffset: 11,
+		},
+		{
+			name: "maximum offset", query: "?limit=1&offset=2147483647",
+			wantLimit: 1, wantOffset: tools.PaginationMaximumOffset,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -712,13 +717,20 @@ func TestListUsersRejectsInvalidPagination(t *testing.T) {
 		name  string
 		query string
 	}{
+		{name: "empty limit", query: "?limit="},
+		{name: "bare limit", query: "?limit"},
 		{name: "nonnumeric limit", query: "?limit=invalid"},
+		{name: "fractional limit", query: "?limit=1.5"},
 		{name: "overflowing limit", query: "?limit=999999999999999999999999999999"},
-		{name: "negative limit", query: "?limit=-1"},
-		{name: "limit above maximum", query: fmt.Sprintf("?limit=%d", domain.UserListMaximumLimit+1)},
+		{name: "empty offset", query: "?offset="},
+		{name: "bare offset", query: "?offset"},
 		{name: "nonnumeric offset", query: "?offset=invalid"},
+		{name: "fractional offset", query: "?offset=1.5"},
 		{name: "overflowing offset", query: "?offset=999999999999999999999999999999"},
+		{name: "negative limit", query: "?limit=-1"},
+		{name: "limit above maximum", query: "?limit=101"},
 		{name: "negative offset", query: "?offset=-1"},
+		{name: "offset above maximum", query: "?offset=2147483648"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			server, service := newUserTestServer(t)
@@ -760,7 +772,7 @@ func TestListUsersResponses(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			server, service := newUserTestServer(t)
 			expectUserAuthentication(service, "list")
-			service.EXPECT().ListUsers(gomock.Any(), domain.UserListDefaultLimit, 0).Return(test.users, nil)
+			service.EXPECT().ListUsers(gomock.Any(), tools.PaginationDefaultLimit, 0).Return(test.users, nil)
 
 			response := performUserRequest(t, server, http.MethodGet, "/api/v1/users", userTestToken, "")
 
@@ -776,9 +788,9 @@ func TestListUsersServiceErrors(t *testing.T) {
 		err        error
 		wantStatus int
 	}{
-		{name: "invalid pagination", err: domain.ErrInvalidPagination, wantStatus: http.StatusBadRequest},
+		{name: "invalid pagination", err: tools.ErrInvalidPagination, wantStatus: http.StatusBadRequest},
 		{
-			name: "wrapped invalid pagination", err: fmt.Errorf("list users: %w", domain.ErrInvalidPagination),
+			name: "wrapped invalid pagination", err: fmt.Errorf("list users: %w", tools.ErrInvalidPagination),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
@@ -789,7 +801,7 @@ func TestListUsersServiceErrors(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			server, service := newUserTestServer(t)
 			expectUserAuthentication(service, "list")
-			service.EXPECT().ListUsers(gomock.Any(), domain.UserListDefaultLimit, 0).Return(nil, test.err)
+			service.EXPECT().ListUsers(gomock.Any(), tools.PaginationDefaultLimit, 0).Return(nil, test.err)
 
 			response := performUserRequest(t, server, http.MethodGet, "/api/v1/users", userTestToken, "")
 

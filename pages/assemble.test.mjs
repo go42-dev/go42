@@ -97,6 +97,48 @@ for (const [filename, collection, other] of [
   });
 }
 
+for (const [collection, filename, id, label, purpose] of [
+  ['requirements', '001-documentation.md', 'REQ-001', 'Documentation', 'Documentation outcomes'],
+  ['decisions', '001-model.md', 'ADR-001', 'Model', 'Documentation model'],
+]) {
+  test(`keeps empty ${collection} navigable and restores its index when a record is added`, t => {
+    const root = fixture(t);
+    assemble({root, context});
+    const source = `docs/${collection}/${filename}`;
+    const record = fs.readFileSync(path.join(root, source), 'utf8');
+    const requirement = fs.readFileSync(path.join(root, 'docs/requirements/001-documentation.md'), 'utf8');
+    const homepage = fs.readFileSync(path.join(root, 'docs/README.md'), 'utf8');
+    const row = `| [${id}](${collection}/${filename}) | ${purpose} |`;
+    change(root, 'docs/README.md', `| Document | Purpose |\n| --- | --- |\n${row}`,
+      `No application ${collection} are recorded yet.`);
+    if (collection === 'decisions') {
+      change(root, 'docs/requirements/001-documentation.md', 'related: [ADR-001]', 'related: []');
+    }
+    fs.rmSync(path.join(root, 'docs', collection), {recursive: true});
+
+    assert.equal(assemble({root, context}), 5);
+    assert.equal(loadDocumentation(root).ids.has(id), false);
+    const generated = path.join(root, 'pages/docs', collection);
+    assert.equal(fs.existsSync(path.join(generated, filename)), false);
+    const landing = fs.readFileSync(path.join(generated, 'index.md'), 'utf8');
+    assert.match(landing, new RegExp(`slug: /category/${collection}`));
+    assert.match(landing, new RegExp(`No application ${collection} are recorded yet`));
+    assert.match(landing, /\[authoring templates\]\(\.\.\/index\.md#templates\)/);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(generated, '_category_.json'), 'utf8')).link,
+      {type: 'doc', id: 'index'});
+
+    write(root, source, record);
+    write(root, 'docs/requirements/001-documentation.md', requirement);
+    write(root, 'docs/README.md', homepage);
+    assert.equal(assemble({root, context}), 6);
+    assert.equal(fs.existsSync(path.join(generated, 'index.md')), false);
+    assert.equal(loadDocumentation(root).ids.get(id).metadata.title, label);
+    assert.match(fs.readFileSync(path.join(generated, filename), 'utf8'), new RegExp(`id: ${id}`));
+    assert.equal(JSON.parse(fs.readFileSync(path.join(generated, '_category_.json'), 'utf8')).link.type,
+      'generated-index');
+  });
+}
+
 test('resolves table and reference links, source files, and images but leaves code examples alone', t => {
   const root = fixture(t);
   write(root, 'Taskfile.yaml', "version: '3'\ntasks:\n  help:\n    cmds: [task --list --sort none]\n");

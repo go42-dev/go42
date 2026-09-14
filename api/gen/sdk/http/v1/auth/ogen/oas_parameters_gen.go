@@ -147,7 +147,9 @@ func decodeUsersGetParams(args [1]string, argsEscaped bool, r *http.Request) (pa
 
 // UsersListParams is parameters of users.list operation.
 type UsersListParams struct {
-	Limit  OptInt `json:",omitempty,omitzero"`
+	// Number of users to return. Omit or use 0 for the default of 10. Empty values are invalid.
+	Limit OptInt `json:",omitempty,omitzero"`
+	// Number of users to skip. Omit for the default of 0. Empty values are invalid.
 	Offset OptInt `json:",omitempty,omitzero"`
 }
 
@@ -289,8 +291,8 @@ func decodeUsersListParams(args [0]string, argsEscaped bool, r *http.Request) (p
 						if err := (validate.Int{
 							MinSet:        true,
 							Min:           0,
-							MaxSet:        false,
-							Max:           0,
+							MaxSet:        true,
+							Max:           2147483647,
 							MinExclusive:  false,
 							MaxExclusive:  false,
 							MultipleOfSet: false,

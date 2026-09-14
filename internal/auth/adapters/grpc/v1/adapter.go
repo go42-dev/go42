@@ -9,6 +9,7 @@ import (
 	pb "github.com/go42-dev/go42/api/gen/sdk/grpc/auth/v1"
 	"github.com/go42-dev/go42/internal/auth/domain"
 	"github.com/go42-dev/go42/internal/auth/models"
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 var adapterPermissionMapping = map[string]string{
@@ -57,16 +58,11 @@ func (a *Adapter) Register(grpcServer *grpc.Server) {
 }
 
 func (a *Adapter) ListUsers(ctx context.Context, req *pb.ListUsersRequest) (*pb.ListUsersResponse, error) {
-	limit := int(req.Limit)
-	if limit == 0 {
-		limit = domain.UserListDefaultLimit
+	page, err := tools.NormalizePagination(int(req.Limit), int(req.Offset))
+	if err != nil {
+		return nil, a.processError(err)
 	}
-	offset := int(req.Offset)
-	if limit < 0 || limit > domain.UserListMaximumLimit || offset < 0 {
-		return nil, a.processError(domain.ErrInvalidPagination)
-	}
-
-	users, err := a.service.ListUsers(ctx, limit, offset)
+	users, err := a.service.ListUsers(ctx, page.Limit, page.Offset)
 	if err != nil {
 		return nil, a.processError(err)
 	}

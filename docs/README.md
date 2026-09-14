@@ -46,15 +46,11 @@ The complete index follows the published sidebar's reading order.
 
 ### Requirements
 
-| Document | Purpose |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| [REQ-001: Application documentation](requirements/001-documentation.md) | Outcomes and acceptance criteria for project documentation |
+No application requirements are recorded yet. Start with the [requirement template](templates/requirement.md).
 
 ### Decisions
 
-| Document | Purpose |
-| ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| [ADR-001: Keep application documentation with its code](decisions/001-documentation-model.md) | Rationale for maintaining application knowledge beside the code |
+No application decisions are recorded yet. Start with the [decision template](templates/decision.md).
 
 ## Templates
 

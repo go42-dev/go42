@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/go42-dev/go42/internal/auth/domain"
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 func (a *Adapter) processError(err error) error {
@@ -21,7 +22,7 @@ func (a *Adapter) processError(err error) error {
 		return status.Error(codes.InvalidArgument, "invalid email address")
 	case errors.Is(err, domain.ErrPasswordWeak):
 		return status.Error(codes.InvalidArgument, "password is too weak")
-	case errors.Is(err, domain.ErrInvalidPagination):
+	case errors.Is(err, tools.ErrInvalidPagination):
 		return status.Error(codes.InvalidArgument, "invalid pagination")
 	case errors.Is(err, domain.ErrAuthenticationUnavailable):
 		return status.Error(codes.Unavailable, "authentication unavailable")

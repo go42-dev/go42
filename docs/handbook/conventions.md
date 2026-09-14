@@ -34,6 +34,9 @@ Paths are relative to the repository root. Preferences and exceptions are stated
 * `cmd/app` composes dependencies and owns process lifecycle. Feature services own business operations. Within each
   feature, `domain/` contains service inputs, domain errors, and shared concepts; `models/` contains persistence models;
   `repository/` owns persistence operations; versioned HTTP and gRPC adapters own transport conversion and registration.
+* Adapters validate pagination before invoking services. Use `tools.NormalizePagination` and the shared `tools.Pagination*`
+  constants for defaults and bounds across features. Keep protocol parsing and error mapping in the adapter, and align API
+  contracts with the shared [pagination rules](api.md#user-list-pagination).
 * Define dependency interfaces in the consuming package, containing only the methods it needs. Keep them beside their
   consumer or group them in `accessors.go`. Keep mock-generation directives with the interface definitions and generate
   mocks into the package's `mocks/` directory.

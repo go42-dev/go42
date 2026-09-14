@@ -16,6 +16,39 @@ tool exposed by the named server in your client; clients may add their own prefi
 Only call tools exposed in the current session. When a service is unavailable,
 continue with local file search and source inspection.
 
+{{ if or (hasMCPTool .mcp "gopls" "go_symbol_references") (hasMCPTool .mcp "gopls" "go_file_context") (hasMCPTool .mcp "gopls" "go_package_api") (hasMCPTool .mcp "gopls" "go_diagnostics") -}}
+
+#### Go navigation and diagnostics
+
+Use the available `gopls` tools to understand the impact of Go changes and check
+saved edits. Results reflect the loaded workspace and build configuration;
+review other affected build tags or platforms through the project's checks.
+
+{{ if hasMCPTool .mcp "gopls" "go_symbol_references" -}}
+Before changing a function signature, shared type, or interface, use
+`go_symbol_references` with the declaration's `file` and `symbol`. Read affected
+callers, implementations, and tests before editing.
+{{ end }}
+{{ if hasMCPTool .mcp "gopls" "go_file_context" -}}
+Use `go_file_context` with `file` when you need to understand declarations used
+from other files in the same package.
+{{ end }}
+{{ if hasMCPTool .mcp "gopls" "go_package_api" -}}
+Use `go_package_api` with `packagePaths` when you need the public API of an
+unfamiliar package. Supply Go import paths.
+{{ end }}
+{{ if hasMCPTool .mcp "gopls" "go_diagnostics" -}}
+After a coherent batch of saved Go edits, run `go_diagnostics` with `files`
+containing the changed files' absolute paths. Investigate relevant diagnostics,
+fix errors introduced by the change, and rerun diagnostics after fixes.
+Standalone `gopls mcp` sees saved files on disk, so save edits before checking.
+{{ end }}
+
+Before completing the change, run the project's prescribed lint and test
+commands for the changed packages and affected callers. Diagnostics supplement
+those checks; report their scope and any unresolved errors or unavailable tools.
+{{ end }}
+
 {{if hasMCPTool .mcp "go42x" "project_context"}}
 Use `project_context` with the task and affected project-relative paths to load
 project guidance and relevant evidence. Follow source continuation pointers when

@@ -331,9 +331,18 @@ export function assemble({root = rootDirectory, context = buildContext(root)} = 
   for (const [index, collection] of collections.entries()) {
     const directory = path.join(output, collection.name);
     fs.mkdirSync(directory, {recursive: true});
+    const empty = statuses[collection.name] && !bundle.pages.some(page => page.collection === collection.name);
+    if (empty) {
+      // Keep the collection route usable without inventing an authored application record.
+      const metadata = {id: 'index', title: collection.label, slug: `/category/${collection.name}`};
+      const text = `---\n${yaml.dump(metadata)}---\n\n# ${collection.label}\n\n` +
+        `No application ${collection.name} are recorded yet. ` +
+        'Create a record using the [authoring templates](../index.md#templates).\n';
+      fs.writeFileSync(path.join(directory, 'index.md'), text);
+    }
     const category = {
       label: collection.label, position: index + 2, collapsed: true,
-      link: {type: 'generated-index', description: collection.description},
+      link: empty ? {type: 'doc', id: 'index'} : {type: 'generated-index', description: collection.description},
     };
     fs.writeFileSync(path.join(directory, '_category_.json'), `${JSON.stringify(category, null, 2)}\n`);
   }

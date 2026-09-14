@@ -8,6 +8,7 @@ import (
 
 	httpAPI "github.com/go42-dev/go42/internal/api/http"
 	"github.com/go42-dev/go42/internal/auth/domain"
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 func (a *Adapter) processError(ctx *echo.Context, err error) error {
@@ -27,7 +28,7 @@ func (a *Adapter) processError(ctx *echo.Context, err error) error {
 	case errors.Is(err, domain.ErrPasswordWeak):
 		return httpAPI.SendJSONError(ctx,
 			http.StatusBadRequest, http.StatusText(http.StatusBadRequest))
-	case errors.Is(err, domain.ErrInvalidPagination):
+	case errors.Is(err, tools.ErrInvalidPagination):
 		return httpAPI.SendJSONError(ctx,
 			http.StatusBadRequest, http.StatusText(http.StatusBadRequest))
 	case errors.Is(err, domain.ErrRateLimited):

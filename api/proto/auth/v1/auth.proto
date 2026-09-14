@@ -24,10 +24,12 @@ enum UserStatus {
 }
 
 message ListUsersRequest {
+  // Zero uses the default limit of 10; positive limits must not exceed 100.
   int32 limit = 1 [(buf.validate.field).int32 = {
     gte: 0
     lte: 100
   }];
+  // Number of users to skip, from 0 through 2147483647. Zero starts at the first user.
   int32 offset = 2 [(buf.validate.field).int32.gte = 0];
 }
 

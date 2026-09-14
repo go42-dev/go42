@@ -13,6 +13,7 @@ import (
 	"github.com/go42-dev/go42/internal/auth/domain"
 	authMiddleware "github.com/go42-dev/go42/internal/auth/middleware"
 	"github.com/go42-dev/go42/internal/auth/models"
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 //go:generate mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
@@ -227,29 +228,28 @@ func (a *Adapter) updateSelf(ctx *echo.Context) error {
 // ----
 
 func (a *Adapter) listUsers(ctx *echo.Context) error {
+	query := ctx.QueryParams()
 	limit := 0
-	if value := ctx.QueryParam("limit"); len(value) > 0 {
+	if query.Has("limit") {
 		var err error
-		limit, err = strconv.Atoi(value)
+		limit, err = strconv.Atoi(query.Get("limit"))
 		if err != nil {
-			return a.processError(ctx, domain.ErrInvalidPagination)
+			return a.processError(ctx, tools.ErrInvalidPagination)
 		}
 	}
 	offset := 0
-	if value := ctx.QueryParam("offset"); len(value) > 0 {
+	if query.Has("offset") {
 		var err error
-		offset, err = strconv.Atoi(value)
+		offset, err = strconv.Atoi(query.Get("offset"))
 		if err != nil {
-			return a.processError(ctx, domain.ErrInvalidPagination)
+			return a.processError(ctx, tools.ErrInvalidPagination)
 		}
 	}
-	if limit == 0 {
-		limit = domain.UserListDefaultLimit
+	page, err := tools.NormalizePagination(limit, offset)
+	if err != nil {
+		return a.processError(ctx, err)
 	}
-	if limit < 0 || limit > domain.UserListMaximumLimit || offset < 0 {
-		return a.processError(ctx, domain.ErrInvalidPagination)
-	}
-	r, err := a.service.ListUsers(ctx.Request().Context(), limit, offset)
+	r, err := a.service.ListUsers(ctx.Request().Context(), page.Limit, page.Offset)
 	if err != nil {
 		return a.processError(ctx, err)
 	}

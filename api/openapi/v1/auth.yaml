@@ -234,6 +234,7 @@ paths:
       parameters:
         - name: limit
           in: query
+          description: Number of users to return. Omit or use 0 for the default of 10. Empty values are invalid.
           schema:
             type: integer
             default: 10
@@ -241,10 +242,12 @@ paths:
             maximum: 100
         - name: offset
           in: query
+          description: Number of users to skip. Omit for the default of 0. Empty values are invalid.
           schema:
             type: integer
             default: 0
             minimum: 0
+            maximum: 2147483647
       responses:
         '200':
           description: List of users

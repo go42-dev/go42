@@ -31,6 +31,29 @@ Permission enforcement is defined in the [HTTP adapter](../../internal/auth/adap
 [HTTP authentication middleware](../../internal/auth/middleware/auth.go), and
 [gRPC authentication and access interceptors](../../internal/auth/interceptors).
 
+## User list pagination
+
+HTTP `GET /api/v1/users` and gRPC `ListUsers` use the shared API pagination rules:
+
+| Input | Behavior |
+| --- | --- |
+| Limit omitted or `0` | Use the default limit of `10` |
+| Limit from `1` through `100` | Return at most that many users |
+| Offset omitted | Start at `0` |
+| Offset from `0` through `2147483647` | Skip that many users |
+| Negative or out-of-range values | Reject with HTTP `400` or gRPC `InvalidArgument` |
+| Valid offset beyond the available records | Return a successful response with an empty user list |
+
+HTTP pagination values must parse as integers. Present but empty values, such as `?limit=` or `?offset=`, and malformed
+values return `400`. HTTP offsets above `2147483647` are rejected, matching the gRPC `int32` range.
+These checks tighten the earlier HTTP behavior, which treated empty values as omitted and accepted larger offsets
+on 64-bit platforms.
+
+Both adapters decode input, call [NormalizePagination](../../internal/tools/pagination.go), and map validation errors
+before invoking the service. This helper owns the project-wide defaults, bounds, and pagination error; reuse it for other
+paginated APIs. The service forwards the normalized values to the repository. Keep the OpenAPI and Protobuf contracts
+aligned when changing these rules.
+
 ## Session sequence
 
 All paths below have the `/api/v1` prefix. Send JSON request bodies with `Content-Type: application/json`.

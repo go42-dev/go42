@@ -21,6 +21,7 @@ import (
 	"github.com/go42-dev/go42/internal/auth/adapters/grpc/v1/mocks"
 	"github.com/go42-dev/go42/internal/auth/domain"
 	"github.com/go42-dev/go42/internal/auth/models"
+	"github.com/go42-dev/go42/internal/tools"
 )
 
 const (
@@ -28,12 +29,6 @@ const (
 	userTestEmail    = " Alice@Example.com "
 	userTestPassword = "new user password"
 )
-
-type invalidPaginationTestCase struct {
-	name   string
-	limit  int32
-	offset int32
-}
 
 type userStatusMappingTestCase struct {
 	name       string
@@ -55,7 +50,7 @@ func TestAdapterListUsersUsesDefaultLimit(t *testing.T) {
 
 	service.EXPECT().ListUsers(
 		gomock.Any(),
-		domain.UserListDefaultLimit,
+		tools.PaginationDefaultLimit,
 		7,
 	).Return(nil, nil)
 
@@ -90,13 +85,13 @@ func TestAdapterListUsersAcceptsMaximumLimitAndMapsUsers(t *testing.T) {
 	}
 	service.EXPECT().ListUsers(
 		gomock.Any(),
-		domain.UserListMaximumLimit,
-		11,
+		tools.PaginationMaximumLimit,
+		tools.PaginationMaximumOffset,
 	).Return([]*models.User{user}, nil)
 
 	response, err := adapter.ListUsers(t.Context(), &pb.ListUsersRequest{
-		Limit:  domain.UserListMaximumLimit,
-		Offset: 11,
+		Limit:  tools.PaginationMaximumLimit,
+		Offset: tools.PaginationMaximumOffset,
 	})
 	if err != nil {
 		t.Fatalf("ListUsers() error = %v", err)
@@ -124,27 +119,26 @@ func TestAdapterListUsersAcceptsMaximumLimitAndMapsUsers(t *testing.T) {
 }
 
 func TestAdapterListUsersRejectsInvalidPagination(t *testing.T) {
-	testCases := []invalidPaginationTestCase{
+	for _, test := range []struct {
+		name   string
+		limit  int32
+		offset int32
+	}{
 		{name: "negative limit", limit: -1},
-		{name: "limit above maximum", limit: domain.UserListMaximumLimit + 1},
+		{name: "limit above maximum", limit: 101},
 		{name: "negative offset", offset: -1},
-	}
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service := mocks.NewMockserviceAccessor(gomock.NewController(t))
+			adapter := New(service)
 
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			adapter := New(mocks.NewMockserviceAccessor(ctrl))
+			response, err := adapter.ListUsers(
+				t.Context(),
+				&pb.ListUsersRequest{Limit: test.limit, Offset: test.offset},
+			)
 
-			response, err := adapter.ListUsers(t.Context(), &pb.ListUsersRequest{
-				Limit:  testCase.limit,
-				Offset: testCase.offset,
-			})
-			if response != nil {
-				t.Errorf("ListUsers() response = %#v, want nil", response)
-			}
-			if status.Code(err) != codes.InvalidArgument {
-				t.Errorf("ListUsers() code = %s, want %s", status.Code(err), codes.InvalidArgument)
-			}
+			assert.Nil(t, response)
+			assertGRPCError(t, err, codes.InvalidArgument, "invalid pagination")
 		})
 	}
 }
@@ -169,7 +163,7 @@ func TestUserToProtoMapsStatuses(t *testing.T) {
 func TestAdapterListUsersServiceErrors(t *testing.T) {
 	for _, test := range []grpcErrorTestCase{
 		{
-			name: "invalid pagination", err: fmt.Errorf("private list details: %w", domain.ErrInvalidPagination),
+			name: "invalid pagination", err: fmt.Errorf("private list details: %w", tools.ErrInvalidPagination),
 			wantCode: codes.InvalidArgument, wantMessage: "invalid pagination",
 		},
 		{
@@ -386,7 +380,7 @@ func TestAdapterProcessError(t *testing.T) {
 			wantCode: codes.InvalidArgument, wantMessage: "password is too weak",
 		},
 		{
-			name: "invalid pagination", err: domain.ErrInvalidPagination,
+			name: "invalid pagination", err: tools.ErrInvalidPagination,
 			wantCode: codes.InvalidArgument, wantMessage: "invalid pagination",
 		},
 		{

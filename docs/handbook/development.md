@@ -103,6 +103,24 @@ and tool flags. Quote paths containing spaces. Go package arguments use local pa
 `./internal/auth/...`. A `lint:*` task without arguments checks its default project scope; `task lint` accepts no file or
 package arguments.
 
+### Go navigation and diagnostics
+
+The generated agent instructions use the configured gopls tools for Go navigation and feedback during editing:
+
+1. Before changing a function signature, shared type, or interface, inspect symbol references and read affected callers,
+   implementations, and tests. Request file context or a package's public API when needed to understand unfamiliar code.
+2. After a coherent batch of saved Go edits, request diagnostics for the changed files. Investigate relevant findings,
+   fix errors introduced by the change, and check again after fixes.
+3. Run the applicable [lint and test commands](testing.md#choosing-checks-before-review) before completing the change. Include
+   affected callers when selecting packages; diagnostics supplement those checks.
+
+The configured standalone gopls server reads saved files. Its results reflect the loaded workspace and build
+configuration; review affected build tags and platforms separately. If gopls is unavailable, use local source inspection
+and the project's lint and test commands, and report the limitation.
+
+Edit the [authored search guidance](../../.go42x/chunks/200-search.tpl.md) to change this workflow, then run
+`task x -- agentenv generate` to refresh the generated instructions.
+
 ## Running and debugging
 
 The launch tasks require `.env` through `task check-env`. They load defaults from `.env.example`, then local overrides
@@ -211,11 +229,8 @@ The [HTTP integration clients](../../tests/integration/http/v1/users_clients_tes
 
 ## Formatting and linting
 
-Format only the source files edited for the task, then review the diff. Linters check without applying fixes. Select
-checks by purpose as well as extension: workflow YAML, for example, also needs GitHub Actions validation.
-
-In the commands below, set `FILE` to an individual source file, `PACKAGE` to its Go package or subtree, and `DIALECT` to
-the SQL dialect described below.
+Format only edited source files and review the diff; linters check without applying fixes. In the commands below, `FILE`
+is an existing file and `PACKAGE` is a local Go package or subtree. Use `task TASK --summary` for usage.
 
 | Source type | Formatter | Check |
 | --- | --- | --- |
@@ -227,64 +242,49 @@ the SQL dialect described below.
 | Protobuf | `task fmt:proto -- "$FILE"` | `task lint:proto` checks the entire `api` module |
 | SQL migrations | `task fmt:sql DIALECT="$DIALECT" -- "$FILE"` | `task lint:sql DIALECT="$DIALECT" -- "$FILE"` |
 
-Go formatting runs the formatters enabled in [the Go configuration](../../etc/golangci.yaml), which owns line length and
-import grouping. Use `go mod edit -fmt` for `go.mod` layout.
+For SQL, use `DIALECT=sqlite` for `migrate/sqlite/`, `mysql` for `migrate/mysql/`, and `postgres` for `migrate/pgsql/`.
+Explicit files require a dialect. With no files, `task lint:sql` checks all three; adding `DIALECT` selects one.
 
-YAML, JSON, and TOML checks without file arguments select tracked and untracked source files that Git does not ignore,
-skipping deleted files. YAML excludes Helm templates and combined OpenAPI output; JSON excludes `package-lock.json`;
-TOML selects `*.toml` files, leaving `etc/mise.lock` to mise. Markdown and prose checks default to `docs/`.
+YAML, JSON, and TOML checks default to tracked files and unignored untracked files, skipping deleted files.
+YAML skips Helm templates and combined OpenAPI output; JSON skips `package-lock.json`; TOML selects `*.toml`.
+Markdown and prose default to `docs/`. Let the owning tools update lockfiles.
 
-TOML uses [Tombi's configuration](../../etc/tombi.toml). Task handles configuration discovery from `etc/` and resolves
-file paths from the repository root. Formatting and linting use the pinned release's bundled schema catalog offline;
-lint warnings fail the check.
+[Go formatter settings](../../etc/golangci.yaml) control line length and import grouping; use `go mod edit -fmt` for
+`go.mod`. TOML tasks load [etc/tombi.toml](../../etc/tombi.toml), use offline schemas, and treat lint warnings as errors.
+Markdown formatting fixes supported issues; remaining diagnostics need manual edits.
 
-For SQL, `migrate/sqlite/` uses `DIALECT=sqlite`, `migrate/mysql/` uses `DIALECT=mysql`, and `migrate/pgsql/` uses
-`DIALECT=postgres`. Format one dialect at a time and review the changes. `task lint:sql` checks all three migration
-directories; adding `DIALECT=sqlite`, for example, checks only that dialect. Explicit SQL files require a dialect.
-
-Markdown formatting fixes supported lint issues. Remaining Markdown and prose diagnostics need manual edits.
-Helm files under `infra/helm/app/templates/` contain Go templates: preserve their syntax and validate the chart with Helm.
-Use the YAML formatter on plain chart metadata and values files.
-
-JavaScript, TypeScript, CSS, shell, and Dockerfiles have no configured formatter. Match the surrounding style and
-[.editorconfig](../../.editorconfig), then run applicable checks. Use `task lint:editorconfig -- "$FILE"` to check an
-edited file or omit arguments to check the whole project.
+JavaScript, TypeScript, CSS, shell, and Dockerfiles have no configured formatter. Follow the surrounding style and
+[.editorconfig](../../.editorconfig); check edited files with `task lint:editorconfig -- "$FILE"`.
 
 ### Checks for specific purposes
 
-* For workflow YAML, add `task lint:actions -- "$FILE"`, which runs Actionlint and Zizmor. For composite actions or shared
-  workflow interfaces, use `task lint:actions` without arguments so it checks all workflows and includes composite actions.
-* For OpenAPI changes, use `task lint:openapi` and `task lint:openapi-breaking`. For Protobuf changes, add
-  `task lint:proto-breaking` to the module checks above. Regenerate affected outputs before compatibility checks; those
-  comparisons require `origin/master`.
-* For Dockerfile changes, use `task lint:docker`. For Helm changes, use `task lint:helm`, which validates both tag and digest
-  image references.
-* For standalone shell files, use the pinned `shellcheck "$FILE"` after configuring the
-  [direct tool environment](#bootstrapping-task-and-invoking-tools-directly).
+| Change | Additional checks |
+| --- | --- |
+| Workflow YAML | `task lint:actions -- "$FILE"` runs Actionlint and Zizmor; omit files for composite actions or shared workflow interfaces |
+| OpenAPI | `task lint:openapi` and `task lint:openapi-breaking` |
+| Protobuf | `task lint:proto-breaking`, in addition to the full-module checks above |
+| Dockerfile | `task lint:docker` |
+| Helm | `task lint:helm` checks tag and digest image references; format only plain chart YAML, preserving Go template syntax |
+| Standalone shell | `task tool -- shellcheck "$FILE"` |
+
+Regenerate affected outputs before API compatibility checks and ensure `origin/master` is available.
 
 ### Editor watchers
 
-Configure watchers to run the matching formatter task from the repository root on the edited source file. For example,
-a GoLand Markdown watcher can use program `task`, arguments `fmt:markdown -- "$FilePath$"`, and working directory
-`$ProjectFileDir$`.
+Run Task-based watchers from the repository root on the edited file. Make Go and Task available on the editor's `PATH`
+and run `task setup` first.
 
-When invoking a tool directly, use the pinned tool environment above and the same configuration as Taskfile. For Markdown:
+* **JetBrains:** For a Markdown watcher, use program `task`, arguments `fmt:markdown -- "$FilePath$"`, and working directory
+  `$ProjectFileDir$`. The [shared definitions](../../etc/.ide/jetbrains/watchers.xml) use project shims.
+* **VS Code:** Install [Run on Save](https://marketplace.visualstudio.com/items?itemName=pucelle.run-on-save) and merge
+  [the preset](../../etc/.ide/vscode/settings.json) into `.vscode/settings.json`.
 
-```sh
-markdownlint-cli2 --config etc/markdownlint-cli2.yaml --no-globs --fix "$FILE"
-```
+The VS Code preset runs Task commands in sequence, formats Go before package linting, selects SQL dialects, and skips
+Helm templates for YAML formatting. Per-project `.idea/` and `.vscode/` settings are ignored.
 
-`--no-globs` prevents the configured documentation glob from expanding a file-specific fix. Direct Tombi calls need `etc/`
-as the working directory and an absolute file path. Shared JetBrains watcher definitions live in
-[etc/.ide/jetbrains/watchers.xml](../../etc/.ide/jetbrains/watchers.xml); keep imported settings aligned with the workflow.
-
-For VS Code, install [Run on Save](https://marketplace.visualstudio.com/items?itemName=pucelle.run-on-save)
-and copy or merge [etc/.ide/vscode/settings.json](../../etc/.ide/vscode/settings.json)
-into `.vscode/settings.json` at the repository root.
-Make Go and Task available on VS Code's `PATH`, then run `task setup` to install the project tools. The preset invokes
-Task formatters on save, with Go formatting followed by package linting. It preserves the SQL migration dialect scopes,
-skips Helm templates for YAML formatting, and runs commands in sequence. Task supplies the mise environment and Tombi's
-working directory. Per-project `.idea/` and `.vscode/` settings are ignored by Git.
+Keep tool calls aligned with Taskfile and the [tool environment](#bootstrapping-task-and-invoking-tools-directly).
+Markdown calls need `--no-globs` for file-specific fixes; Tombi needs `etc/` as its working directory and absolute
+file paths.
 
 ## Testing and verification
 
@@ -329,31 +329,24 @@ Before opening or updating a pull request:
 
 ## Maintaining the workflow
 
-Keep Go's version in `go.mod`, tool versions in `etc/mise.toml`, and formatter and linter configurations in `etc/`.
-Keep `Taskfile.yaml` at the repository root. Update tool pins and their `etc/mise.lock` entries together, preserving
-supported platform coverage and keeping duplicate CI pins aligned. Update this guide when commands, prerequisites,
-formatters, or check scopes change.
+| Setting | Source |
+| --- | --- |
+| Go version | [go.mod](../../go.mod) |
+| Tool versions and platform locks | [etc/mise.toml](../../etc/mise.toml) and [etc/mise.lock](../../etc/mise.lock) |
+| Commands | [Taskfile.yaml](../../Taskfile.yaml) |
+| Formatter and linter configuration | `etc/` |
 
-To set a mise-managed tool to a specific version, pass its key from `etc/mise.toml` and the desired version:
+To change a mise-managed tool, select its key from `etc/mise.toml` and the required version:
 
 ```sh
-task bump TOOL=go:github.com/go42-dev/go42x VERSION=0.23.0
 task bump TOOL=node VERSION=26.7.0
 ```
 
-`TOOL` and `VERSION` are required. The task installs the requested version, records an exact pin in `etc/mise.toml`, and
-refreshes that tool's `etc/mise.lock` entries for the existing platforms. Review and commit both files together.
+`TOOL` and `VERSION` are required. The task installs the version and updates its exact pin and lock entries for the
+existing platforms. Review both files together and align any duplicate CI pins.
 
-CI installs the tools each job needs through mise using the same pins and lockfile as local setup. Jobs configure
-`MISE_DEFAULT_CONFIG_FILENAME=etc/mise.toml` and the project tool paths. Go test jobs install Task, load-test jobs add k6,
-and documentation jobs install Task and the documentation tools.
-
-The shared [environment action](../../.github/actions/prepare-env/action.yaml) installs Task, then runs the task selected
-by its `setup-task` input, which defaults to `setup`. The `project-lint` job selects `setup-generators`. Each setup task
-has a separate project-tool cache, saved at successful job completion so subsequent jobs can reuse the installed tools.
-
-Every test workflow invokes its Task command. GitHub Actions manages matrices, service containers, caches, timeouts,
-artifacts, and reporting. Fuzz and load steps use `--exit-code` to preserve the underlying command's failure code.
-Update Taskfile and its relevant CI callers together when changing a workflow.
+CI uses the same tool pins and lockfile. Review the [environment action](../../.github/actions/prepare-env/action.yaml)
+and affected workflows when changing setup or dependencies. Update Task definitions, CI callers, and this guide together
+when commands, prerequisites, or check scopes change. Fuzz and load steps need `--exit-code` to propagate failures.
 
 Upstream reference: [Task guide](https://taskfile.dev/docs/guide).
