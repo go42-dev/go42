@@ -15,6 +15,7 @@ dep-graph.svg
 __pycache__/
 
 # go42x generated files
+.go42x/go42x.local.yaml
 .go42x/kwb/
 .go42x/backups/
 .mcp.json

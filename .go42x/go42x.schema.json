@@ -105,8 +105,8 @@
   "properties": {
     "version": {
       "type": "string",
-      "description": "Configuration version",
-      "pattern": "^\\d+\\.\\d+$",
+      "description": "Supported configuration format version",
+      "const": "1.0",
       "examples": [
         "1.0"
       ]

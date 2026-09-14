@@ -61,7 +61,7 @@ providers:
   #           Codex
   # -------------------------
   codex:
-    enabled: true
+    enabled: false
     # Omit to preserve the existing approval policy. Sandbox settings are preserved.
     approval-policy: on-request
     # Approval mode for every enabled MCP server: auto, prompt, writes, or approve.
