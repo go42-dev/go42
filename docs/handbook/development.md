@@ -38,7 +38,7 @@ at `https://api.githubcopilot.com/mcp/`. Export `GITHUB_PERSONAL_ACCESS_TOKEN` i
 configuration uses it for bearer authentication and sets `X-MCP-Toolsets: all`. After changing the MCP configuration,
 run `task x -- agentenv generate` and restart the client.
 
-For code generation, `task setup-generators` installs the generators and their supporting tools from the same lockfile.
+For code generation, `task setup:generators` installs the generators and their supporting tools from the same lockfile.
 Run it before `task generate` to prepare only the tools needed for generation.
 
 Create `.env` from [.env.example](../../.env.example) if it does not already exist, then adjust the local settings:
@@ -70,13 +70,18 @@ mise settings, including Redocly's update-notice and telemetry settings.
 
 ## Using Task
 
+Use `group:name` for related commands: `test:unit`, `fmt:yaml`, `lint:go`, `docs:check`, and `setup:generators`.
+Keep standalone commands short, such as `run`, `build`, `generate`, and `setup`. Use hyphens within a name for multiple
+words, such as `generate:migration-id` and `lint:openapi-breaking`. Give each task one name; update its callers and
+documentation when renaming it.
+
 Run commands from the repository root. Discover tasks and inspect their behavior with:
 
 ```sh
 task help
 task --list --sort none --json
 task fmt:sql --summary
-task --dry test-resilience
+task --dry test:resilience
 ```
 
 `task` and `task help` list commands in Taskfile order. Tasks run without caching. Pass file or local Go package arguments
@@ -86,7 +91,7 @@ after `--`; put Task variables before that separator:
 task fmt:yaml -- .github/workflows/150-load-tests.yaml
 task lint:yaml -- Taskfile.yaml .github/workflows/150-load-tests.yaml
 task lint:go -- ./internal/metrics
-task test-unit -- ./internal/metrics
+task test:unit -- ./internal/metrics
 ```
 
 Use `task tool -- COMMAND [ARGS...]` to run a command with mise's project versions and environment. Pass the executable
@@ -108,11 +113,11 @@ package arguments.
 The generated agent instructions use the configured gopls tools for Go navigation and feedback during editing:
 
 1. Before changing a function signature, shared type, or interface, inspect symbol references and read affected callers,
-   implementations, and tests. Request file context or a package's public API when needed to understand unfamiliar code.
+    implementations, and tests. Request file context or a package's public API when needed to understand unfamiliar code.
 2. After a coherent batch of saved Go edits, request diagnostics for the changed files. Investigate relevant findings,
-   fix errors introduced by the change, and check again after fixes.
+    fix errors introduced by the change, and check again after fixes.
 3. Run the applicable [lint and test commands](testing.md#choosing-checks-before-review) before completing the change. Include
-   affected callers when selecting packages; diagnostics supplement those checks.
+    affected callers when selecting packages; diagnostics supplement those checks.
 
 The configured standalone gopls server reads saved files. Its results reflect the loaded workspace and build
 configuration; review affected build tags and platforms separately. If gopls is unavailable, use local source inspection
@@ -123,25 +128,25 @@ Edit the [authored search guidance](../../.go42x/chunks/200-search.tpl.md) to ch
 
 ## Running and debugging
 
-The launch tasks require `.env` through `task check-env`. They load defaults from `.env.example`, then local overrides
+The launch tasks require `.env` through `task check:env`. They load defaults from `.env.example`, then local overrides
 from `.env`. Start the services required by the selected database, cache, and event settings.
 
 | Command           | Behavior                                                                            |
 |-------------------|-------------------------------------------------------------------------------------|
 | `task run`        | Run the application locally with race detection and compiler optimizations disabled |
-| `task run-docker` | Run the application in a Linux Go container with the checkout mounted               |
+| `task run:docker` | Run the application in a Linux Go container with the checkout mounted               |
 | `task debug`      | Start the headless Delve debugger on port 2345                                      |
 | `task build`      | Build `.build/app` with race detection and compiler optimizations disabled          |
 | `task image`      | Build the development Docker image for Linux amd64 and arm64                        |
 
-`task run` and `task run-docker` treat exit code 1 as success, as recorded in Taskfile. Check the application output when
+`task run` and `task run:docker` treat exit code 1 as success, as recorded in Taskfile. Check the application output when
 verifying startup or shutdown behavior.
 
 For optional inspection tools, `task grpcui` requires `grpcui` and targets plaintext `localhost:50051`. Enable
 `SERVER_GRPC_REFLECTION_ENABLED=true` on the local test application and restart it first; reflection is disabled by default.
 Business calls still require `x-api-key` metadata and permissions. The generated integration clients use compiled
 descriptors and do not need reflection.
-`task generate-dep-graph` writes the dependency graph and requires `goda` and Graphviz's `dot`. These dependencies are
+`task generate:dep-graph` writes the dependency graph and requires `goda` and Graphviz's `dot`. These dependencies are
 described in Taskfile comments and are installed separately.
 
 ### Profiling a local process
@@ -167,7 +172,7 @@ Expect nonempty profile files and a function/sample summary. Exercise the affect
 an idle sample may contain little evidence. Record the running revision and symptom with the profile, and use a matching
 binary for source or disassembly analysis. Adjust the URL port if the listener differs, but keep the default prefix:
 the current custom-prefix handler returns HTML for named profiles such as heap. This recipe does not apply unchanged to
-`task run-docker`, whose port mapping expects `:port` listener values. Disable local profiling again when finished.
+`task run:docker`, whose port mapping expects `:port` listener values. Disable local profiling again when finished.
 Its endpoint availability does not establish main-server readiness.
 
 ## Generated files and dependencies
@@ -186,7 +191,7 @@ Update vendored files, including Protobuf definitions under `api/proto/third_par
 process. Record versions and upstream sources in adjacent `.versions.yaml` files, retain upstream license notices, and
 regenerate affected outputs. Follow [tool maintenance](#maintaining-the-workflow) when changing tool pins or configuration.
 
-For a new database migration, run `task generate-migration-id` once to obtain its filename prefix. Use the same filename
+For a new database migration, run `task generate:migration-id` once to obtain its filename prefix. Use the same filename
 across database engines and follow the [migration conventions](conventions.md#architecture-and-data).
 
 ## Implementing a feature
@@ -220,12 +225,12 @@ For persisted-data or message-format changes, include the [migration handoff](de
 For the existing authentication feature, a focused unit check is:
 
 ```sh
-task test-unit -- ./internal/auth/... ./internal/api/...
+task test:unit -- ./internal/auth/... ./internal/api/...
 ```
 
 The [HTTP integration clients](../../tests/integration/http/v1/users_clients_test.go) exercise both generated HTTP SDKs;
 [gRPC integration tests](../../tests/integration/grpc/v1/auth_test.go) exercise the generated gRPC client. Follow the
-[integration prerequisites](testing.md#integration-test-environment) before running `task test-integration`.
+[integration prerequisites](testing.md#integration-test-environment) before running `task test:integration`.
 
 ## Formatting and linting
 

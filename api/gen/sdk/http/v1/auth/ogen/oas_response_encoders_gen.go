@@ -38,18 +38,6 @@ func encodeLoginResponse(response LoginRes, w http.ResponseWriter, span trace.Sp
 
 		return nil
 
-	case *LoginForbidden:
-		w.Header().Set("Content-Type", "application/problem+json")
-		w.WriteHeader(403)
-
-		e := new(jx.Encoder)
-		response.Encode(e)
-		if _, err := e.WriteTo(w); err != nil {
-			return errors.Wrap(err, "write")
-		}
-
-		return nil
-
 	case *LoginTooManyRequests:
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(429)
@@ -303,6 +291,30 @@ func encodeUsersCreateResponse(response UsersCreateRes, w http.ResponseWriter, s
 
 		return nil
 
+	case *UsersCreateForbidden:
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(403)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *UsersCreateConflict:
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(409)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
 	default:
 		return errors.Errorf("unexpected response type: %T", response)
 	}
@@ -330,6 +342,18 @@ func encodeUsersDeleteResponse(response UsersDeleteRes, w http.ResponseWriter, s
 	case *UsersDeleteUnauthorized:
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(401)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *UsersDeleteForbidden:
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(403)
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -385,6 +409,18 @@ func encodeUsersGetResponse(response UsersGetRes, w http.ResponseWriter, span tr
 	case *UsersGetUnauthorized:
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(401)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *UsersGetForbidden:
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(403)
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -457,6 +493,18 @@ func encodeUsersListResponse(response UsersListRes, w http.ResponseWriter, span 
 
 		return nil
 
+	case *UsersListForbidden:
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(403)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
 	default:
 		return errors.Errorf("unexpected response type: %T", response)
 	}
@@ -476,9 +524,21 @@ func encodeUsersMeReadResponse(response UsersMeReadRes, w http.ResponseWriter, s
 
 		return nil
 
-	case *Error:
+	case *UsersMeReadUnauthorized:
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(401)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *UsersMeReadForbidden:
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(403)
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -515,6 +575,30 @@ func encodeUsersMeUpdateResponse(response UsersMeUpdateRes, w http.ResponseWrite
 	case *UsersMeUpdateUnauthorized:
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(401)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *UsersMeUpdateForbidden:
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(403)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *UsersMeUpdateConflict:
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(409)
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -585,9 +669,33 @@ func encodeUsersUpdateResponse(response UsersUpdateRes, w http.ResponseWriter, s
 
 		return nil
 
+	case *UsersUpdateForbidden:
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(403)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
 	case *UsersUpdateNotFound:
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(404)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *UsersUpdateConflict:
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(409)
 
 		e := new(jx.Encoder)
 		response.Encode(e)

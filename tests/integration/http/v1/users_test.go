@@ -78,6 +78,15 @@ var _ = Describe("Administrative User Endpoints", func() {
 				Expect(result.user).To(Equal(target))
 			})
 
+			It("decodes duplicate-email conflicts without changing either user", func(ctx SpecContext) {
+				existing := createUserFixture(ctx, admin)
+				target := createUserFixture(ctx, admin)
+				Expect(admin.create(ctx, existing.Email).status).To(Equal(http.StatusConflict))
+				Expect(admin.update(ctx, userID(target), existing.Email).status).To(Equal(http.StatusConflict))
+				expectUnchangedUser(ctx, admin, existing)
+				expectUnchangedUser(ctx, admin, target)
+			})
+
 			It("updates a user and persists the changed email", Label("crud", "update"), func(ctx SpecContext) {
 				target := createUserFixture(ctx, admin)
 				email := uniqueEmail()

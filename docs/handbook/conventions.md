@@ -83,5 +83,6 @@ Paths are relative to the repository root. Preferences and exceptions are stated
 * Test observable behavior and failure paths.
 * Keep unit tests for `foo.go` together in `foo_test.go` in the same directory, regardless of suite size. Do not split them
   into separate files by behavior. Use descriptive names for package-wide, integration, and fuzz tests.
-* Keep tests requiring external services in `tests/integration` or `tests/resilience`, with isolated resources, cleanup,
-  and bounded waits. Prefer synchronization or `testing/synctest` over fixed sleeps for in-process concurrency.
+* Keep integration, contract, resilience, and load suites in their matching directories under `tests/`, with isolated
+  resources, cleanup, and bounded waits. Prefer synchronization or `testing/synctest` over fixed sleeps for in-process
+  concurrency.

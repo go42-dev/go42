@@ -136,9 +136,22 @@ or tokens. Compare with the [HTTP error mapping](../../internal/auth/adapters/ht
 | `503` | Authentication dependency unavailable; inspect database/cache errors and readiness |
 | `500` | Unhandled server error; correlate request ID and component logs |
 
-The OpenAPI login response currently advertises `403` for an inactive user, while `Service.Login` returns
-`ErrInvalidCredentials` and the HTTP adapter renders `400`. This contract/implementation discrepancy remains to be
-resolved in a focused API change; do not infer the intended requirement from either status alone.
+Login returns the same generic `400` problem response for an unknown email, incorrect password, or inactive account.
+It does not expose account status through a separate response. Protected user operations explicitly document `403`
+for authenticated credentials lacking the required permission, including the two `/users/me` operations.
+
+Signup, administrative user creation, and both user-update operations return `409` when another user has the normalized
+email. Normalization trims surrounding whitespace and lowercases the address. Rejected updates preserve the user's
+email, password, and existing sessions.
+
+For `PUT /users/me`, a non-null `email` or `password` requires the correct `current_password`, even when the submitted
+email is unchanged. Missing, empty, null, or incorrect proof returns `400`. Omitted or null email/password fields are
+ignored; `{}` and requests containing only null credential fields succeed without changing credentials or sessions.
+When neither credential is supplied with a non-null value, `current_password` is ignored.
+
+Refresh `token` and logout `refresh_token` must be nonempty strings. Missing, null, or empty values return `400`;
+nonempty invalid tokens, including whitespace-only strings, return `401`. Logout's optional `access_token` is ignored
+and may be empty.
 
 For gRPC, inspect the returned status rather than HTTP codes: missing credentials map to `Unauthenticated`, missing
 permissions to `PermissionDenied`, and authentication dependency failures to `Unavailable`. The

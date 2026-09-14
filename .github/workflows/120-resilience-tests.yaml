@@ -145,7 +145,7 @@ jobs:
       - name: 'Download Go modules'
         run: go mod download
       - name: 'Run resilience tests with coverage'
-        run: task test-resilience
+        run: task test:resilience
         env:
           CGO_ENABLED: 1 # needed for -race
           RESILIENCE_RABBITMQ_ADDRESS: amqp://user:qwerty@127.0.0.1:15673/

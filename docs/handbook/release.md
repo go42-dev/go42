@@ -35,6 +35,58 @@ The validation job requires the workflow definition and dispatch SHA to match th
 advances before validation checks its head, validation fails; dispatch again after CI succeeds for the new head. Dispatches
 for the same version share a concurrency group and do not cancel an active run.
 
+## Planned release key isolation
+
+Status: planned; this migration has not been implemented. It applies to both `go42` and
+[`go42x`](https://github.com/go42-dev/go42x/blob/master/.github/workflows/300-release.yaml).
+
+The GitHub settings review on 2026-09-14 found that both repositories inherit `RELEASE_APP_PRIVATE_KEY` from the
+organization. Neither publication job references a release environment. Their workflow checks require a tested `master`
+commit, but another workflow on a branch within either repository can request the organization secret without those
+checks. The proposed environment policy makes GitHub restrict access before the publication job starts.
+
+### Migration procedure
+
+Provisioning requires permission to manage environments in both repositories and to change organization-secret access.
+Use the original App private-key file or generate a new key for that App; GitHub cannot return an existing secret's value.
+Inventory other consumers of the organization secret before changing its repository access or retiring an App key.
+
+1. In each repository, create an environment named `release`. Under deployment branches and tags, select specific branches
+    and add the branch `master`. Add no tag rules or wildcard branch rules. Leave required reviewers and wait timers unset
+    so releases remain automatic.
+2. Add `RELEASE_APP_PRIVATE_KEY` as an environment secret in each `release` environment. Use the key for the App identified
+    by `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_NAME` in that repository.
+3. Add `environment: release` to the existing `publish-release` job in each release workflow. Retain its source validation,
+    dependencies, permissions, and repository-scoped App token. Merge both workflow changes into `master` before removing
+    access to the organization secret.
+
+    ```yaml
+    jobs:
+      publish-release:
+        environment: release
+        # Existing job configuration follows.
+    ```
+
+4. Remove `go42` and `go42x` from the organization secret's repository access. If access currently covers all repositories,
+    change it to selected repositories while preserving access for other consumers awaiting migration. Remove any
+    repository-level copies of the key as well. An environment secret with the same name does not prevent other jobs from
+    accessing a repository or organization copy.
+5. Verify the saved environment policies, workflow references, and secret locations in both repositories. Use a dedicated
+    check that does not publish artifacts: a job referencing `release` on `master` must start and find the key; jobs on
+    feature branches or tags must be blocked by the environment policy. A job without the environment must not find the
+    key. Check presence only, without logging the value. The release workflow's own branch validation is not sufficient
+    evidence that the environment policy works.
+
+The migration is complete when both repositories pass these checks and no longer have general workflow access to the
+organization or repository copies. Other consumers retaining a key for the same App retain that App's authority and need
+their own access review. Update this section to describe the verified configuration after implementation.
+
+See GitHub's [environment protection rules][release-environments] and [secret configuration][release-secrets] for setup
+and access requirements.
+
+[release-environments]: https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments
+[release-secrets]: https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets
+
 ## Publish a version
 
 In the repository's GitHub Actions view, open the `release` workflow, choose **Run workflow**, select `master`, enter the

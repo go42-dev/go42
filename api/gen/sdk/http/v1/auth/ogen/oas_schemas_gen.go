@@ -140,8 +140,6 @@ func (s *Error) SetErrors(val []ErrorErrorsItem) {
 	s.Errors = val
 }
 
-func (*Error) usersMeReadRes() {}
-
 type ErrorErrorsItem struct{}
 
 type Jwt struct {
@@ -172,10 +170,6 @@ func (s *Jwt) SetRoles(val []string) {
 type LoginBadRequest Error
 
 func (*LoginBadRequest) loginRes() {}
-
-type LoginForbidden Error
-
-func (*LoginForbidden) loginRes() {}
 
 // Ref: #/components/schemas/LoginRequest
 type LoginRequest struct {
@@ -226,8 +220,9 @@ func (*LogoutOK) logoutRes() {}
 // Ref: #/components/schemas/LogoutRequest
 type LogoutRequest struct {
 	// Optional; logout uses the refresh token to identify the session.
-	AccessToken  OptString `json:"access_token"`
-	RefreshToken string    `json:"refresh_token"`
+	AccessToken OptString `json:"access_token"`
+	// Nonempty refresh token. Nonempty invalid tokens return 401.
+	RefreshToken string `json:"refresh_token"`
 }
 
 // GetAccessToken returns the value of AccessToken.
@@ -304,6 +299,74 @@ func (o OptInt) Or(d int) int {
 	return d
 }
 
+// NewOptNilString returns new OptNilString with value set to v.
+func NewOptNilString(v string) OptNilString {
+	return OptNilString{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilString is optional nullable string.
+type OptNilString struct {
+	Value string
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilString was set.
+func (o OptNilString) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilString) Reset() {
+	var v string
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilString) SetTo(v string) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilString) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilString) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v string
+	o.Value = v
+}
+
+// IsEmpty returns true if the field was omitted from the payload (not Set and not Null).
+func (o OptNilString) IsEmpty() bool {
+	return !o.Set && !o.Null
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilString) Get() (v string, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilString) Or(d string) string {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptString returns new OptString with value set to v.
 func NewOptString(v string) OptString {
 	return OptString{
@@ -356,6 +419,7 @@ func (*RefreshBadRequest) refreshRes() {}
 
 // Ref: #/components/schemas/RefreshRequest
 type RefreshRequest struct {
+	// Nonempty refresh token. Nonempty invalid tokens return 401.
 	Token string `json:"token"`
 }
 
@@ -492,45 +556,49 @@ func (s *UnexpectedResponseStatusCode) SetResponse(val Error) {
 	s.Response = val
 }
 
-// Current_password is required when email or password is supplied.
+// The correct current_password is required when email or password is non-null, even for an unchanged
+// email. Omitted or null email/password fields are ignored. With neither credential supplied, the
+// request succeeds without verifying current_password or changing credentials or sessions.
 // Ref: #/components/schemas/UpdateSelfRequest
 type UpdateSelfRequest struct {
-	// Existing password, used exactly as supplied; at most 72 UTF-8 bytes.
-	CurrentPassword OptString `json:"current_password"`
+	// Existing password, used exactly as supplied. When changing credentials, at least 8 Unicode
+	// characters and at most 72 UTF-8 bytes. Ignored when neither email nor password is supplied with a
+	// non-null value.
+	CurrentPassword OptNilString `json:"current_password"`
 	// Trimmed, lowercased, then validated as an email address by the service.
-	Email OptString `json:"email"`
+	Email OptNilString `json:"email"`
 	// At least 8 Unicode characters and at most 72 UTF-8 bytes. Used exactly as supplied, including
 	// whitespace. New passwords must also meet the configured strength requirement.
-	Password OptString `json:"password"`
+	Password OptNilString `json:"password"`
 }
 
 // GetCurrentPassword returns the value of CurrentPassword.
-func (s *UpdateSelfRequest) GetCurrentPassword() OptString {
+func (s *UpdateSelfRequest) GetCurrentPassword() OptNilString {
 	return s.CurrentPassword
 }
 
 // GetEmail returns the value of Email.
-func (s *UpdateSelfRequest) GetEmail() OptString {
+func (s *UpdateSelfRequest) GetEmail() OptNilString {
 	return s.Email
 }
 
 // GetPassword returns the value of Password.
-func (s *UpdateSelfRequest) GetPassword() OptString {
+func (s *UpdateSelfRequest) GetPassword() OptNilString {
 	return s.Password
 }
 
 // SetCurrentPassword sets the value of CurrentPassword.
-func (s *UpdateSelfRequest) SetCurrentPassword(val OptString) {
+func (s *UpdateSelfRequest) SetCurrentPassword(val OptNilString) {
 	s.CurrentPassword = val
 }
 
 // SetEmail sets the value of Email.
-func (s *UpdateSelfRequest) SetEmail(val OptString) {
+func (s *UpdateSelfRequest) SetEmail(val OptNilString) {
 	s.Email = val
 }
 
 // SetPassword sets the value of Password.
-func (s *UpdateSelfRequest) SetPassword(val OptString) {
+func (s *UpdateSelfRequest) SetPassword(val OptNilString) {
 	s.Password = val
 }
 
@@ -631,6 +699,14 @@ type UsersCreateBadRequest Error
 
 func (*UsersCreateBadRequest) usersCreateRes() {}
 
+type UsersCreateConflict Error
+
+func (*UsersCreateConflict) usersCreateRes() {}
+
+type UsersCreateForbidden Error
+
+func (*UsersCreateForbidden) usersCreateRes() {}
+
 type UsersCreateUnauthorized Error
 
 func (*UsersCreateUnauthorized) usersCreateRes() {}
@@ -638,6 +714,10 @@ func (*UsersCreateUnauthorized) usersCreateRes() {}
 type UsersDeleteBadRequest Error
 
 func (*UsersDeleteBadRequest) usersDeleteRes() {}
+
+type UsersDeleteForbidden Error
+
+func (*UsersDeleteForbidden) usersDeleteRes() {}
 
 type UsersDeleteNotFound Error
 
@@ -656,6 +736,10 @@ type UsersGetBadRequest Error
 
 func (*UsersGetBadRequest) usersGetRes() {}
 
+type UsersGetForbidden Error
+
+func (*UsersGetForbidden) usersGetRes() {}
+
 type UsersGetNotFound Error
 
 func (*UsersGetNotFound) usersGetRes() {}
@@ -668,6 +752,10 @@ type UsersListBadRequest Error
 
 func (*UsersListBadRequest) usersListRes() {}
 
+type UsersListForbidden Error
+
+func (*UsersListForbidden) usersListRes() {}
+
 type UsersListOKApplicationJSON []User
 
 func (*UsersListOKApplicationJSON) usersListRes() {}
@@ -676,9 +764,25 @@ type UsersListUnauthorized Error
 
 func (*UsersListUnauthorized) usersListRes() {}
 
+type UsersMeReadForbidden Error
+
+func (*UsersMeReadForbidden) usersMeReadRes() {}
+
+type UsersMeReadUnauthorized Error
+
+func (*UsersMeReadUnauthorized) usersMeReadRes() {}
+
 type UsersMeUpdateBadRequest Error
 
 func (*UsersMeUpdateBadRequest) usersMeUpdateRes() {}
+
+type UsersMeUpdateConflict Error
+
+func (*UsersMeUpdateConflict) usersMeUpdateRes() {}
+
+type UsersMeUpdateForbidden Error
+
+func (*UsersMeUpdateForbidden) usersMeUpdateRes() {}
 
 // UsersMeUpdateOK is response for UsersMeUpdate operation.
 type UsersMeUpdateOK struct{}
@@ -700,6 +804,14 @@ func (*UsersMeUpdateUnauthorized) usersMeUpdateRes() {}
 type UsersUpdateBadRequest Error
 
 func (*UsersUpdateBadRequest) usersUpdateRes() {}
+
+type UsersUpdateConflict Error
+
+func (*UsersUpdateConflict) usersUpdateRes() {}
+
+type UsersUpdateForbidden Error
+
+func (*UsersUpdateForbidden) usersUpdateRes() {}
 
 type UsersUpdateNotFound Error
 

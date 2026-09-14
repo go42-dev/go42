@@ -77,8 +77,8 @@ tasks:
       - '"{{.TOOLS_BIN}}/vale" --config etc/vale.ini sync'
       - "go mod download"
 
-  ## setup-generators | install dependencies for code generation
-  setup-generators:
+  ## setup:generators | install dependencies for code generation
+  setup:generators:
     desc: "install dependencies for code generation"
     cmds:
       - |
@@ -110,11 +110,11 @@ tasks:
   # │                   Testing                    │
   # ╰─────────────────────----------------─────────╯
 
-  ## test-unit | run unit tests with coverage, or selected packages with race detection
+  ## test:unit | run unit tests with coverage, or selected packages with race detection
   # -count=1 is needed to prevent caching of test results.
-  test-unit:
+  test:unit:
     desc: "run unit tests with coverage, or selected packages with race detection"
-    summary: "Usage: task test-unit [-- PACKAGE ...]. Defaults to the full unit suite with coverage."
+    summary: "Usage: task test:unit [-- PACKAGE ...]. Defaults to the full unit suite with coverage."
     preconditions:
       - &package_paths
         sh: |
@@ -147,19 +147,19 @@ tasks:
         go tool cover -html=.build/coverage.out -o=.build/coverage.html
         go tool cover -func=.build/coverage.out | grep '^total:'
 
-  ## test-fuzz | run all fuzz targets (30 seconds per target by default)
-  test-fuzz:
+  ## test:fuzz | run all fuzz targets (30 seconds per target by default)
+  test:fuzz:
     desc: "run all fuzz targets (30 seconds per target by default)"
-    summary: "Usage: task test-fuzz [FUZZ_TIME=30s]. Also accepts FUZZ_TIME from the environment."
+    summary: "Usage: task test:fuzz [FUZZ_TIME=30s]. Also accepts FUZZ_TIME from the environment."
     vars:
       FUZZ_TIME: '{{.FUZZ_TIME | default "30s"}}'
     cmds:
       - 'go run ./cmd/fuzz -fuzztime {{.FUZZ_TIME | shellQuote}}'
 
-  ## test-integration | run integration tests with coverage
+  ## test:integration | run integration tests with coverage
   # -count=1 is needed to prevent caching of test results.
   # Uses application settings from .env when present.
-  test-integration:
+  test:integration:
     desc: "run integration tests with coverage"
     cmds:
       - "mkdir -p .build"
@@ -177,10 +177,21 @@ tasks:
       - "go tool cover -html=.build/coverage-integration.out -o=.build/coverage-integration.html"
       - "go tool cover -func=.build/coverage-integration.out | grep '^total:'"
 
-  ## test-resilience | verify dependency recovery with coverage
+  test:contract:
+    desc: "Check all HTTP API contracts against a running test application"
+    silent: true
+    cmds:
+      - |
+        export HYPOTHESIS_STORAGE_DIRECTORY="{{.ROOT_DIR}}/.build/hypothesis"
+        contract_python="$(mise where pipx:schemathesis)/schemathesis/bin/python"
+        "{{.TOOLS_BIN}}/pyflakes" tests/contract
+        "$contract_python" -m unittest discover -s tests/contract
+        "$contract_python" tests/contract/run.py
+
+  ## test:resilience | verify dependency recovery with coverage
   # Resilience tests are build-tagged and excluded from all other test targets.
   # @note Requires `toxiproxy pgsql mysql redis memcached nats kafka rabbitmq`
-  test-resilience:
+  test:resilience:
     desc: "verify dependency recovery with coverage"
     cmds:
       - "rm -rf .build/coverage-resilience{.out,.out.tmp,.html,-tests,-app}"
@@ -208,10 +219,10 @@ tasks:
       - "go tool cover -html=.build/coverage-resilience.out -o=.build/coverage-resilience.html"
       - "go tool cover -func=.build/coverage-resilience.out | grep '^total:'"
 
-  ## test-load | run load tests (http and grpc by default, or one explicit suite)
-  test-load:
+  ## test:load | run load tests (http and grpc by default, or one explicit suite)
+  test:load:
     desc: "run load tests (http and grpc by default, or one explicit suite)"
-    summary: "Usage: task test-load [K6_TEST_PATH=FILE.js K6_SUMMARY_PATH=FILE.json]. Also accepts both from the environment."
+    summary: "Usage: task test:load [K6_TEST_PATH=FILE.js K6_SUMMARY_PATH=FILE.json]. Also accepts both from the environment."
     vars:
       K6_TEST_PATH: '{{.K6_TEST_PATH | default ""}}'
       K6_SUMMARY_PATH: '{{.K6_SUMMARY_PATH | default ""}}'
@@ -253,7 +264,7 @@ tasks:
     desc: "run application"
     interactive: true
     cmds:
-      - task: "check-env"
+      - task: "check:env"
       - |
         # Load KEY=value settings and preserve application exit-code handling.
         # shellcheck disable=SC2046,SC2015
@@ -264,15 +275,15 @@ tasks:
         export SERVER_HTTP_SWAGGER_ROOT="$PWD/api/openapi" && \
         go run -gcflags="all=-N -l" -race ./cmd/app/main.go || [ $? -eq 1 ]
 
-  ## run-docker | run application in docker container (linux environment)
+  ## run:docker | run application in docker container (linux environment)
   # `-N -l` disables compiler optimizations and inlining, which makes debugging easier.
   # Using golang image version from go.mod file.
   # `[ $? -eq 1 ]` treats exit code 1 as success. Exit after signal will always be != 0.
-  run-docker:
+  run:docker:
     desc: "run application in docker container (linux environment)"
     interactive: true
     cmds:
-      - task: "check-env"
+      - task: "check:env"
       - |
         # Load KEY=value settings and preserve application exit-code handling.
         # shellcheck disable=SC2046,SC2015
@@ -299,7 +310,7 @@ tasks:
     desc: "run application with delve debugger"
     interactive: true
     cmds:
-      - task: "check-env"
+      - task: "check:env"
       - |
         # Load KEY=value settings for the debugger.
         # shellcheck disable=SC2046,SC2015
@@ -616,10 +627,14 @@ tasks:
 
   lint:openapi-breaking:
     desc: "Check OpenAPI compatibility against origin/master"
+    vars:
+      OPENAPI_BASE_REF: '{{.OPENAPI_BASE_REF | default "origin/master"}}'
+      OPENAPI_DIFF_FORMAT: '{{.OPENAPI_DIFF_FORMAT | default "text"}}'
     cmds:
       - |
         "{{.TOOLS_BIN}}/oasdiff" breaking --fail-on ERR --allow-external-refs=false \
-          origin/master:api/openapi/v1/.combined.yaml api/openapi/v1/.combined.yaml
+          --format {{.OPENAPI_DIFF_FORMAT | shellQuote}} \
+          {{printf "%s:api/openapi/v1/.combined.yaml" .OPENAPI_BASE_REF | shellQuote}} api/openapi/v1/.combined.yaml
 
   lint:proto:
     desc: "Build, lint, and check formatting of the entire api Protobuf module (read only)"
@@ -760,8 +775,8 @@ tasks:
   # │                Documentation                 │
   # ╰─────────────────────----------------─────────╯
 
-  ## docs-check | validate documentation
-  docs-check:
+  ## docs:check | validate documentation
+  docs:check:
     desc: "validate documentation"
     cmds:
       - task: "lint:markdown"
@@ -773,8 +788,8 @@ tasks:
       - '"{{.TOOLS_BIN}}/npm" --prefix pages ci --no-audit --no-fund'
       - '"{{.TOOLS_BIN}}/npm" --prefix pages run check'
 
-  ## docs-serve | build and serve documentation locally
-  docs-serve:
+  ## docs:serve | build and serve documentation locally
+  docs:serve:
     desc: "build and serve documentation locally"
     interactive: true
     cmds:
@@ -786,8 +801,8 @@ tasks:
   # │                Miscellaneous                 │
   # ╰─────────────────────----------------─────────╯
 
-  ## check-env | check if .env file exists
-  check-env:
+  ## check:env | check if .env file exists
+  check:env:
     desc: "check if .env file exists"
     cmds:
       - |
@@ -796,17 +811,17 @@ tasks:
           exit 1
         fi
 
-  ## generate-migration-id | generate migration file prefix
-  generate-migration-id:
+  ## generate:migration-id | generate migration file prefix
+  generate:migration-id:
     desc: "generate migration file prefix"
     cmds:
       - "date +%Y%m%d%H%M%S"
 
-  ## generate-dep-graph | generate dependency graph
+  ## generate:dep-graph | generate dependency graph
   # Dependencies:
   #   * brew install graphviz
   #   * go install github.com/loov/goda@latest
-  generate-dep-graph:
+  generate:dep-graph:
     desc: "generate dependency graph"
     cmds:
       - "goda graph \"github.com/go42-dev/go42/...\" | dot -Tsvg -o dep-graph.svg"

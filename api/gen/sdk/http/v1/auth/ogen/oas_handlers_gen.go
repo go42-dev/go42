@@ -35,7 +35,7 @@ func (c *codeRecorder) Unwrap() http.ResponseWriter {
 
 // handleLoginRequest handles login operation.
 //
-// Login an existing user.
+// Unknown email, incorrect password, and inactive accounts receive the same generic 400 response.
 //
 // POST /auth/login
 func (s *Server) handleLoginRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
@@ -1736,7 +1736,10 @@ func (s *Server) handleUsersMeReadRequest(args [0]string, argsEscaped bool, w ht
 
 // handleUsersMeUpdateRequest handles users.me.update operation.
 //
-// Requires the current password. Changing email or password ends all existing JWT sessions.
+// Requires the current password when a non-null email or password is supplied, including an unchanged
+// email. Omitted or null email/password fields leave those credentials unchanged. A request with
+// neither credential supplied is a successful no-op. Changing email or password ends all existing JWT
+// sessions.
 //
 // PUT /users/me
 func (s *Server) handleUsersMeUpdateRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {

@@ -173,7 +173,7 @@ jobs:
           docker exec -e MYSQL_PWD=root "${{ job.services.mysql.id }}" \
             mysql -uroot -e "SET GLOBAL innodb_print_all_deadlocks = ON;"
       - name: 'Run integration tests with coverage'
-        run: task test-integration
+        run: task test:integration
         # environment variables read by integration tests
         env:
           CGO_ENABLED: 1 # needed for -race
@@ -185,6 +185,7 @@ jobs:
           DATABASE_MYSQL_MASTER_USER: root
           DATABASE_MYSQL_MASTER_PASSWORD: root
       - name: 'Upload coverage reports'
+        if: ${{ !cancelled() }}
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

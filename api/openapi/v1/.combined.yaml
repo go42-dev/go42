@@ -39,11 +39,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '409':
-          description: User already exists
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/UserConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
@@ -57,6 +53,8 @@ paths:
         - auth
       summary: Login an existing user
       operationId: login
+      description: >-
+        Unknown email, incorrect password, and inactive accounts receive the same generic 400 response.
       requestBody:
         required: true
         content:
@@ -72,12 +70,6 @@ paths:
                 $ref: '#/components/schemas/Tokens'
         '400':
           description: Invalid request
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '403':
-          description: User inactive
           content:
             application/problem+json:
               schema:
@@ -187,6 +179,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         default:
           $ref: '#/components/responses/UnexpectedResponse'
     put:
@@ -194,7 +188,7 @@ paths:
         - users
       summary: Update current user credentials
       description: >-
-        Requires the current password. Changing email or password ends all existing JWT sessions.
+        Requires the current password when a non-null email or password is supplied, including an unchanged email. Omitted or null email/password fields leave those credentials unchanged. A request with neither credential supplied is a successful no-op. Changing email or password ends all existing JWT sessions.
       operationId: users.me.update
       x-required-permissions:
         - users:update_self
@@ -222,6 +216,10 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/UserConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
@@ -279,6 +277,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         default:
           $ref: '#/components/responses/UnexpectedResponse'
     post:
@@ -316,6 +316,10 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/UserConflict'
         default:
           $ref: '#/components/responses/UnexpectedResponse'
   /users/{uuid}:
@@ -355,6 +359,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           description: User not found
           content:
@@ -401,12 +407,16 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           description: User not found
           content:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          $ref: '#/components/responses/UserConflict'
         default:
           $ref: '#/components/responses/UnexpectedResponse'
     delete:
@@ -441,6 +451,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           description: User not found
           content:
@@ -478,6 +490,19 @@ components:
       in: header
       name: X-Api-Key
   responses:
+    Forbidden:
+      description: Authenticated credentials lack the operation's required permission.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UserConflict:
+      description: >-
+        The normalized email is already used by another user. Rejected updates leave credentials and sessions unchanged.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Error'
     RateLimited:
       description: Too many authentication attempts
       content:
@@ -602,7 +627,8 @@ components:
       properties:
         token:
           type: string
-          default: ''
+          minLength: 1
+          description: Nonempty refresh token. Nonempty invalid tokens return 401.
     LogoutRequest:
       type: object
       required:
@@ -614,7 +640,8 @@ components:
           default: ''
         refresh_token:
           type: string
-          default: ''
+          minLength: 1
+          description: Nonempty refresh token. Nonempty invalid tokens return 401.
     CreateUserRequest:
       type: object
       required:
@@ -650,21 +677,45 @@ components:
           example: 12#$abCD%$
     UpdateSelfRequest:
       type: object
-      description: current_password is required when email or password is supplied.
+      description: >-
+        The correct current_password is required when email or password is non-null, even for an unchanged email. Omitted or null email/password fields are ignored. With neither credential supplied, the request succeeds without verifying current_password or changing credentials or sessions.
+      not:
+        allOf:
+          - anyOf:
+              - required:
+                  - email
+                properties:
+                  email:
+                    type: string
+              - required:
+                  - password
+                properties:
+                  password:
+                    type: string
+          - not:
+              required:
+                - current_password
+              properties:
+                current_password:
+                  type: string
+                  minLength: 8
+                  maxLength: 72
       properties:
         current_password:
           type: string
-          minLength: 8
-          maxLength: 72
-          description: Existing password, used exactly as supplied; at most 72 UTF-8 bytes.
+          nullable: true
+          description: >-
+            Existing password, used exactly as supplied. When changing credentials, at least 8 Unicode characters and at most 72 UTF-8 bytes. Ignored when neither email nor password is supplied with a non-null value.
           writeOnly: true
         email:
           type: string
+          nullable: true
           description: >-
             Trimmed, lowercased, then validated as an email address by the service.
           example: user@example.com
         password:
           type: string
+          nullable: true
           minLength: 8
           maxLength: 72
           description: >-

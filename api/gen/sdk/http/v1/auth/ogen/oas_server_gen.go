@@ -10,7 +10,7 @@ import (
 type Handler interface {
 	// Login implements login operation.
 	//
-	// Login an existing user.
+	// Unknown email, incorrect password, and inactive accounts receive the same generic 400 response.
 	//
 	// POST /auth/login
 	Login(ctx context.Context, req *LoginRequest) (LoginRes, error)
@@ -65,7 +65,10 @@ type Handler interface {
 	UsersMeRead(ctx context.Context) (UsersMeReadRes, error)
 	// UsersMeUpdate implements users.me.update operation.
 	//
-	// Requires the current password. Changing email or password ends all existing JWT sessions.
+	// Requires the current password when a non-null email or password is supplied, including an unchanged
+	// email. Omitted or null email/password fields leave those credentials unchanged. A request with
+	// neither credential supplied is a successful no-op. Changing email or password ends all existing JWT
+	// sessions.
 	//
 	// PUT /users/me
 	UsersMeUpdate(ctx context.Context, req *UpdateSelfRequest) (UsersMeUpdateRes, error)

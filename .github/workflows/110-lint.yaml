@@ -394,19 +394,13 @@ jobs:
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           version: '2026.9.1'
-          install_args: --locked node npm:@redocly/cli github:oasdiff/oasdiff
+          install_args: --locked task node npm:@redocly/cli github:oasdiff/oasdiff
       - name: 'Run redocly OpenAPI linter'
         run: redocly lint --config etc/redocly.yaml --format github-actions api/openapi/**/*.yaml
       - name: Reject breaking OpenAPI changes
-        run: |-
-          oasdiff_status=0
-          oasdiff breaking --fail-on ERR --allow-external-refs=false --format githubactions \
-            "$OPENAPI_BASE_REF:api/openapi/v1/.combined.yaml" api/openapi/v1/.combined.yaml || oasdiff_status=$?
-          # Exit 1 reports breaking changes; higher codes mean the comparison failed.
-          if [ "$oasdiff_status" -gt 1 ]; then
-            echo "::error::oasdiff could not compare the OpenAPI specifications. See the log above for details."
-          fi
-          exit "$oasdiff_status"
+        env:
+          OPENAPI_DIFF_FORMAT: githubactions
+        run: task lint:openapi-breaking
 
   # Linter for github actions.
   # @see https://github.com/rhysd/actionlint
@@ -572,7 +566,7 @@ jobs:
       - name: 'Prepare code generation environment'
         uses: ./.github/actions/prepare-env
         with:
-          setup-task: setup-generators
+          setup-task: setup:generators
       # -----
       - name: 'Generate code'
         run: task generate
@@ -583,7 +577,7 @@ jobs:
             echo "The following files have changes:"
             git status --porcelain
             echo ""
-            echo "Please run 'task setup-generators && task generate' locally and commit the changes."
+            echo "Please run 'task setup:generators && task generate' locally and commit the changes."
             exit 1
           else
             echo "No uncommitted changes detected"
@@ -645,4 +639,4 @@ jobs:
         shell: bash
         run: vale --config etc/vale.ini sync
       - name: 'Check documentation and build the website'
-        run: task docs-check
+        run: task docs:check

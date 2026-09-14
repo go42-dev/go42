@@ -1,0 +1,72 @@
+# Runtime contract checks; task test:contract supplies the target and fixture hooks.
+color = false
+seed = 42
+max-time = 180
+max-failures = 20
+workers = 1
+rate-limit = "10/s"
+request-timeout = 3.0
+request-retries = 0
+max-redirects = 0
+hooks = "hooks"
+
+[cache]
+enabled = false
+directory = ".build/contract-cache"
+
+[phases]
+enabled = false
+
+[phases.examples]
+enabled = true
+
+[phases.fuzzing]
+enabled = true
+
+[generation]
+mode = "all"
+max-examples = 20
+database = "none"
+with-security-parameters = false
+
+[checks]
+enabled = false
+
+[checks.not_a_server_error]
+enabled = true
+
+[checks.status_code_conformance]
+enabled = true
+
+[checks.content_type_conformance]
+enabled = true
+
+[checks.response_headers_conformance]
+enabled = true
+
+[checks.response_schema_conformance]
+enabled = true
+
+[checks.negative_data_rejection]
+enabled = true
+
+[checks.positive_data_acceptance]
+enabled = true
+
+[output.sanitization]
+enabled = true
+
+[reports]
+directory = ".build/contract"
+
+[reports.junit]
+enabled = true
+path = ".build/contract/junit.xml"
+
+[reports.har]
+enabled = true
+path = ".build/contract/requests.har"
+
+[reports.json]
+enabled = true
+path = ".build/contract/report.json"

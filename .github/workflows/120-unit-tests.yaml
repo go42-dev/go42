@@ -76,7 +76,7 @@ jobs:
       - name: 'Download Go modules'
         run: go mod download
       - name: 'Run unit tests with coverage and race detector'
-        run: task test-unit
+        run: task test:unit
         env:
           CGO_ENABLED: 1 # needed for -race
       - name: 'Upload coverage reports'

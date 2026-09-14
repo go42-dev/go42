@@ -425,6 +425,14 @@ specifiers = ["3.4.0"]
 [tools."pipx:pyflakes".options]
 uvx_args = "--python python"
 
+[[tools."pipx:schemathesis"]]
+version = "4.27.1"
+backend = "pipx:schemathesis"
+specifiers = ["4.27.1"]
+
+[tools."pipx:schemathesis".options]
+uvx_args = "--python python"
+
 [[tools."pipx:sqlfluff"]]
 version = "4.3.0"
 backend = "pipx:sqlfluff"

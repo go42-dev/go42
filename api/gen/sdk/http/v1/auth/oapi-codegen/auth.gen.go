@@ -71,12 +71,15 @@ type LoginRequest struct {
 // LogoutRequest defines model for LogoutRequest.
 type LogoutRequest struct {
 	// AccessToken Optional; logout uses the refresh token to identify the session.
-	AccessToken  *string `json:"access_token,omitempty"`
-	RefreshToken string  `json:"refresh_token"`
+	AccessToken *string `json:"access_token,omitempty"`
+
+	// RefreshToken Nonempty refresh token. Nonempty invalid tokens return 401.
+	RefreshToken string `json:"refresh_token"`
 }
 
 // RefreshRequest defines model for RefreshRequest.
 type RefreshRequest struct {
+	// Token Nonempty refresh token. Nonempty invalid tokens return 401.
 	Token string `json:"token"`
 }
 
@@ -100,9 +103,9 @@ type Tokens struct {
 	RefreshToken *string `json:"refresh_token,omitempty"`
 }
 
-// UpdateSelfRequest current_password is required when email or password is supplied.
+// UpdateSelfRequest The correct current_password is required when email or password is non-null, even for an unchanged email. Omitted or null email/password fields are ignored. With neither credential supplied, the request succeeds without verifying current_password or changing credentials or sessions.
 type UpdateSelfRequest struct {
-	// CurrentPassword Existing password, used exactly as supplied; at most 72 UTF-8 bytes.
+	// CurrentPassword Existing password, used exactly as supplied. When changing credentials, at least 8 Unicode characters and at most 72 UTF-8 bytes. Ignored when neither email nor password is supplied with a non-null value.
 	CurrentPassword *string `json:"current_password,omitempty"`
 
 	// Email Trimmed, lowercased, then validated as an email address by the service.
@@ -141,11 +144,17 @@ type User struct {
 // AuthenticationUnavailable defines model for AuthenticationUnavailable.
 type AuthenticationUnavailable = Error
 
+// Forbidden defines model for Forbidden.
+type Forbidden = Error
+
 // RateLimited defines model for RateLimited.
 type RateLimited = Error
 
 // UnexpectedResponse defines model for UnexpectedResponse.
 type UnexpectedResponse = Error
+
+// UserConflict defines model for UserConflict.
+type UserConflict = Error
 
 // UsersListParams defines parameters for UsersList.
 type UsersListParams struct {
@@ -253,12 +262,16 @@ type ClientInterface interface {
 
 	// LoginWithBody Login an existing user
 	//
+	// Unknown email, incorrect password, and inactive accounts receive the same generic 400 response.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /auth/login (the `Login` operationId).
 	LoginWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// Login Login an existing user
+	//
+	// Unknown email, incorrect password, and inactive accounts receive the same generic 400 response.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -341,7 +354,7 @@ type ClientInterface interface {
 
 	// UsersMeUpdateWithBody Update current user credentials
 	//
-	// Requires the current password. Changing email or password ends all existing JWT sessions.
+	// Requires the current password when a non-null email or password is supplied, including an unchanged email. Omitted or null email/password fields leave those credentials unchanged. A request with neither credential supplied is a successful no-op. Changing email or password ends all existing JWT sessions.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -350,7 +363,7 @@ type ClientInterface interface {
 
 	// UsersMeUpdate Update current user credentials
 	//
-	// Requires the current password. Changing email or password ends all existing JWT sessions.
+	// Requires the current password when a non-null email or password is supplied, including an unchanged email. Omitted or null email/password fields leave those credentials unchanged. A request with neither credential supplied is a successful no-op. Changing email or password ends all existing JWT sessions.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -384,6 +397,8 @@ type ClientInterface interface {
 
 // LoginWithBody Login an existing user
 //
+// Unknown email, incorrect password, and inactive accounts receive the same generic 400 response.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /auth/login (the `Login` operationId).
@@ -400,6 +415,8 @@ func (c *Client) LoginWithBody(ctx context.Context, contentType string, body io.
 }
 
 // Login Login an existing user
+//
+// Unknown email, incorrect password, and inactive accounts receive the same generic 400 response.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -592,7 +609,7 @@ func (c *Client) UsersMeRead(ctx context.Context, reqEditors ...RequestEditorFn)
 
 // UsersMeUpdateWithBody Update current user credentials
 //
-// Requires the current password. Changing email or password ends all existing JWT sessions.
+// Requires the current password when a non-null email or password is supplied, including an unchanged email. Omitted or null email/password fields leave those credentials unchanged. A request with neither credential supplied is a successful no-op. Changing email or password ends all existing JWT sessions.
 //
 // Takes any type of body and a specified content type.
 //
@@ -611,7 +628,7 @@ func (c *Client) UsersMeUpdateWithBody(ctx context.Context, contentType string, 
 
 // UsersMeUpdate Update current user credentials
 //
-// Requires the current password. Changing email or password ends all existing JWT sessions.
+// Requires the current password when a non-null email or password is supplied, including an unchanged email. Omitted or null email/password fields leave those credentials unchanged. A request with neither credential supplied is a successful no-op. Changing email or password ends all existing JWT sessions.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -1186,12 +1203,16 @@ type ClientWithResponsesInterface interface {
 
 	// LoginWithBodyWithResponse Login an existing user
 	//
+	// Unknown email, incorrect password, and inactive accounts receive the same generic 400 response.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /auth/login (the `Login` operationId).
 	LoginWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LoginResponse, error)
 
 	// LoginWithResponse Login an existing user
+	//
+	// Unknown email, incorrect password, and inactive accounts receive the same generic 400 response.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1278,7 +1299,7 @@ type ClientWithResponsesInterface interface {
 
 	// UsersMeUpdateWithBodyWithResponse Update current user credentials
 	//
-	// Requires the current password. Changing email or password ends all existing JWT sessions.
+	// Requires the current password when a non-null email or password is supplied, including an unchanged email. Omitted or null email/password fields leave those credentials unchanged. A request with neither credential supplied is a successful no-op. Changing email or password ends all existing JWT sessions.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1287,7 +1308,7 @@ type ClientWithResponsesInterface interface {
 
 	// UsersMeUpdateWithResponse Update current user credentials
 	//
-	// Requires the current password. Changing email or password ends all existing JWT sessions.
+	// Requires the current password when a non-null email or password is supplied, including an unchanged email. Omitted or null email/password fields leave those credentials unchanged. A request with neither credential supplied is a successful no-op. Changing email or password ends all existing JWT sessions.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1330,8 +1351,6 @@ type LoginResponse struct {
 	JSON200 *Tokens
 	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
 	ApplicationproblemJSON400 *Error
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Error
 	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
 	ApplicationproblemJSON429 *RateLimited
 	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
@@ -1348,11 +1367,6 @@ func (r LoginResponse) GetJSON200() *Tokens {
 // GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
 func (r LoginResponse) GetApplicationproblemJSON400() *Error {
 	return r.ApplicationproblemJSON400
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r LoginResponse) GetApplicationproblemJSON403() *Error {
-	return r.ApplicationproblemJSON403
 }
 
 // GetApplicationproblemJSON429 returns the response for an HTTP 429 `application/problem+json` response
@@ -1545,7 +1559,7 @@ type SignupResponse struct {
 	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
 	ApplicationproblemJSON400 *Error
 	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
-	ApplicationproblemJSON409 *Error
+	ApplicationproblemJSON409 *UserConflict
 	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
 	ApplicationproblemJSON429 *RateLimited
 	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
@@ -1565,7 +1579,7 @@ func (r SignupResponse) GetApplicationproblemJSON400() *Error {
 }
 
 // GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
-func (r SignupResponse) GetApplicationproblemJSON409() *Error {
+func (r SignupResponse) GetApplicationproblemJSON409() *UserConflict {
 	return r.ApplicationproblemJSON409
 }
 
@@ -1622,6 +1636,8 @@ type UsersListResponse struct {
 	ApplicationproblemJSON400 *Error
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *UnexpectedResponse
 }
@@ -1639,6 +1655,11 @@ func (r UsersListResponse) GetApplicationproblemJSON400() *Error {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r UsersListResponse) GetApplicationproblemJSON401() *Error {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UsersListResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
 }
 
 // GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
@@ -1684,6 +1705,10 @@ type UsersCreateResponse struct {
 	ApplicationproblemJSON400 *Error
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *UserConflict
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *UnexpectedResponse
 }
@@ -1701,6 +1726,16 @@ func (r UsersCreateResponse) GetApplicationproblemJSON400() *Error {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r UsersCreateResponse) GetApplicationproblemJSON401() *Error {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UsersCreateResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r UsersCreateResponse) GetApplicationproblemJSON409() *UserConflict {
+	return r.ApplicationproblemJSON409
 }
 
 // GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
@@ -1744,6 +1779,8 @@ type UsersMeReadResponse struct {
 	JSON200 *User
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *UnexpectedResponse
 }
@@ -1756,6 +1793,11 @@ func (r UsersMeReadResponse) GetJSON200() *User {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r UsersMeReadResponse) GetApplicationproblemJSON401() *Error {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UsersMeReadResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
 }
 
 // GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
@@ -1799,6 +1841,10 @@ type UsersMeUpdateResponse struct {
 	ApplicationproblemJSON400 *Error
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *UserConflict
 	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
 	ApplicationproblemJSON429 *RateLimited
 	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
@@ -1815,6 +1861,16 @@ func (r UsersMeUpdateResponse) GetApplicationproblemJSON400() *Error {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r UsersMeUpdateResponse) GetApplicationproblemJSON401() *Error {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UsersMeUpdateResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r UsersMeUpdateResponse) GetApplicationproblemJSON409() *UserConflict {
+	return r.ApplicationproblemJSON409
 }
 
 // GetApplicationproblemJSON429 returns the response for an HTTP 429 `application/problem+json` response
@@ -1868,6 +1924,8 @@ type UsersDeleteResponse struct {
 	ApplicationproblemJSON400 *Error
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *Error
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
@@ -1882,6 +1940,11 @@ func (r UsersDeleteResponse) GetApplicationproblemJSON400() *Error {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r UsersDeleteResponse) GetApplicationproblemJSON401() *Error {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UsersDeleteResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
 }
 
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
@@ -1932,6 +1995,8 @@ type UsersGetResponse struct {
 	ApplicationproblemJSON400 *Error
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *Error
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
@@ -1951,6 +2016,11 @@ func (r UsersGetResponse) GetApplicationproblemJSON400() *Error {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r UsersGetResponse) GetApplicationproblemJSON401() *Error {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UsersGetResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
 }
 
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
@@ -1999,8 +2069,12 @@ type UsersUpdateResponse struct {
 	ApplicationproblemJSON400 *Error
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *UserConflict
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *UnexpectedResponse
 }
@@ -2015,9 +2089,19 @@ func (r UsersUpdateResponse) GetApplicationproblemJSON401() *Error {
 	return r.ApplicationproblemJSON401
 }
 
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UsersUpdateResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r UsersUpdateResponse) GetApplicationproblemJSON404() *Error {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r UsersUpdateResponse) GetApplicationproblemJSON409() *UserConflict {
+	return r.ApplicationproblemJSON409
 }
 
 // GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
@@ -2056,6 +2140,8 @@ func (r UsersUpdateResponse) ContentType() string {
 
 // LoginWithBodyWithResponse Login an existing user
 //
+// Unknown email, incorrect password, and inactive accounts receive the same generic 400 response.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /auth/login (the `Login` operationId).
@@ -2068,6 +2154,8 @@ func (c *ClientWithResponses) LoginWithBodyWithResponse(ctx context.Context, con
 }
 
 // LoginWithResponse Login an existing user
+//
+// Unknown email, incorrect password, and inactive accounts receive the same generic 400 response.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -2220,7 +2308,7 @@ func (c *ClientWithResponses) UsersMeReadWithResponse(ctx context.Context, reqEd
 
 // UsersMeUpdateWithBodyWithResponse Update current user credentials
 //
-// Requires the current password. Changing email or password ends all existing JWT sessions.
+// Requires the current password when a non-null email or password is supplied, including an unchanged email. Omitted or null email/password fields leave those credentials unchanged. A request with neither credential supplied is a successful no-op. Changing email or password ends all existing JWT sessions.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -2235,7 +2323,7 @@ func (c *ClientWithResponses) UsersMeUpdateWithBodyWithResponse(ctx context.Cont
 
 // UsersMeUpdateWithResponse Update current user credentials
 //
-// Requires the current password. Changing email or password ends all existing JWT sessions.
+// Requires the current password when a non-null email or password is supplied, including an unchanged email. Omitted or null email/password fields leave those credentials unchanged. A request with neither credential supplied is a successful no-op. Changing email or password ends all existing JWT sessions.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -2327,13 +2415,6 @@ func ParseLoginResponse(rsp *http.Response) (*LoginResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
 		var dest RateLimited
@@ -2501,7 +2582,7 @@ func ParseSignupResponse(rsp *http.Response) (*SignupResponse, error) {
 		response.ApplicationproblemJSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Error
+		var dest UserConflict
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -2568,6 +2649,13 @@ func ParseUsersListResponse(rsp *http.Response) (*UsersListResponse, error) {
 		}
 		response.ApplicationproblemJSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -2615,6 +2703,20 @@ func ParseUsersCreateResponse(rsp *http.Response) (*UsersCreateResponse, error) 
 		}
 		response.ApplicationproblemJSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest UserConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -2654,6 +2756,13 @@ func ParseUsersMeReadResponse(rsp *http.Response) (*UsersMeReadResponse, error) 
 			return nil, err
 		}
 		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
@@ -2697,6 +2806,20 @@ func ParseUsersMeUpdateResponse(rsp *http.Response) (*UsersMeUpdateResponse, err
 			return nil, err
 		}
 		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest UserConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
 		var dest RateLimited
@@ -2755,6 +2878,13 @@ func ParseUsersDeleteResponse(rsp *http.Response) (*UsersDeleteResponse, error) 
 		}
 		response.ApplicationproblemJSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -2809,6 +2939,13 @@ func ParseUsersGetResponse(rsp *http.Response) (*UsersGetResponse, error) {
 		}
 		response.ApplicationproblemJSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -2859,12 +2996,26 @@ func ParseUsersUpdateResponse(rsp *http.Response) (*UsersUpdateResponse, error) 
 		}
 		response.ApplicationproblemJSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest UserConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedResponse
@@ -2883,41 +3034,48 @@ func ParseUsersUpdateResponse(rsp *http.Response) (*UsersUpdateResponse, error) 
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"G15OjaP+Ue+o15W16p7ti/lo/r8BAA==",
+	"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",
+	"65x12rwQ7fExm13O/j8A",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

@@ -12,6 +12,7 @@
 __debug*
 coverage.out
 dep-graph.svg
+__pycache__/
 
 # go42x generated files
 .go42x/kwb/

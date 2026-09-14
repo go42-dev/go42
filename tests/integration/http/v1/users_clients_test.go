@@ -111,6 +111,7 @@ type oapiResponse interface {
 	GetBody() []byte
 	GetApplicationproblemJSON400() *oapi.Error
 	GetApplicationproblemJSON401() *oapi.Error
+	GetApplicationproblemJSON403() *oapi.Forbidden
 	GetApplicationproblemJSONDefault() *oapi.Error
 }
 
@@ -125,6 +126,12 @@ func decodeOAPI(response oapiResponse, err error) usersResult {
 			problem = response.GetApplicationproblemJSON400()
 		case http.StatusUnauthorized:
 			problem = response.GetApplicationproblemJSON401()
+		case http.StatusForbidden:
+			problem = response.GetApplicationproblemJSON403()
+		case http.StatusConflict:
+			conflict, ok := response.(interface{ GetApplicationproblemJSON409() *oapi.UserConflict })
+			Expect(ok).To(BeTrue(), "unexpected 409: %s", response.GetBody())
+			problem = conflict.GetApplicationproblemJSON409()
 		case http.StatusNotFound:
 			notFound, ok := response.(interface{ GetApplicationproblemJSON404() *oapi.Error })
 			Expect(ok).To(BeTrue(), "unexpected 404: %s", response.GetBody())
@@ -248,6 +255,20 @@ func decodeOgen(response any, err error, successStatus int) usersResult {
 		result.status, problem = http.StatusUnauthorized, (*ogen.Error)(response)
 	case *ogen.UsersDeleteUnauthorized:
 		result.status, problem = http.StatusUnauthorized, (*ogen.Error)(response)
+	case *ogen.UsersListForbidden:
+		result.status, problem = http.StatusForbidden, (*ogen.Error)(response)
+	case *ogen.UsersCreateForbidden:
+		result.status, problem = http.StatusForbidden, (*ogen.Error)(response)
+	case *ogen.UsersGetForbidden:
+		result.status, problem = http.StatusForbidden, (*ogen.Error)(response)
+	case *ogen.UsersUpdateForbidden:
+		result.status, problem = http.StatusForbidden, (*ogen.Error)(response)
+	case *ogen.UsersDeleteForbidden:
+		result.status, problem = http.StatusForbidden, (*ogen.Error)(response)
+	case *ogen.UsersCreateConflict:
+		result.status, problem = http.StatusConflict, (*ogen.Error)(response)
+	case *ogen.UsersUpdateConflict:
+		result.status, problem = http.StatusConflict, (*ogen.Error)(response)
 	default:
 		Fail(fmt.Sprintf("unexpected ogen response: %T (%+v)", response, response))
 	}

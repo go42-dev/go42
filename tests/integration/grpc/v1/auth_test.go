@@ -84,6 +84,25 @@ var _ = Describe("Auth gRPC Integration Tests", func() {
 		})
 
 		Describe("GetUserByUUID", func() {
+			It("should retrieve an existing user", func() {
+				email := fmt.Sprintf("read-%s@example.com", integration.GenerateRandomString("user"))
+				created, err := client.CreateUser(ctx, &pb.CreateUserRequest{
+					Email: email, Password: "TestPass123!",
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(created.User).NotTo(BeNil())
+				defer func() {
+					_, cleanupErr := client.DeleteUser(ctx, &pb.DeleteUserRequest{Uuid: created.User.Uuid})
+					Expect(cleanupErr).NotTo(HaveOccurred())
+				}()
+
+				response, err := client.GetUserByUUID(ctx, &pb.GetUserByUUIDRequest{Uuid: created.User.Uuid})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(response.User).NotTo(BeNil())
+				Expect(response.User.Uuid).To(Equal(created.User.Uuid))
+				Expect(response.User.Email).To(Equal(email))
+			})
+
 			It("should return InvalidArgument for invalid UUID", func() {
 				req := &pb.GetUserByUUIDRequest{
 					Uuid: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
@@ -120,7 +139,8 @@ var _ = Describe("Auth gRPC Integration Tests", func() {
 					req := &pb.DeleteUserRequest{
 						Uuid: createdUserUUID,
 					}
-					client.DeleteUser(ctx, req)
+					_, err := client.DeleteUser(ctx, req)
+					Expect(err).NotTo(HaveOccurred())
 					createdUserUUID = ""
 				}
 			})
@@ -181,9 +201,10 @@ var _ = Describe("Auth gRPC Integration Tests", func() {
 				}
 
 				resp, err := client.CreateUser(ctx, req)
-				if err == nil && resp != nil && resp.User != nil {
-					createdUserUUID = resp.User.Uuid
-				}
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp).NotTo(BeNil())
+				Expect(resp.User).NotTo(BeNil())
+				createdUserUUID = resp.User.Uuid
 			})
 
 			AfterEach(func() {
@@ -192,15 +213,12 @@ var _ = Describe("Auth gRPC Integration Tests", func() {
 					req := &pb.DeleteUserRequest{
 						Uuid: createdUserUUID,
 					}
-					client.DeleteUser(ctx, req)
+					_, err := client.DeleteUser(ctx, req)
+					Expect(err).NotTo(HaveOccurred())
 				}
 			})
 
 			It("should update user email", func() {
-				if createdUserUUID == "" {
-					Skip("Could not create test user")
-				}
-
 				newEmail := fmt.Sprintf("updated-%s@example.com", integration.GenerateRandomString("user"))
 				req := &pb.UpdateUserRequest{
 					Uuid:  createdUserUUID,
@@ -228,10 +246,6 @@ var _ = Describe("Auth gRPC Integration Tests", func() {
 			})
 
 			It("should validate email format when provided", func() {
-				if createdUserUUID == "" {
-					Skip("Could not create test user")
-				}
-
 				invalidEmail := "invalid-email"
 				req := &pb.UpdateUserRequest{
 					Uuid:  createdUserUUID,
@@ -257,9 +271,9 @@ var _ = Describe("Auth gRPC Integration Tests", func() {
 				}
 
 				createResp, err := client.CreateUser(ctx, createReq)
-				if err != nil {
-					Skip("Could not create test user")
-				}
+				Expect(err).NotTo(HaveOccurred())
+				Expect(createResp).NotTo(BeNil())
+				Expect(createResp.User).NotTo(BeNil())
 
 				// Delete the user
 				deleteReq := &pb.DeleteUserRequest{

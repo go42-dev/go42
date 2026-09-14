@@ -26,6 +26,9 @@ does not load `.env` files itself.
 Follow [environment setup](development.md#environment-setup) to create your local `.env`. Change that file for local
 overrides. Supply deployed values through the deployment environment; the runtime image's example file is only a reference.
 
+Keep `.env` for application configuration. Supply test-client addresses and API keys through the test process environment
+or CI job settings; see the [test environment](testing.md#integration-test-environment).
+
 Local tasks set `DATABASE_MIGRATE_PATH`, `SERVER_HTTP_STATIC_ROOT`, and `SERVER_HTTP_SWAGGER_ROOT` after loading `.env`.
 The [runtime image](../../Dockerfile) instead installs these resources at the model's default paths: `/migrate`,
 `/usr/share/www`, and `/usr/share/www/api`. A directly launched binary needs paths valid for its own filesystem.
@@ -152,4 +155,4 @@ Change field names, types, defaults, and validation in the configuration model. 
 example through the [configuration generator](../../cmd/cfg2env/main.go); follow the
 [generation workflow](development.md#generated-files-and-dependencies) for prerequisites and other generated output.
 Update this guide and deployment values when their behavior changes. Verify invalid values and the affected startup path
-with the relevant application tests, then run `task docs-check` for documentation changes.
+with the relevant application tests, then run `task docs:check` for documentation changes.

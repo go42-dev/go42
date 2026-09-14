@@ -162,7 +162,7 @@ jobs:
           install_args: --locked task k6
       - name: 'Run K6 load tests'
         shell: bash
-        run: task --exit-code test-load
+        run: task --exit-code test:load
         env:
           K6_TEST_PATH: ${{ matrix.test_path }}
           K6_SUMMARY_PATH: k6-summary-${{ matrix.protocol }}-${{ matrix.database }}-v1.json

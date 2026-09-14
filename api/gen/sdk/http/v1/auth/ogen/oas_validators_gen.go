@@ -77,6 +77,76 @@ func (s *LoginRequest) Validate() error {
 	return nil
 }
 
+func (s *LogoutRequest) Validate() error {
+	if s == nil {
+		return validate.ErrNilPointer
+	}
+
+	var failures []validate.FieldError
+	if err := func() error {
+		if err := (validate.String{
+			MinLength:     1,
+			MinLengthSet:  true,
+			MaxLength:     0,
+			MaxLengthSet:  false,
+			Email:         false,
+			Hostname:      false,
+			Regex:         nil,
+			MinNumeric:    0,
+			MinNumericSet: false,
+			MaxNumeric:    0,
+			MaxNumericSet: false,
+		}).Validate(string(s.RefreshToken)); err != nil {
+			return errors.Wrap(err, "string")
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "refresh_token",
+			Error: err,
+		})
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+	return nil
+}
+
+func (s *RefreshRequest) Validate() error {
+	if s == nil {
+		return validate.ErrNilPointer
+	}
+
+	var failures []validate.FieldError
+	if err := func() error {
+		if err := (validate.String{
+			MinLength:     1,
+			MinLengthSet:  true,
+			MaxLength:     0,
+			MaxLengthSet:  false,
+			Email:         false,
+			Hostname:      false,
+			Regex:         nil,
+			MinNumeric:    0,
+			MinNumericSet: false,
+			MaxNumeric:    0,
+			MaxNumericSet: false,
+		}).Validate(string(s.Token)); err != nil {
+			return errors.Wrap(err, "string")
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "token",
+			Error: err,
+		})
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+	return nil
+}
+
 func (s *SignUpRequest) Validate() error {
 	if s == nil {
 		return validate.ErrNilPointer
@@ -118,36 +188,6 @@ func (s *UpdateSelfRequest) Validate() error {
 	}
 
 	var failures []validate.FieldError
-	if err := func() error {
-		if value, ok := s.CurrentPassword.Get(); ok {
-			if err := func() error {
-				if err := (validate.String{
-					MinLength:     8,
-					MinLengthSet:  true,
-					MaxLength:     72,
-					MaxLengthSet:  true,
-					Email:         false,
-					Hostname:      false,
-					Regex:         nil,
-					MinNumeric:    0,
-					MinNumericSet: false,
-					MaxNumeric:    0,
-					MaxNumericSet: false,
-				}).Validate(string(value)); err != nil {
-					return errors.Wrap(err, "string")
-				}
-				return nil
-			}(); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "current_password",
-			Error: err,
-		})
-	}
 	if err := func() error {
 		if value, ok := s.Password.Get(); ok {
 			if err := func() error {

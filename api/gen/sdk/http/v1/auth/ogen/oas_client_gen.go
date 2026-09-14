@@ -31,7 +31,7 @@ func trimTrailingSlashes(u *url.URL) {
 type Invoker interface {
 	// Login invokes login operation.
 	//
-	// Login an existing user.
+	// Unknown email, incorrect password, and inactive accounts receive the same generic 400 response.
 	//
 	// POST /auth/login
 	Login(ctx context.Context, request *LoginRequest) (LoginRes, error)
@@ -86,7 +86,10 @@ type Invoker interface {
 	UsersMeRead(ctx context.Context) (UsersMeReadRes, error)
 	// UsersMeUpdate invokes users.me.update operation.
 	//
-	// Requires the current password. Changing email or password ends all existing JWT sessions.
+	// Requires the current password when a non-null email or password is supplied, including an unchanged
+	// email. Omitted or null email/password fields leave those credentials unchanged. A request with
+	// neither credential supplied is a successful no-op. Changing email or password ends all existing JWT
+	// sessions.
 	//
 	// PUT /users/me
 	UsersMeUpdate(ctx context.Context, request *UpdateSelfRequest) (UsersMeUpdateRes, error)
@@ -141,7 +144,7 @@ func (c *Client) requestURL(ctx context.Context) *url.URL {
 
 // Login invokes login operation.
 //
-// Login an existing user.
+// Unknown email, incorrect password, and inactive accounts receive the same generic 400 response.
 //
 // POST /auth/login
 func (c *Client) Login(ctx context.Context, request *LoginRequest) (LoginRes, error) {
@@ -243,6 +246,15 @@ func (c *Client) Logout(ctx context.Context, request *LogoutRequest) (LogoutRes,
 }
 
 func (c *Client) sendLogout(ctx context.Context, request *LogoutRequest) (res LogoutRes, err error) {
+	// Validate request before sending.
+	if err := func() error {
+		if err := request.Validate(); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return res, errors.Wrap(err, "validate")
+	}
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("logout"),
 		semconv.HTTPRequestMethodKey.String("POST"),
@@ -326,6 +338,15 @@ func (c *Client) Refresh(ctx context.Context, request *RefreshRequest) (RefreshR
 }
 
 func (c *Client) sendRefresh(ctx context.Context, request *RefreshRequest) (res RefreshRes, err error) {
+	// Validate request before sending.
+	if err := func() error {
+		if err := request.Validate(); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return res, errors.Wrap(err, "validate")
+	}
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("refresh"),
 		semconv.HTTPRequestMethodKey.String("POST"),
@@ -1203,7 +1224,10 @@ func (c *Client) sendUsersMeRead(ctx context.Context) (res UsersMeReadRes, err e
 
 // UsersMeUpdate invokes users.me.update operation.
 //
-// Requires the current password. Changing email or password ends all existing JWT sessions.
+// Requires the current password when a non-null email or password is supplied, including an unchanged
+// email. Omitted or null email/password fields leave those credentials unchanged. A request with
+// neither credential supplied is a successful no-op. Changing email or password ends all existing JWT
+// sessions.
 //
 // PUT /users/me
 func (c *Client) UsersMeUpdate(ctx context.Context, request *UpdateSelfRequest) (UsersMeUpdateRes, error) {

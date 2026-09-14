@@ -138,6 +138,36 @@ func TestCredentials_TransportsRejectInvalidInputWithoutChangingCredentials(t *t
 	}
 }
 
+func TestCredentials_HTTPLoginFailuresAreIndistinguishable(t *testing.T) {
+	h := newSessionHarness(t)
+	e := newTestEcho()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+	for _, state := range []string{domain.UserStatusActive, domain.UserStatusInactive} {
+		require.NoError(t, h.db.Master().Model(h.user).Update("status", state).Error)
+		for _, test := range []struct {
+			name, email, password string
+		}{
+			{"unknown email", "unknown-" + h.user.Email, testPassword},
+			{"wrong password", h.user.Email, testPassword + "!wrong"},
+			{"correct password", h.user.Email, testPassword},
+		} {
+			if state == domain.UserStatusActive && test.name == "correct password" {
+				continue // Successful login is covered separately.
+			}
+			t.Run(state+"/"+test.name, func(t *testing.T) {
+				response := credentialHTTPRequest(t, e, http.MethodPost, "/api/v1/auth/login", "",
+					map[string]string{"email": test.email, "password": test.password}, http.StatusBadRequest)
+				assert.Equal(t, "application/problem+json", response.Header().Get("Content-Type"))
+				assert.JSONEq(t, `{"type":"/api/v1/auth/login","title":"Bad Request","status":400}`,
+					response.Body.String())
+			})
+		}
+	}
+	var sessions int64
+	require.NoError(t, h.db.Master().Model(&models.Session{}).Where("user_id = ?", h.user.ID).Count(&sessions).Error)
+	assert.Zero(t, sessions, "rejected logins must not create sessions")
+}
+
 func TestCredentials_AllCreationPathsCanLoginOverHTTP(t *testing.T) {
 	h := newSessionHarness(t, auth.WithMinPasswordEntropyBits(0))
 	if err := h.repo.AssignRoleToUser(t.Context(), h.user.ID, "admin"); err != nil {

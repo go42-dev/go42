@@ -35,6 +35,7 @@ oapi-codegen = "2.8.0"
 "npm:@commitlint/config-conventional" = "19.1.0"
 "npm:@redocly/cli" = "2.51.2"
 "pipx:pyflakes" = { version = "3.4.0", uvx_args = "--python python" }
+"pipx:schemathesis" = { version = "4.27.1", uvx_args = "--python python" }
 "pipx:sqlfluff" = { version = "4.3.0", uvx_args = "--python python" }
 "github:oasdiff/oasdiff" = "1.31.0"
 "go:github.com/caarlos0/jsonfmt" = "0.5.2"

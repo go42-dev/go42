@@ -1,0 +1,130 @@
+---
+
+name: contract-tests
+
+# Runtime HTTP contract checks against an isolated application and database per job.
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        required: true
+        type: string
+      continue_on_error:
+        required: true
+        type: boolean
+      image_reference:
+        required: true
+        type: string
+      source_sha:
+        required: false
+        type: string
+        default: ""
+      timeout_minutes:
+        required: false
+        type: number
+        default: 15
+
+permissions: {}
+
+jobs:
+  contract-tests:
+    name: contract-tests-${{ matrix.database }}
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+      packages: read
+    env:
+      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
+      MISE_DATA_DIR: ${{ github.workspace }}/.tools
+      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
+      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
+    strategy:
+      fail-fast: false
+      matrix:
+        database:
+          - sqlite
+          - mysql
+          - pgsql
+    services:
+      mysql:
+        image: >-
+          ${{ matrix.database == 'mysql' && 'mysql:26.7.0@sha256:66aec17cd21a956029b83f083b813073859e8355dc1a00e55df6ba02f0e32345'
+          || '' }}
+        env:
+          MYSQL_USER: user
+          MYSQL_PASSWORD: qwerty
+          MYSQL_DATABASE: go42
+          MYSQL_ROOT_PASSWORD: root
+        options: >-
+          --health-cmd "mysql -h localhost -u user -pqwerty -D go42 -e 'SELECT 1' || exit 1" --health-start-period 30s --health-interval
+          10s --health-timeout 5s --health-retries 10
+      pgsql:
+        image: >-
+          ${{ matrix.database == 'pgsql' && 'postgres:18.6@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280'
+          || '' }}
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: qwerty
+          POSTGRES_DB: go42
+        options: >-
+          --health-cmd "PGPASSWORD=qwerty psql -h localhost -U user -d go42 -c 'SELECT 1' || exit 1" --health-start-period
+          10s --health-interval 5s --health-timeout 5s --health-retries 5
+      app:
+        image: ${{ inputs.image_reference }}
+        ports:
+          - 8080/tcp # GitHub assigns the host port independently for each job.
+        env:
+          LOG_LEVEL: warn
+          ENVIRONMENT: ci-contract-tests
+          AUTH_RATE_LIMITER_ENABLED: false
+          SERVER_HTTP_LISTEN: :8080
+          SERVER_GRPC_AUTHORIZATION_ENABLED: true
+          DATABASE_ENGINE: ${{ matrix.database }}
+          DATABASE_MYSQL_MASTER_HOST: mysql
+          DATABASE_MYSQL_SLAVE_HOST: mysql
+          DATABASE_PGSQL_MASTER_HOST: pgsql
+          DATABASE_PGSQL_SLAVE_HOST: pgsql
+          CACHE_ENGINE: local
+          EVENTS_ENGINE: gochan
+        options: >-
+          --health-cmd "curl -f http://localhost:8080/health || exit 1" --health-start-period 1s --health-interval 5s --health-timeout
+          5s --health-retries 10
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.source_sha || github.sha }}
+      - name: 'Validate checked-out source'
+        if: inputs.source_sha != ''
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ || "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]]; then
+            echo "Checkout did not resolve to the expected source commit" >&2
+            exit 1
+          fi
+      - name: 'Install pinned Task and contract tools'
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: '2026.9.1'
+          install_args: --locked task python uv pipx:pyflakes pipx:schemathesis
+      - name: 'Check HTTP API contracts'
+        id: contract
+        run: task test:contract
+        env:
+          HTTP_SERVER_ADDRESS: http://localhost:${{ job.services.app.ports['8080'] }}
+          HTTP_API_KEY: api_kXqdf2uQ7hmOARp-pZrhA6_IsZSeKCmSEM4YFKBGIzA # Public bootstrap key; gitleaks:allow
+      - name: 'Upload contract reports'
+        if: ${{ !cancelled() && steps.contract.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: contract-${{ matrix.database }}
+          path: .build/contract/
+          include-hidden-files: true
+          if-no-files-found: error
+

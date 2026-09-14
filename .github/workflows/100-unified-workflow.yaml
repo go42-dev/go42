@@ -183,7 +183,7 @@ jobs:
       image_reference: ${{ needs.security-extra-group.outputs.image_reference }}
       timeout_minutes: 15
 
-  # stage 6: integration, load & resilience tests
+  # stage 6: integration, contract & load tests
 
   # dummy job to create distinct group in GitHub UI
   functional-tests-group:
@@ -196,7 +196,7 @@ jobs:
       - docker-prepare-tag
       - docker-build
     steps:
-      - name: Create integration, load and resilience tests group
+      - name: Create integration, contract and load tests group
         run: echo "Grouping job for tests"
 
   integration-tests:
@@ -211,6 +211,19 @@ jobs:
       continue_on_error: false
       image_reference: ${{ needs.functional-tests-group.outputs.image_reference }}
       timeout_minutes: 10
+
+  contract-tests:
+    uses: ./.github/workflows/150-contract-tests.yaml
+    permissions:
+      contents: read
+      packages: read
+    needs:
+      - functional-tests-group
+    with:
+      runs_on: ubuntu-latest
+      continue_on_error: false
+      image_reference: ${{ needs.functional-tests-group.outputs.image_reference }}
+      timeout_minutes: 15
 
   load-tests:
     uses: ./.github/workflows/150-load-tests.yaml
@@ -266,6 +279,7 @@ jobs:
       - docker-prepare-tag
       - security-extra
       - integration-tests
+      - contract-tests
       - load-tests
     with:
       runs_on: ubuntu-latest
@@ -284,6 +298,7 @@ jobs:
       - gate-start
       - security
       - integration-tests
+      - contract-tests
       - resilience-tests
       - fuzz-tests
       - cleanup
@@ -294,12 +309,14 @@ jobs:
           GATE_START_RESULT: ${{ needs.gate-start.result }}
           SECURITY_RESULT: ${{ needs.security.result }}
           INTEGRATION_RESULT: ${{ needs.integration-tests.result }}
+          CONTRACT_RESULT: ${{ needs.contract-tests.result }}
           RESILIENCE_RESULT: ${{ needs.resilience-tests.result }}
           FUZZ_RESULT: ${{ needs.fuzz-tests.result }}
         run: |-
           echo "gate-start: $GATE_START_RESULT"
           echo "security: $SECURITY_RESULT"
           echo "integration-tests: $INTEGRATION_RESULT"
+          echo "contract-tests: $CONTRACT_RESULT"
           echo "resilience-tests: $RESILIENCE_RESULT"
           echo "fuzz-tests: $FUZZ_RESULT"
 
@@ -310,6 +327,7 @@ jobs:
 
           if [ "$SECURITY_RESULT" != "success" ] || \
             [ "$INTEGRATION_RESULT" != "success" ] || \
+            [ "$CONTRACT_RESULT" != "success" ] || \
             [ "$RESILIENCE_RESULT" != "success" ] || \
             [ "$FUZZ_RESULT" != "success" ]; then
             echo "::error::One or more blocking CI branches did not succeed."

@@ -8,18 +8,6 @@ func (s *LogoutRequest) setDefaults() {
 		val := string("")
 		s.AccessToken.SetTo(val)
 	}
-	{
-		val := string("")
-		s.RefreshToken = val
-	}
-}
-
-// setDefaults set default value of fields.
-func (s *RefreshRequest) setDefaults() {
-	{
-		val := string("")
-		s.Token = val
-	}
 }
 
 // setDefaults set default value of fields.

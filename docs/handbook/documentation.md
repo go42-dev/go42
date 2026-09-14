@@ -125,10 +125,10 @@ removing, reordering, or changing a page's purpose.
 Install the pinned tools through [environment setup](development.md#environment-setup), then run:
 
 ```sh
-task docs-check
+task docs:check
 ```
 
-Preview with `task docs-serve`. Checks cover Markdown, prose, metadata, index coverage and order, links, rendered anchors,
+Preview with `task docs:serve`. Checks cover Markdown, prose, metadata, index coverage and order, links, rendered anchors,
 documentation tooling tests, and type checks. Review accuracy and completeness separately; run the application checks
 needed to substantiate changed instructions. A passing documentation build does not prove runtime behavior.
 
