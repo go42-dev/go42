@@ -44,6 +44,9 @@ import (
 	"github.com/go42-dev/go42/internal/cache/local"
 	"github.com/go42-dev/go42/internal/cache/memcached"
 	"github.com/go42-dev/go42/internal/cache/redis"
+	"github.com/go42-dev/go42/internal/chat"
+	chatHttpAdapterV1 "github.com/go42-dev/go42/internal/chat/adapters/http/v1"
+	chatRepositoryPkg "github.com/go42-dev/go42/internal/chat/repository"
 	"github.com/go42-dev/go42/internal/config"
 	"github.com/go42-dev/go42/internal/database"
 	"github.com/go42-dev/go42/internal/database/mysql"
@@ -470,6 +473,7 @@ func main() {
 	var (
 		outboxService *outbox.Service
 		authService   *auth.Service
+		chatService   *chat.Service
 	)
 	{
 		// outbox domain
@@ -531,6 +535,9 @@ func main() {
 			auth.WithRefreshSessionRequests(cfg.Auth.RateLimiter.RefreshSessionRequests),
 			auth.WithRefreshWindow(cfg.Auth.RateLimiter.RefreshWindow),
 		)
+
+		chatRepository := chatRepositoryPkg.New(database.NewBaseRepository(dbEngine))
+		chatService = chat.NewService(chatRepository)
 
 		authTokenLastUsedUpdater := authWorkers.NewTokenLastUsedUpdater(
 			authRepository,
@@ -628,6 +635,8 @@ func main() {
 
 	authHttpAdapter := authHttpAdapterV1.New(authService)
 	httpServer.RegisterV1(authHttpAdapter)
+	chatHttpAdapter := chatHttpAdapterV1.New(chatService, authService)
+	httpServer.RegisterV1(chatHttpAdapter)
 
 	// grpc server
 
