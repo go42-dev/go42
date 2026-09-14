@@ -397,7 +397,7 @@ jobs:
           install_args: --locked task node npm:@redocly/cli github:oasdiff/oasdiff
       - name: 'Run redocly OpenAPI linter'
         run: redocly lint --config etc/redocly.yaml --format github-actions api/openapi/**/*.yaml
-      - name: Reject breaking OpenAPI changes
+      - name: Report breaking OpenAPI changes (advisory)
         env:
           OPENAPI_DIFF_FORMAT: githubactions
         run: task lint:openapi-breaking

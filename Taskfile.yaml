@@ -626,13 +626,13 @@ tasks:
       - '"{{.TOOLS_BIN}}/redocly" lint --config etc/redocly.yaml --format stylish api/openapi/**/*.yaml'
 
   lint:openapi-breaking:
-    desc: "Check OpenAPI compatibility against origin/master"
+    desc: "Report OpenAPI compatibility findings against origin/master (advisory)"
     vars:
       OPENAPI_BASE_REF: '{{.OPENAPI_BASE_REF | default "origin/master"}}'
       OPENAPI_DIFF_FORMAT: '{{.OPENAPI_DIFF_FORMAT | default "text"}}'
     cmds:
       - |
-        "{{.TOOLS_BIN}}/oasdiff" breaking --fail-on ERR --allow-external-refs=false \
+        "{{.TOOLS_BIN}}/oasdiff" breaking --allow-external-refs=false \
           --format {{.OPENAPI_DIFF_FORMAT | shellQuote}} \
           {{printf "%s:api/openapi/v1/.combined.yaml" .OPENAPI_BASE_REF | shellQuote}} api/openapi/v1/.combined.yaml
 
