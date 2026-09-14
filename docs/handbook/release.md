@@ -18,8 +18,9 @@ when dispatching it. A tag push or a merge does not trigger this workflow.
 
 Before dispatching:
 
-1. Wait for a successful, completed `push` run of
-    [Unified CI](../../.github/workflows/100-unified-workflow.yaml) for the current `master` commit in this repository.
+1. Push the selected commit to `master` so
+    [Unified CI](../../.github/workflows/100-unified-workflow.yaml) runs for that commit in this repository.
+    You can dispatch the release while CI is queued or running; validation waits for a successful, completed run.
     Pull request and manually dispatched CI runs do not satisfy this check.
 2. Choose an unused version such as `v1.2.3` or `v1.2.3-rc.1`: a `v` prefix and valid SemVer are required, build metadata
     such as `+build.7` is rejected, and the complete string must be at most 128 characters. Neither a Git tag nor a GitHub
@@ -27,18 +28,25 @@ Before dispatching:
 3. Configure `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_NAME` as repository or organization variables.
     Add `RELEASE_APP_PRIVATE_KEY` as a secret in the `release` environment. The App installation must cover this repository
     and permit Contents write access.
-    `RELEASE_APP_NAME` must match the App slug. These values are used in the publication job, after the image is pushed.
+    `RELEASE_APP_NAME` must match the App slug; surrounding whitespace is ignored. These values are used in the
+    publication job, after the image is pushed.
 4. Ensure the workflow's `GITHUB_TOKEN` can publish the `go42` package to GHCR. The build job declares Packages write,
     Contents read, Actions read, Attestations write, and ID token write permissions; repository and organization settings
     must allow those operations.
 
-The validation job requires the workflow definition and dispatch SHA to match the selected `master` commit. If `master`
-advances before validation checks its head, validation fails; dispatch again after CI succeeds for the new head. Dispatches
-for the same version share a concurrency group and do not cancel an active run.
+The validation job checks for successful CI immediately, then every 15 seconds for up to 100 checks, about 25 minutes.
+It continues as soon as a matching successful run is available and fails if none appears within that budget. Failed or
+cancelled CI runs do not satisfy the check; rerunning the matching push run can satisfy it before polling ends. The job
+timeout is 30 minutes to allow time for API requests.
+
+Validation requires the workflow definition and dispatch SHA to match the selected `master` commit. It checks the
+`master` head before and after waiting for CI. If the head has changed, validation fails; dispatch again for the new head.
+Dispatches for the same version share a concurrency group and do not cancel an active run.
 
 ## Release key isolation
 
-Status: environment policies and secret locations verified; runtime access checks pending. This applies to `go42` and
+Status: environment policies, secret locations, and token creation from `master` verified; denied-access checks pending.
+This applies to `go42` and
 [`go42x`](https://github.com/go42-dev/go42x/blob/master/.github/workflows/300-release.yaml).
 
 On 2026-09-14, a `release` environment was created in each repository with exactly one deployment rule: the branch `master`.
@@ -49,6 +57,11 @@ The saved environment policies were verified through the GitHub API.
 The GitHub API review on 2026-09-14 confirmed `RELEASE_APP_PRIVATE_KEY` exists in each `release` environment. Neither
 repository has a repository-level copy or access to an organization-level copy. App client IDs and names are available
 through repository or organization variables. Secret values were not read by the verification.
+
+The [go42 release run](https://github.com/go42-dev/go42/actions/runs/34832061399) and
+[go42x release run](https://github.com/go42-dev/go42x/actions/runs/34832029483) on 2026-09-14 both generated App tokens
+inside their `release` environment jobs. The go42x release completed; go42 stopped at the App slug comparison because
+its organization variable included a trailing line break. These runs confirm key access from `master`.
 
 ### Verify release access
 
@@ -67,7 +80,8 @@ through repository or organization variables. Secret values were not read by the
     prevent other jobs from accessing a repository or organization copy.
 3. Use a dedicated check that does not publish artifacts. A job referencing `release` on `master` must start and find
     the key. Jobs on feature branches and tags must be blocked. A job without the environment must not find the key.
-    Check presence only, without logging the value. These runtime checks remain pending after the API review.
+    Check presence only, without logging the value. The release runs above verified key access on `master`; the other
+    runtime checks remain pending.
     The release workflow's own branch validation is not sufficient evidence that the environment policy works.
 
 When rotating the key, update the environment secrets and inventory other consumers before retiring the App key. GitHub
@@ -142,6 +156,10 @@ The image is pushed before attestations, SBOM generation, and GitHub release cre
 an image or attestations without a GitHub release; the workflow has no automatic rollback. Inspect the failed step and
 existing image, tag, and release before retrying. Validation rejects an existing Git tag or release, but does not check
 whether the version's GHCR image tag already exists.
+
+If publication reports `Release App slug does not match RELEASE_APP_NAME`, check the effective variable at organization,
+repository, and environment scope. Store only the App slug, such as `go42-release`, without spaces or line breaks.
+The publication step trims surrounding whitespace and still rejects an empty value or a different App identity.
 
 These instructions describe checked-in workflow behavior. App installation, repository permissions, published artifacts,
 and environment promotion policy need verification in the target repository; they are not established by source review.

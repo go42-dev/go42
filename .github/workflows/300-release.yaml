@@ -24,7 +24,7 @@ jobs:
   validate-release:
     name: validate-release
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: read
@@ -63,13 +63,16 @@ jobs:
               throw new Error('Release workflow is not bound to the selected master commit');
             }
 
-            const branch = await github.rest.repos.getBranch({
-              ...context.repo,
-              branch: 'master',
-            });
-            if (branch.data.commit.sha !== sourceSha) {
-              throw new Error('Master advanced after this release was dispatched; run it again');
+            async function validateMasterHead() {
+              const branch = await github.rest.repos.getBranch({
+                ...context.repo,
+                branch: 'master',
+              });
+              if (branch.data.commit.sha !== sourceSha) {
+                throw new Error('Master advanced after this release was dispatched; run it again');
+              }
             }
+            await validateMasterHead();
 
             try {
               await github.rest.git.getRef({
@@ -95,29 +98,44 @@ jobs:
               }
             }
 
-            const runs = await github.paginate(
-              github.rest.actions.listWorkflowRuns,
-              {
-                ...context.repo,
-                workflow_id: '100-unified-workflow.yaml',
-                branch: 'master',
-                event: 'push',
-                head_sha: sourceSha,
-                status: 'completed',
-                per_page: 100,
-              },
-            );
-            const ciRun = runs.find((run) =>
-              run.event === 'push' &&
-              run.head_branch === 'master' &&
-              run.head_sha === sourceSha &&
-              run.head_repository?.full_name === repository &&
-              run.status === 'completed' &&
-              run.conclusion === 'success'
-            );
-            if (!ciRun) {
-              throw new Error(`No successful Unified CI run exists for ${sourceSha}`);
+            // Dispatch may arrive before Unified CI starts or completes.
+            const maxAttempts = 100;
+            const pollIntervalMs = 15_000;
+            let ciRun;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              const runs = await github.paginate(
+                github.rest.actions.listWorkflowRuns,
+                {
+                  ...context.repo,
+                  workflow_id: '100-unified-workflow.yaml',
+                  branch: 'master',
+                  event: 'push',
+                  head_sha: sourceSha,
+                  status: 'completed',
+                  per_page: 100,
+                },
+              );
+              ciRun = runs.find((run) =>
+                run.event === 'push' &&
+                run.head_branch === 'master' &&
+                run.head_sha === sourceSha &&
+                run.head_repository?.full_name === repository &&
+                run.status === 'completed' &&
+                run.conclusion === 'success'
+              );
+              if (ciRun) {
+                break;
+              }
+              if (attempt < maxAttempts) {
+                core.info(`Waiting for successful Unified CI for ${sourceSha} (${attempt}/${maxAttempts}); ` +
+                  `retrying in ${pollIntervalMs / 1000} seconds`);
+                await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+              }
             }
+            if (!ciRun) {
+              throw new Error(`No successful Unified CI run found for ${sourceSha} after ${maxAttempts} checks`);
+            }
+            await validateMasterHead();
 
             core.setOutput('ci_url', ciRun.html_url);
             core.setOutput('is_prerelease', version.includes('-'));
@@ -185,7 +203,8 @@ jobs:
         with:
           github-token: ${{ steps.release-app.outputs.token }}
           script: |-
-            if (process.env.ACTUAL_APP_SLUG !== process.env.EXPECTED_APP_SLUG) {
+            const expectedAppSlug = process.env.EXPECTED_APP_SLUG?.trim();
+            if (!expectedAppSlug || process.env.ACTUAL_APP_SLUG !== expectedAppSlug) {
               throw new Error('Release App slug does not match RELEASE_APP_NAME');
             }
 
