@@ -154,6 +154,7 @@ jobs:
 
   publish-release:
     name: publish-release
+    environment: release
     needs:
       - validate-release
       - docker-build

@@ -24,8 +24,9 @@ Before dispatching:
 2. Choose an unused version such as `v1.2.3` or `v1.2.3-rc.1`: a `v` prefix and valid SemVer are required, build metadata
     such as `+build.7` is rejected, and the complete string must be at most 128 characters. Neither a Git tag nor a GitHub
     release may already exist for this version.
-3. Configure repository variables `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_NAME`, and secret `RELEASE_APP_PRIVATE_KEY`
-    for the release GitHub App. Its installation must cover this repository and permit Contents write access.
+3. Configure `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_NAME` as repository or organization variables.
+    Add `RELEASE_APP_PRIVATE_KEY` as a secret in the `release` environment. The App installation must cover this repository
+    and permit Contents write access.
     `RELEASE_APP_NAME` must match the App slug. These values are used in the publication job, after the image is pushed.
 4. Ensure the workflow's `GITHUB_TOKEN` can publish the `go42` package to GHCR. The build job declares Packages write,
     Contents read, Actions read, Attestations write, and ID token write permissions; repository and organization settings
@@ -35,30 +36,24 @@ The validation job requires the workflow definition and dispatch SHA to match th
 advances before validation checks its head, validation fails; dispatch again after CI succeeds for the new head. Dispatches
 for the same version share a concurrency group and do not cancel an active run.
 
-## Planned release key isolation
+## Release key isolation
 
-Status: planned; this migration has not been implemented. It applies to both `go42` and
+Status: environment policies and secret locations verified; runtime access checks pending. This applies to `go42` and
 [`go42x`](https://github.com/go42-dev/go42x/blob/master/.github/workflows/300-release.yaml).
 
-The GitHub settings review on 2026-09-14 found that both repositories inherit `RELEASE_APP_PRIVATE_KEY` from the
-organization. Neither publication job references a release environment. Their workflow checks require a tested `master`
-commit, but another workflow on a branch within either repository can request the organization secret without those
-checks. The proposed environment policy makes GitHub restrict access before the publication job starts.
+On 2026-09-14, a `release` environment was created in each repository with exactly one deployment rule: the branch `master`.
+The environments have no tag rules, required reviewers, or wait timers. Both publication job definitions reference
+`environment: release`.
+The saved environment policies were verified through the GitHub API.
 
-### Migration procedure
+The GitHub API review on 2026-09-14 confirmed `RELEASE_APP_PRIVATE_KEY` exists in each `release` environment. Neither
+repository has a repository-level copy or access to an organization-level copy. App client IDs and names are available
+through repository or organization variables. Secret values were not read by the verification.
 
-Provisioning requires permission to manage environments in both repositories and to change organization-secret access.
-Use the original App private-key file or generate a new key for that App; GitHub cannot return an existing secret's value.
-Inventory other consumers of the organization secret before changing its repository access or retiring an App key.
+### Verify release access
 
-1. In each repository, create an environment named `release`. Under deployment branches and tags, select specific branches
-    and add the branch `master`. Add no tag rules or wildcard branch rules. Leave required reviewers and wait timers unset
-    so releases remain automatic.
-2. Add `RELEASE_APP_PRIVATE_KEY` as an environment secret in each `release` environment. Use the key for the App identified
-    by `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_NAME` in that repository.
-3. Add `environment: release` to the existing `publish-release` job in each release workflow. Retain its source validation,
-    dependencies, permissions, and repository-scoped App token. Merge both workflow changes into `master` before removing
-    access to the organization secret.
+1. Confirm each release workflow on `master` binds `publish-release` to the `release` environment. Retain its source
+    validation, dependencies, permissions, and repository-scoped App token:
 
     ```yaml
     jobs:
@@ -67,19 +62,17 @@ Inventory other consumers of the organization secret before changing its reposit
         # Existing job configuration follows.
     ```
 
-4. Remove `go42` and `go42x` from the organization secret's repository access. If access currently covers all repositories,
-    change it to selected repositories while preserving access for other consumers awaiting migration. Remove any
-    repository-level copies of the key as well. An environment secret with the same name does not prevent other jobs from
-    accessing a repository or organization copy.
-5. Verify the saved environment policies, workflow references, and secret locations in both repositories. Use a dedicated
-    check that does not publish artifacts: a job referencing `release` on `master` must start and find the key; jobs on
-    feature branches or tags must be blocked by the environment policy. A job without the environment must not find the
-    key. Check presence only, without logging the value. The release workflow's own branch validation is not sufficient
-    evidence that the environment policy works.
+2. Verify the environment permits only the branch `master` and holds the key for the configured App. Check that neither
+    repository can access organization or repository copies of the key. An environment secret with the same name cannot
+    prevent other jobs from accessing a repository or organization copy.
+3. Use a dedicated check that does not publish artifacts. A job referencing `release` on `master` must start and find
+    the key. Jobs on feature branches and tags must be blocked. A job without the environment must not find the key.
+    Check presence only, without logging the value. These runtime checks remain pending after the API review.
+    The release workflow's own branch validation is not sufficient evidence that the environment policy works.
 
-The migration is complete when both repositories pass these checks and no longer have general workflow access to the
-organization or repository copies. Other consumers retaining a key for the same App retain that App's authority and need
-their own access review. Update this section to describe the verified configuration after implementation.
+When rotating the key, update the environment secrets and inventory other consumers before retiring the App key. GitHub
+cannot return an existing secret's value; use the original private-key file or generate a new key for that App.
+Other consumers retaining a key for the same App retain that App's authority and need their own access review.
 
 See GitHub's [environment protection rules][release-environments] and [secret configuration][release-secrets] for setup
 and access requirements.
