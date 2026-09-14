@@ -156,14 +156,17 @@ When the project selects one database, retain the commands and reduce both matri
 * For a focused change, select the relevant checks above. A workflow edit can use its YAML and GitHub Actions checks.
   Repeat checks after relevant edits or failures, and report material checks left unrun.
 
-`task lint` and `task docs:check` run their checks in sequence and stop at the first failed command. NilAway and OpenAPI
-compatibility findings are advisory in `task lint`. A failed invocation does not mean every check ran. Neither command
-selects checks automatically from changed files or applies formatting fixes. History and compatibility comparisons require
-`origin/master` by default.
+`task lint` and `task docs:check` run their checks in sequence and stop at the first failed command. Findings from NilAway,
+Capslock, and OpenAPI compatibility checks are advisory in `task lint`. A failed invocation does not mean every check ran.
+Neither command selects checks automatically from changed files or applies formatting fixes. History and compatibility
+comparisons require `origin/master` by default.
 `task lint:openapi-breaking OPENAPI_BASE_REF=REVISION` checks another base. CI supplies the pull request base or the previous
 push commit and runs the same Task command. OpenAPI compatibility findings are reported for review without failing the
 command or CI; no ignore file is applied. Tool errors and invalid comparison inputs still fail the command. OpenAPI schema
 lint and runtime contract tests remain blocking.
+
+`task lint:capabilities` reports capability additions and removals against `origin/master` for review. CI uses the same
+advisory task on non-master branches. Capability differences do not fail the task; setup and analysis errors still do.
 
 For a documentation preview, use `task docs:serve`. For a focused metadata and source-link check after installing website
 dependencies, use `npm --prefix pages run validate-docs` with the

@@ -552,7 +552,7 @@ tasks:
         fi
 
   lint:capabilities:
-    desc: "Compare Go package capabilities with origin/master in both directions"
+    desc: "Report Go package capability changes against origin/master (advisory)"
     silent: true
     cmds:
       - |
@@ -568,9 +568,17 @@ tasks:
           "$capabilities_bin" -packages=./... -granularity=package -capabilities= -output=json
         ) > "$capabilities_dir/baseline.json"
         # Native comparison reports additions and removals without repeating either analysis.
-        "$capabilities_bin" -packages=./... -granularity=package -capabilities= -output=compare \
-          "$capabilities_dir/baseline.json"
-        printf 'Dependency capabilities: OK\n'
+        if "$capabilities_bin" -packages=./... -granularity=package -capabilities= -output=compare \
+          "$capabilities_dir/baseline.json"; then
+          printf 'Dependency capabilities: OK\n'
+        else
+          capabilities_status=$?
+          # Capslock returns 1 for capability differences and 2 for analysis errors.
+          if [ "$capabilities_status" -ne 1 ]; then
+            exit "$capabilities_status"
+          fi
+          printf 'Dependency capability changes are advisory; review the report above.\n'
+        fi
 
   lint:sql:
     desc: "Lint all SQL migrations, one dialect, or explicit files (read only)"
