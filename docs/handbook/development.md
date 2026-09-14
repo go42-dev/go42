@@ -30,8 +30,13 @@ task setup
 This installs all tools locked in [etc/mise.lock](../../etc/mise.lock), including Task and gopls. It also syncs Vale styles
 and downloads Go modules.
 
-The [MCP configuration](../../.go42x/go42x.yaml) runs the local servers through `task tool -- gopls mcp` and
-`task tool -- go42x mcp`, using the tool versions and environment configured by mise.
+The [MCP configuration](../../.go42x/go42x.yaml) runs the local servers through `task tool -- gopls mcp`,
+`task tool -- go42x mcp`, and `task tool -- mise mcp`. Start these commands from the repository root to use the project
+tool versions and environment configured by mise.
+
+Mise MCP exposes tool versions, installation status, environment values, and active configuration files. Its server
+configuration sets `MISE_EXPERIMENTAL=1`. Workflows remain in Taskfile; no mise tasks are defined, so the MCP `run_task`
+tool cannot execute Taskfile commands directly.
 
 GitHub MCP uses [GitHub's hosted HTTP server](https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md)
 at `https://api.githubcopilot.com/mcp/`. Export `GITHUB_PERSONAL_ACCESS_TOKEN` in the MCP client's environment; the

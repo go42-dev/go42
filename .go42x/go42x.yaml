@@ -156,6 +156,20 @@ mcp:
       - kwb_search
       - kwb_stats
 
+  mise:
+    enabled: true
+    type: stdio
+    name: mise
+    command: task
+    args:
+      - tool
+      - --
+      - mise
+      - mcp
+    tools:
+      - list_commands
+      - run_task
+
   context7:
     enabled: true
     type: http
