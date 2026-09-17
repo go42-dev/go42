@@ -53,6 +53,13 @@ those checks; report their scope and any unresolved errors or unavailable tools.
 Use `project_context` with the task and affected project-relative paths to load
 project guidance and relevant evidence. Follow source continuation pointers when
 needed. Check coverage diagnostics before relying on retrieval results.
+Preserve exact identifiers such as `Service.Init` in the task. Supplied files
+are read directly; directory paths scope source searches before supporting
+searches. A response can include multiple distinct ranges from one file.
+Configure up to eight guidance document IDs with `go42x mcp
+--context-doc=project,conventions` or `GO42X_CONTEXT_DOC="project conventions"`.
+Use IDs authored by the application. Guidance uses at most a quarter of the
+source budget when other evidence is available; unused space returns to evidence.
 {{end}}
 {{if hasMCPTool .mcp "go42x" "docs_get"}}
 Use `docs_get` to read a requirement, decision, or handbook page by its authored ID.
@@ -69,6 +76,32 @@ Use `docs_impact` with changed paths to find linked documentation to review.
 Unmapped paths still need judgment: missing links do not prove that documentation
 is unaffected. Maintain the application's local docs according to its policy.
 {{end}}
+
+{{ if or (hasMCPTool .mcp "context7" "resolve-library-id") (hasMCPTool .mcp "context7" "query-docs") -}}
+
+#### Library documentation with Context7
+
+Use the `context7` MCP server to look up external library and framework APIs,
+setup instructions, and code examples. Check the project's dependency manifests
+or lockfiles for the version in use before applying examples.
+
+{{ if hasMCPTool .mcp "context7" "resolve-library-id" -}}
+Use `resolve-library-id` with `libraryName` and a focused `query` describing the
+task to find the matching library. Select the result by package identity and
+documentation relevance. Skip resolution when the user supplies a valid Context7
+library ID.
+{{ end }}
+{{ if hasMCPTool .mcp "context7" "query-docs" -}}
+Use `query-docs` with `libraryId` and a specific `query` about the API or behavior
+needed. Use the exact library ID returned by resolution or supplied by the user;
+do not guess IDs. When a matching version is listed, use its version-specific ID
+in the form `/org/project/version`.
+{{ end }}
+
+If Context7 is unavailable or lacks the needed library or version, consult the
+library's official documentation and installed source. Verify examples against
+the project's actual dependency version and existing usage.
+{{ end }}
 
 {{ if or (hasMCPTool .mcp "go42x" "kwb_search") (hasMCPTool .mcp "go42x" "kwb_get_file") (hasMCPTool .mcp "go42x" "kwb_list_files") (hasMCPTool .mcp "go42x" "kwb_stats") -}}
 
@@ -98,6 +131,8 @@ more weight than body matches. Code identifiers can also match component words:
 {{ end }}
 
 These tools return structured JSON with a matching JSON text fallback.
+Search results also include `chunk_id`, `symbols`, `chunk_start_line`, and
+`chunk_end_line`; snippet line ranges can cover only part of the original chunk.
 
 Search queries are plain text. Use `kind="documentation"` for prose,
 `kind="code"` for source, or `kind="config"` for configuration. The file listing
@@ -130,16 +165,30 @@ only changed files, and removes deleted or newly ignored files. An unchanged
 project does not publish another index. Use `go42x kwb build --rebuild` for a full rebuild.
 The old index remains available until the new generation is published, and a
 running MCP server picks it up on its next request.
+Run `go42x kwb check --json` to check freshness without updating the index.
+It hashes eligible source using the recorded build settings and current ignore
+files. Exit 0 means a complete scan was fresh; exit 1 means stale, missing,
+unavailable, or incomplete. Review `complete`, `truncated`, generation, counts,
+and diagnostics. `doctor` also checks freshness. This scan costs a source walk;
+ordinary MCP reads do not scan the whole index for freshness.
 Run `go42x kwb` or `go42x kwb --help` to list the available subcommands.
 
 Indexing respects `.gitignore` files inside the selected root, including nested
 rules and negation. It excludes its own index directory, build/tool directories,
 binary files, symlinks, generated Go files, and common lockfiles. Use
 `--include-ext=.xyz` to add an extension, or a filename such as `Makefile.custom`.
+Authored `.go42x/go42x.yaml`, instruction templates, and `.env.example` are
+eligible. Generated state, backups, local overrides, and the index are excluded.
+`kwb build` creates `.go42x/kwb.ignore` with a comment header when missing;
+existing files are preserved. Add root-relative Git ignore patterns to omit
+generated bundles while retaining handwritten files, or pass `--exclude-file`
+at build time.
+These exclusions cannot re-include files excluded by `.gitignore` or defaults.
+Changing exclusions takes effect on the next incremental build.
 The index is local and requires no embedding service.
 
 Set `go42x mcp --search-timeout=5s` or `GO42X_SEARCH_TIMEOUT=5s` to control the
 maximum duration of knowledge-base reads. Flags override `GO42X_*` environment
-variables. Build settings include `--root`, `--index`, `--exclude-dir`,
+variables. Build settings include `--root`, `--index`, `--exclude-dir`, `--exclude-file`,
 `--include-ext`, and `--rebuild` (`GO42X_REBUILD=true`).
 {{ end }}

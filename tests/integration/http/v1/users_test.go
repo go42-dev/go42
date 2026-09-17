@@ -20,7 +20,7 @@ import (
 var _ = BeforeSuite(func() {
 	Expect(integration.HTTPAPIKey()).ToNot(BeEmpty(),
 		"Set HTTP_API_KEY to a key with users:list, users:read_others, users:create, users:update, and users:delete. "+
-			"See docs/handbook/testing.md#integration-test-environment for setup.")
+			"See docs/handbook/06-testing.md#integration-test-environment for setup.")
 })
 
 var _ = Describe("Administrative User Endpoints", func() {

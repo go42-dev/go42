@@ -7,13 +7,13 @@ sidebar_position: 12
 
 # Monitoring
 
-Use this guide to collect and interpret the current application's signals. See [operations](operations.md) for process
+Use this guide to collect and interpret the current application's signals. See [operations](11-operations.md) for process
 checks and failure investigation. Alert thresholds and response ownership depend on the application's operating context
 and have not yet been established.
 
 ## Collect metrics locally
 
-Start the application using the [development workflow](development.md#running-and-debugging), then check its metrics:
+Start the application using the [development workflow](05-development.md#running-and-debugging), then check its metrics:
 
 ```sh
 curl --fail --silent --show-error --max-time 10 http://localhost:8080/metrics
@@ -54,18 +54,18 @@ Custom application metrics have `service`, `environment`, and `hostname` labels 
 [metric initialization](../../cmd/app/main.go). Prometheus adds scrape labels such as `job` and `instance`.
 Runtime collectors do not all carry the custom application labels. Scope queries to the intended targets before aggregating.
 
-| Signal | What it measures and where to investigate |
-| --- | --- |
-| `application_http_responses_count` | Responses by `method`, route-pattern `path`, `status`, and `is_error`; inspect failing routes |
-| `application_http_latency_sec` | Request duration in seconds; compare like routes and status codes |
-| `application_grpc_responses_count`, `application_grpc_latency_sec` | Calls by full `method`, `grpc_type`, status, and numeric code |
-| `errors`, `application_errors` | Centrally handled HTTP 5xx errors/panics and application/worker errors respectively; inspect `type` |
-| `go_sql_in_use_connections`, `go_sql_wait_count_total` | Pool occupancy and cumulative waits; inspect dependency latency and concurrency |
-| `application_startup_connection_attempts_total` | Startup connection attempts by `backend` and `result`: `success` or `failure` |
-| `application_outbox_messages_total` | Publication attempts by `result`: `processed`, `retry`, or `permanently_failed` |
-| `application_auth_event_subscriber_processed` | Successful history-write calls before transaction commit, including duplicate deliveries |
-| `application_event_consumer_dead_letters_total` | Dead-letter attempts by topic and result; check broker and consumer logs |
-| `application_outbox_cleanup_lag_seconds` | Seconds beyond retention for eligible processed rows, sampled after cleanup |
+| Signal                                                             | What it measures and where to investigate                                                           |
+|--------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
+| `application_http_responses_count`                                 | Responses by `method`, route-pattern `path`, `status`, and `is_error`; inspect failing routes       |
+| `application_http_latency_sec`                                     | Request duration in seconds; compare like routes and status codes                                   |
+| `application_grpc_responses_count`, `application_grpc_latency_sec` | Calls by full `method`, `grpc_type`, status, and numeric code                                       |
+| `errors`, `application_errors`                                     | Centrally handled HTTP 5xx errors/panics and application/worker errors respectively; inspect `type` |
+| `go_sql_in_use_connections`, `go_sql_wait_count_total`             | Pool occupancy and cumulative waits; inspect dependency latency and concurrency                     |
+| `application_startup_connection_attempts_total`                    | Startup connection attempts by `backend` and `result`: `success` or `failure`                       |
+| `application_outbox_messages_total`                                | Publication attempts by `result`: `processed`, `retry`, or `permanently_failed`                     |
+| `application_auth_event_subscriber_processed`                      | Successful history-write calls before transaction commit, including duplicate deliveries            |
+| `application_event_consumer_dead_letters_total`                    | Dead-letter attempts by topic and result; check broker and consumer logs                            |
+| `application_outbox_cleanup_lag_seconds`                           | Seconds beyond retention for eligible processed rows, sampled after cleanup                         |
 
 The [HTTP collector](../../internal/api/http/middleware/metrics.go) excludes health, readiness, and metrics requests.
 The [gRPC collector](../../internal/api/grpc/interceptors/metrics.go) includes health and reflection traffic.
@@ -78,7 +78,7 @@ Database and migration attempts share the `mysql` or `pgsql` backend label.
 
 Publication counters and the subscriber's processed counter are updated before their database transactions commit.
 The subscriber's `event saved` debug log also precedes commit. They cannot establish persisted completion after a commit
-failure. Use [outbox and history inspection](operations.md#inspect-outbox-delivery) for database evidence. Cleanup lag
+failure. Use [outbox and history inspection](11-operations.md#inspect-outbox-delivery) for database evidence. Cleanup lag
 concerns retention of processed rows, not delivery delay of pending rows.
 
 ## Example queries

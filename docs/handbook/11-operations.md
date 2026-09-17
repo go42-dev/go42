@@ -8,13 +8,14 @@ sidebar_position: 11
 # Operations
 
 Use this guide to check a running application, inspect its signals, diagnose failures, and recover service.
-[Deployment](deployment.md) covers container and Helm configuration, upgrades, and migrations. The
-[application profile](project.md#documentation-coverage) identifies the ownership and environment details that still
+[Deployment](10-deployment.md) covers container and Helm configuration, upgrades, and migrations. The
+[application profile](02-project.md#documentation-coverage) identifies the ownership and environment details that still
 need to be established.
 
 ## Run and verify locally
 
-Complete [environment setup](development.md#environment-setup), review your [configuration](configuration.md), and run:
+Complete [environment setup](05-development.md#environment-setup), review your [configuration](04-configuration.md), and
+run:
 
 ```sh
 task run
@@ -30,29 +31,29 @@ curl --fail --silent --show-error --max-time 10 --output /dev/null \
 ```
 
 Both commands should print `200` once startup completes. The default local database is in memory, so a restart loses its
-data. Persistent storage settings are covered in [configuration](configuration.md#storage-and-events).
+data. Persistent storage settings are covered in [configuration](04-configuration.md#storage-and-events).
 
-| Interface | Expected behavior |
-| --- | --- |
-| HTTP `/health` | `200` while live; `503` after a terminal failure when the HTTP listener remains reachable |
-| HTTP `/ready` | `200` while serving with available database and cache; otherwise `503` |
-| HTTP `/metrics` | Application, request, worker, and database metrics for collection |
-| HTTP `/api/v1/` | Swagger UI for the bundled HTTP API when its files are available |
-| gRPC health service | Readiness-based status for the empty service name; refreshed at the configured interval |
+| Interface           | Expected behavior                                                                         |
+| ------------------- | ----------------------------------------------------------------------------------------- |
+| HTTP `/health`      | `200` while live; `503` after a terminal failure when the HTTP listener remains reachable |
+| HTTP `/ready`       | `200` while serving with available database and cache; otherwise `503`                    |
+| HTTP `/metrics`     | Application, request, worker, and database metrics for collection                         |
+| HTTP `/api/v1/`     | Swagger UI for the bundled HTTP API when its files are available                          |
+| gRPC health service | Readiness-based status for the empty service name; refreshed at the configured interval   |
 
 Probe behavior is implemented in the [HTTP server](../../internal/api/http/server.go),
 [gRPC server](../../internal/api/grpc/server.go), and [composition root](../../cmd/app/main.go).
 If the HTTP listener itself fails, probes can fail to connect instead of returning an HTTP status.
 Readiness does not check broker connectivity or establish that an event reached its consumer. For a deployment check,
 also exercise an authenticated application request and inspect event processing where that deployment uses it.
-The [API guide](api.md#check-an-authenticated-request-locally) provides a local session check and explains response statuses.
+The [API guide](08-api.md#check-an-authenticated-request-locally) provides a local session check and explains response statuses.
 
 ## Startup and shutdown
 
 Startup connects dependencies and applies database migrations before opening the serving interfaces. During that period,
 a connection failure at the probe address can mean startup is still in progress; use startup logs to distinguish progress
 from an initialization failure. Connection retries and timeouts are bounded by the
-[startup settings](configuration.md#startup-and-shutdown).
+[startup settings](04-configuration.md#startup-and-shutdown).
 
 `SIGINT`, `SIGTERM`, or `SIGHUP` begins shutdown: cancel the application context, become unready, wait for probe propagation,
 and close components within the configured deadlines. Inspect logs for completion or a shutdown timeout. Give the process
@@ -65,9 +66,9 @@ readiness while liveness can remain healthy.
 ## Logs, metrics, and event processing
 
 JSON logs go to standard output by default. Use the `component` field and error context to locate the failing dependency
-or worker. Follow [monitoring](monitoring.md) to collect metrics, select useful signals, and configure the dashboard.
-The development workflow describes [debugger tasks](development.md#running-and-debugging) and
-[local profiling](development.md#profiling-a-local-process).
+or worker. Follow [monitoring](12-monitoring.md) to collect metrics, select useful signals, and configure the dashboard.
+The development workflow describes [debugger tasks](05-development.md#running-and-debugging) and
+[local profiling](05-development.md#profiling-a-local-process).
 
 Business HTTP requests and gRPC metadata accept or generate `x-request-id`. Context-aware logs can carry `request_id`,
 and active tracing adds `trace_id` and `span_id`. Capture the request ID with the route, timestamp, response status, and
@@ -117,7 +118,7 @@ where id = 'EVENT_UUID';
 The [history model](../../internal/auth/models/models.go) uses the event UUID as its primary key. A row confirms that
 history was stored; `occurred_at` is the event time and `created_at` is the history insertion time. A processed outbox row
 alone does not prove this. If history is absent, inspect subscriber errors, transaction failures, and dead-letter messages.
-Account for the selected backend and [best-effort event recording](architecture.md#requests-and-persistence).
+Account for the selected backend and [best-effort event recording](07-architecture.md#requests-and-persistence).
 Redact sensitive values from `last_error` and logs before sharing incident evidence.
 
 The outbox cleaner removes only processed records after retention, which defaults to seven days. Pending and failed
@@ -128,23 +129,23 @@ replay procedure before changing their state or retrying messages manually.
 
 First record the affected operation, expected and observed result, UTC time window, running revision or image digest,
 relevant non-secret settings, probe results, and request/event IDs. Reproduce with the smallest request that demonstrates
-the failure. Follow the owning component in the [source map](architecture.md#source-map) and select checks from the
-[testing guide](testing.md).
+the failure. Follow the owning component in the [source map](07-architecture.md#source-map) and select checks from the
+[testing guide](06-testing.md).
 
-| Symptom | Initial checks |
-| --- | --- |
-| Process exits during startup | [Configuration, dependency errors, and paths](configuration.md#diagnose-a-configuration-problem); [migration failures](deployment.md#migrations-and-change-handoff) |
-| `/health` succeeds but `/ready` fails | [Database and cache reachability; shutdown state](#run-and-verify-locally) |
-| Liveness fails after serving began | [Terminal serving errors and supervisor restart behavior](#startup-and-shutdown) |
-| Requests succeed but history is missing | [Outbox state, event recording, consumers, and dead letters](#inspect-outbox-delivery) |
-| Data disappears after restart | [In-memory SQLite, ephemeral storage, and database paths](configuration.md#storage-and-events) |
-| Shutdown times out | [Component close errors](#startup-and-shutdown) and [configured deadlines](configuration.md#startup-and-shutdown) |
+| Symptom                                 | Initial checks                                                                                                                                                            |
+|-----------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Process exits during startup            | [Configuration, dependency errors, and paths](04-configuration.md#diagnose-a-configuration-problem); [migration failures](10-deployment.md#migrations-and-change-handoff) |
+| `/health` succeeds but `/ready` fails   | [Database and cache reachability; shutdown state](#run-and-verify-locally)                                                                                                |
+| Liveness fails after serving began      | [Terminal serving errors and supervisor restart behavior](#startup-and-shutdown)                                                                                          |
+| Requests succeed but history is missing | [Outbox state, event recording, consumers, and dead letters](#inspect-outbox-delivery)                                                                                    |
+| Data disappears after restart           | [In-memory SQLite, ephemeral storage, and database paths](04-configuration.md#storage-and-events)                                                                         |
+| Shutdown times out                      | [Component close errors](#startup-and-shutdown) and [configured deadlines](04-configuration.md#startup-and-shutdown)                                                      |
 
 Capture the running image digest, configuration context, and error evidence before changing the deployment. Repair the
 identified dependency or configuration and repeat readiness and application checks. Pending outbox messages retry
 automatically; consumer handling must tolerate duplicates.
 
-Use the [migration handoff](deployment.md#migrations-and-change-handoff) to check repair or rollback compatibility.
+Use the [migration handoff](10-deployment.md#migrations-and-change-handoff) to check repair or rollback compatibility.
 Backups, restore commands, retention, recovery objectives, and verification of restored data still need an
 environment-specific procedure. Preserve pending and failed outbox records when investigating delivery failures.
 Record the chosen recovery procedure and its tested outcome in this handbook when the operating environment is established.

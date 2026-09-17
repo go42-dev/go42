@@ -8,8 +8,8 @@ func TestConstructMetric(t *testing.T) {
 	tests := []struct {
 		name         string
 		metricName   string
-		labels       map[string]interface{}
-		globalLabels map[string]interface{}
+		labels       map[string]any
+		globalLabels map[string]any
 		want         string
 	}{
 		{
@@ -21,7 +21,7 @@ func TestConstructMetric(t *testing.T) {
 		{
 			name:       "single label",
 			metricName: "http_requests_total",
-			labels: map[string]interface{}{
+			labels: map[string]any{
 				"method": "GET",
 			},
 			want: `http_requests_total{method="GET"}`,
@@ -29,7 +29,7 @@ func TestConstructMetric(t *testing.T) {
 		{
 			name:       "multiple labels",
 			metricName: "memory_usage",
-			labels: map[string]interface{}{
+			labels: map[string]any{
 				"host":     "server1",
 				"instance": "prod",
 				"region":   "us-east",
@@ -39,7 +39,7 @@ func TestConstructMetric(t *testing.T) {
 		{
 			name:       "labels with different value types",
 			metricName: "mixed_metric",
-			labels: map[string]interface{}{
+			labels: map[string]any{
 				"bool":   true,
 				"int":    42,
 				"string": "value",
@@ -49,7 +49,7 @@ func TestConstructMetric(t *testing.T) {
 		{
 			name:       "escaped label value",
 			metricName: "escaped_metric",
-			labels: map[string]interface{}{
+			labels: map[string]any{
 				"value": "path\\to\"thing\"\nnext",
 			},
 			want: `escaped_metric{value="path\\to\"thing\"\nnext"}`,
@@ -57,10 +57,10 @@ func TestConstructMetric(t *testing.T) {
 		{
 			name:       "with global labels",
 			metricName: "test_metric",
-			labels: map[string]interface{}{
+			labels: map[string]any{
 				"local": "value",
 			},
-			globalLabels: map[string]interface{}{
+			globalLabels: map[string]any{
 				"env":     "prod",
 				"service": "api",
 			},
@@ -69,10 +69,10 @@ func TestConstructMetric(t *testing.T) {
 		{
 			name:       "global labels override",
 			metricName: "override_metric",
-			labels: map[string]interface{}{
+			labels: map[string]any{
 				"env": "dev",
 			},
-			globalLabels: map[string]interface{}{
+			globalLabels: map[string]any{
 				"env": "prod",
 			},
 			want: `override_metric{env="dev"}`,
@@ -82,7 +82,7 @@ func TestConstructMetric(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset and set global labels for this test
-			globalLabels = make(map[string]interface{})
+			globalLabels = make(map[string]any)
 			if tt.globalLabels != nil {
 				RegisterGlobalLabels(tt.globalLabels)
 			}
@@ -98,7 +98,7 @@ func TestConstructMetric(t *testing.T) {
 func TestEscapeLabelValue(t *testing.T) {
 	tests := []struct {
 		name  string
-		value interface{}
+		value any
 		want  string
 	}{
 		{name: "plain", value: "value", want: "value"},

@@ -46,7 +46,7 @@ func (s *AuthEventSubscriber) handleEvent(ctx context.Context, eventData []byte)
 	err := json.Unmarshal(eventData, event)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "failed to unmarshal event data", slog.Any("error", err))
-		metrics.Counter("application_errors", map[string]interface{}{
+		metrics.Counter("application_errors", map[string]any{
 			"type": "auth_event_subscriber_error",
 		}).Inc()
 		return events.Permanent(fmt.Errorf("failed to unmarshal event: %w", err))
@@ -75,7 +75,7 @@ func (s *AuthEventSubscriber) handleEvent(ctx context.Context, eventData []byte)
 		err := s.repository.SaveUserHistoryRecord(txCtx, eventLog)
 		if err != nil {
 			s.logger.ErrorContext(txCtx, "failed to save event", slog.Any("error", err))
-			metrics.Counter("application_errors", map[string]interface{}{
+			metrics.Counter("application_errors", map[string]any{
 				"type": "auth_event_subscriber_error",
 			}).Inc()
 			return fmt.Errorf("failed to save log: %w", err)
@@ -96,7 +96,7 @@ func (s *AuthEventSubscriber) validateEvent(ctx context.Context, event *outboxDo
 
 	s.logger.ErrorContext(ctx, "invalid event data", slog.Any("error", err))
 
-	metrics.Counter("application_errors", map[string]interface{}{
+	metrics.Counter("application_errors", map[string]any{
 		"type": "auth_event_subscriber_error",
 	}).Inc()
 

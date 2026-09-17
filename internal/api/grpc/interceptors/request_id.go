@@ -17,10 +17,10 @@ const headerNameRequestID = "x-request-id"
 func UnaryRequestIDInterceptor() grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
-		req interface{},
+		req any,
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
-	) (interface{}, error) {
+	) (any, error) {
 		newCtx := extractOrGenerateRequestID(ctx)
 		return handler(newCtx, req)
 	}
@@ -37,7 +37,7 @@ func (w *requestIDServerStream) Context() context.Context {
 
 func StreamRequestIDInterceptor() grpc.StreamServerInterceptor {
 	return func(
-		srv interface{},
+		srv any,
 		stream grpc.ServerStream,
 		info *grpc.StreamServerInfo,
 		handler grpc.StreamHandler,
@@ -77,7 +77,7 @@ func UnaryClientRequestIDInterceptor() grpc.UnaryClientInterceptor {
 	return func(
 		ctx context.Context,
 		method string,
-		req, reply interface{},
+		req, reply any,
 		cc *grpc.ClientConn,
 		invoker grpc.UnaryInvoker,
 		opts ...grpc.CallOption,

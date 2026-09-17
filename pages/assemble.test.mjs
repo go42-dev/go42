@@ -273,7 +273,7 @@ for (const [name, filename, from, to, error] of [
   });
 }
 
-test('rejects broken links in tables, reference definitions, and agent entry points', t => {
+test('rejects broken links in tables and reference definitions', t => {
   const root = fixture(t);
   const filename = path.join(root, 'docs/handbook/project.md');
   const original = fs.readFileSync(filename, 'utf8');
@@ -284,9 +284,25 @@ test('rejects broken links in tables, reference definitions, and agent entry poi
     fs.writeFileSync(filename, original + badLink);
     assert.throws(() => loadDocumentation(root), /missing link target missing.md/);
   }
-  fs.writeFileSync(filename, original);
-  write(root, 'AGENTS.md', '# Instructions\n\n[Policy](docs/missing.md)\n');
-  assert.throws(() => loadDocumentation(root), /AGENTS.md: missing link target/);
+});
+
+test('limits link validation to published documentation', t => {
+  const root = fixture(t);
+  const sources = ['README.md', 'ADOPTING.md', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md', '.github/copilot-instructions.md'];
+  for (const source of sources) {
+    write(root, source, '# Repository file\n\n[Missing](missing.md)\n');
+  }
+  fs.appendFileSync(path.join(root, 'docs/handbook/project.md'), '\n[Instructions](../../AGENTS.md)\n');
+
+  assert.equal(assemble({root, context}), 6);
+  for (const source of sources) {
+    assert.equal(fs.existsSync(path.join(root, 'pages/docs', source)), false);
+  }
+  const output = fs.readFileSync(path.join(root, 'pages/docs/handbook/project.md'), 'utf8');
+  assert.match(output, /example\/application\/blob\/abc123\/AGENTS\.md/);
+
+  fs.rmSync(path.join(root, 'AGENTS.md'));
+  assert.throws(() => loadDocumentation(root), /missing link target \.\.\/\.\.\/AGENTS\.md/);
 });
 
 test('rejects a link outside the checkout and leaves the last assembled site intact on validation failure', t => {

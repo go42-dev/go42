@@ -3,7 +3,6 @@
 name: copilot-setup-steps
 
 # This workflow is responsible for setting up the environment for Copilot.
-# File must be named `copilot-setup-steps.yml` to be recognized.
 
 on:
   workflow_dispatch:
@@ -22,3 +21,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - uses: ./.github/actions/ai-prepare-env
+      # -----
+      - name: 'Build agent instructions'
+        run: task x -- agentenv generate --providers=copilot
+        shell: bash

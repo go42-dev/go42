@@ -26,8 +26,8 @@ type authServiceAccessor interface {
 
 func NewUnaryAuthInterceptor(authService authServiceAccessor) grpc.UnaryServerInterceptor {
 	return func(
-		ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler,
-	) (interface{}, error) {
+		ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler,
+	) (any, error) {
 		if interceptors.DefaultSkipper(info.FullMethod) {
 			return handler(ctx, req)
 		}
@@ -40,7 +40,7 @@ func NewUnaryAuthInterceptor(authService authServiceAccessor) grpc.UnaryServerIn
 }
 
 func NewStreamAuthInterceptor(authService authServiceAccessor) grpc.StreamServerInterceptor {
-	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		if interceptors.DefaultSkipper(info.FullMethod) {
 			return handler(srv, ss)
 		}

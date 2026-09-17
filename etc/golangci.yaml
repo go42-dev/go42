@@ -16,6 +16,11 @@ formatters:
     - gci # stricter import order
 
   settings:
+    gofmt:
+      rewrite-rules:
+        - pattern: 'interface{}'
+          replacement: any
+
     golines:
       max-len: 120
 

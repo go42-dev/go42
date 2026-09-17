@@ -69,7 +69,7 @@ func (p *OutboxMessagePublisher) Run(
 			if err != nil {
 				result = "error"
 			}
-			metrics.Counter("application_outbox_worker_runs_total", map[string]interface{}{
+			metrics.Counter("application_outbox_worker_runs_total", map[string]any{
 				"result": result,
 			}).Inc()
 		}
@@ -145,7 +145,7 @@ func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
 				failed = append(failed, message)
 
 				p.logger.ErrorContext(messageCtx, "failed to publish message", slog.Any("error", err))
-				metrics.Counter("application_errors", map[string]interface{}{
+				metrics.Counter("application_errors", map[string]any{
 					"type": "outbox_publisher_error",
 				}).Inc()
 
@@ -182,7 +182,7 @@ func (p *OutboxMessagePublisher) run(ctx context.Context, batchSize int) error {
 	if err != nil {
 		p.logger.ErrorContext(ctx,
 			"failed to run outbox publisher job", slog.Any("error", err))
-		metrics.Counter("application_errors", map[string]interface{}{
+		metrics.Counter("application_errors", map[string]any{
 			"type": "outbox_publisher_error",
 		}).Inc()
 	}
@@ -206,7 +206,7 @@ func (p *OutboxMessagePublisher) retryDelay(attempt int) time.Duration {
 }
 
 func observeDelivery(createdAt time.Time, result string) {
-	metrics.Counter("application_outbox_messages_total", map[string]interface{}{
+	metrics.Counter("application_outbox_messages_total", map[string]any{
 		"result": result,
 	}).Inc()
 
@@ -214,7 +214,7 @@ func observeDelivery(createdAt time.Time, result string) {
 	if delay < 0 {
 		delay = 0
 	}
-	metrics.Histogram("application_outbox_delivery_delay_seconds", map[string]interface{}{
+	metrics.Histogram("application_outbox_delivery_delay_seconds", map[string]any{
 		"result": result,
 	}).Update(delay)
 }

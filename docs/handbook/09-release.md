@@ -9,7 +9,7 @@ sidebar_position: 9
 
 Use this guide to publish a tested commit as a versioned container image and GitHub release. The
 [release workflow](../../.github/workflows/300-release.yaml) publishes artifacts; environment configuration, migrations,
-rollout, and rollback belong to [deployment](deployment.md).
+rollout, and rollback belong to [deployment](10-deployment.md).
 
 ## Trigger and prerequisites
 
@@ -101,11 +101,11 @@ version, and run it. This writes a container image, attestations, a Git tag, and
 
 The workflow runs three jobs in sequence:
 
-| Job | Behavior and expected result |
-| --- | --- |
-| `validate-release` | Validates the version, source commit, and completed CI run; records the source SHA and CI link in its summary |
-| `docker-build` | Checks out that SHA, builds and pushes both Linux architectures, validates the digest, and produces provenance and SBOM attestations |
-| `publish-release` | Checks the release App slug, then creates the tag at the selected SHA and a non-draft release named `Release <version>` |
+| Job                | Behavior and expected result                                                                                                         |
+|--------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| `validate-release` | Validates the version, source commit, and completed CI run; records the source SHA and CI link in its summary                        |
+| `docker-build`     | Checks out that SHA, builds and pushes both Linux architectures, validates the digest, and produces provenance and SBOM attestations |
+| `publish-release`  | Checks the release App slug, then creates the tag at the selected SHA and a non-draft release named `Release <version>`              |
 
 The GitHub release includes generated release notes plus the source SHA, immutable image reference, successful CI link,
 and release workflow link. Versions containing a prerelease suffix produce GitHub prereleases and are not marked latest;
@@ -150,7 +150,7 @@ After the workflow completes:
     reference. Confirm the image contains both `linux/amd64` and `linux/arm64` manifests.
 3. Inspect the build's provenance and SBOM attestation summaries and download the named SBOM from the workflow artifacts.
     Confirm their subject digest matches the release image. These establish the published artifact's identity and
-    inventory; verify the deployed application separately using the [deployment guide](deployment.md).
+    inventory; verify the deployed application separately using the [deployment guide](10-deployment.md).
 
 The image is pushed before attestations, SBOM generation, and GitHub release creation. A later failure can therefore leave
 an image or attestations without a GitHub release; the workflow has no automatic rollback. Inspect the failed step and

@@ -9,26 +9,25 @@ related: []
 
 # Decision template
 
-Follow the [authoring workflow](../handbook/documentation.md#creating-a-document) and
-[decision lifecycle](../handbook/documentation.md#status-and-implementation).
+Copy this file to `docs/decisions/`. Set an unused `ADR-NNN` ID, write a clear title, change the collection to `decisions`,
+and enter the date. Start as `proposed`. See
+[creating a document](../handbook/01-documentation.md#creating-a-document) and
+[statuses](../handbook/01-documentation.md#status-and-implementation).
 
-When copying this template, change `collection` from `templates` to `decisions`.
+## Why a decision is needed
 
-## Context
+Explain the problem and the limits the choice must respect. Link related requirements and note any open questions.
 
-Describe why this application needs a choice and the constraints that shape it. Identify assumptions and link relevant
-requirements.
+## Options
 
-## Alternatives
+Describe the options considered and the useful or difficult parts of each.
 
-Describe credible options and the tradeoffs that matter here.
+## Choice
 
-## Decision
+State the choice and why it fits. For an accepted decision, say who agreed to it and where that agreement was recorded.
+If you are describing an older decision and do not know the reason, say so.
 
-State the proposed or agreed choice and why it fits. For an accepted choice, identify the recorded maintainer decision
-or delegated agreement. Identify unknown historical reasoning when recording an earlier choice.
+## What follows
 
-## Consequences
-
-Describe benefits, costs, limitations, and obligations. Link current implementation, compatibility, or migration details
-to their owning handbook page. Distinguish demonstrated effects from outcomes that still need verification.
+Explain the benefits, costs, and work this choice creates. Link the handbook page that explains how it works today.
+Say which expected results still need to be checked.

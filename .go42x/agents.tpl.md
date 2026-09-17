@@ -1,98 +1,71 @@
-# Project: {{ .project.name }}
+# Project context
 
-{{ .project.description }}
-
-Primary language: {{ .project.language }}
-{{ if .project.tags }}
-Tags: {{ join .project.tags ", " }}
-{{ end }}
-{{ if .project.metadata }}
-{{ range $key, $value := .project.metadata -}}
-- {{ $key }}: {{ $value }}
-{{ end }}
-{{ end }}
-
-{{ with .git -}}
-## Repository
-
-Root: {{ .root }}
-{{ with .remote }}
-Remote: {{ . }}
-{{ end }}
-Read the current branch, commit, and working-tree status with Git when needed.
-
-{{ end -}}
-{{ with .environment -}}
-## Environment
-
-Platform: {{ .os }}/{{ .arch }}
-{{ with .working_dir }}
-Working directory: {{ . }}
-{{ end }}
-{{ with .go_required_version }}
-Required Go version (go.mod): {{ . }}
-{{ end }}
-{{ with .variables }}
-Configured environment variables:
-
-{{ range $key, $value := . -}}
-- {{ $key }} = {{ printf "%q" $value }}
-{{ end }}
-{{ end }}
-
-{{ end -}}
-{{ with .github_actions -}}
-## GitHub Actions
-
-{{ with .repository }}{{ with .full_name }}Repository: {{ . }}
-{{ end }}{{ end -}}
-{{ with .event }}{{ with .name }}Event: {{ . }}
-{{ end }}{{ with .action }}Action: {{ . }}
-{{ end }}{{ end -}}
-{{ with .ref }}Checkout ref: {{ . }}
-{{ end -}}
-{{ with .build_url }}Run: {{ . }}
-{{ end }}
-{{ with .pull_request -}}
-### Pull request{{ with .number }} #{{ . }}{{ end }}
-
-{{ with .title }}{{ . }}
-{{ end }}
-{{ with .url }}URL: {{ . }}
-{{ end -}}
-{{ with .head }}Source branch: {{ . }}
-{{ end -}}
-{{ with .base }}Target branch: {{ . }}
-{{ end }}
-{{ with .body }}{{ . }}
+{{/*
+The context block owns field selection, names, nesting, and order.
+Use yamlValue for dynamic values and keys; it handles quoting and escaping.
+The omit-empty option removes nulls, empty strings, and empty collections recursively.
+False, zero, and whitespace-only strings are preserved. Omit the option to keep all values.
+Instruction chunks below remain Markdown.
+*/ -}}
+{{ define "context" -}}
+project:
+  name: {{ yamlValue .project.name }}
+  description: {{ yamlValue .project.description }}
+  language: {{ yamlValue .project.language }}
+  tags: {{ yamlValue .project.tags }}
+  metadata: {{ yamlValue .project.metadata }}
+repository:
+  root: {{ yamlValue .git.root }}
+  remote: {{ yamlValue .git.remote }}
+environment:
+  os: {{ yamlValue .environment.os }}
+  arch: {{ yamlValue .environment.arch }}
+  is_ci: {{ yamlValue .environment.is_ci }}
+  ci_mode: {{ yamlValue .environment.ci_mode }}
+  working_dir: {{ yamlValue .environment.working_dir }}
+  variables: {{ yamlValue .environment.variables }}
+golang:
+  go_version: {{ yamlValue .golang.go_version }}
+  env: {{ yamlValue .golang.env }}
+github_actions:
+  repository:
+    full_name: {{ yamlValue .github_actions.repository.full_name }}
+  actor:
+    login: {{ yamlValue .github_actions.actor.login }}
+  event:
+    name: {{ yamlValue .github_actions.event.name }}
+    action: {{ yamlValue .github_actions.event.action }}
+  ref: {{ yamlValue (or .github_actions.ref .github_actions.ref_name) }}
+  sha: {{ yamlValue .github_actions.sha }}
+  build_url: {{ yamlValue .github_actions.build_url }}
+  pull_request:
+    number: {{ yamlValue .github_actions.pull_request.number }}
+    title: {{ yamlValue .github_actions.pull_request.title }}
+    url: {{ yamlValue .github_actions.pull_request.url }}
+    head: {{ yamlValue .github_actions.pull_request.head }}
+    base: {{ yamlValue .github_actions.pull_request.base }}
+    body: {{ yamlValue .github_actions.pull_request.body }}
+  issue:
+    number: {{ yamlValue .github_actions.issue.number }}
+    title: {{ yamlValue .github_actions.issue.title }}
+    url: {{ yamlValue .github_actions.issue.url }}
+    body: {{ yamlValue .github_actions.issue.body }}
+  user_request: {{ yamlValue .github_actions.user_request }}
+{{ $hasMCP := false }}
+{{ range .mcp }}{{ if .Enabled }}{{ $hasMCP = true }}{{ end }}{{ end }}
+{{ if $hasMCP }}
+mcp:
+  tools: all_exposed
+  servers:
+{{ range $name, $server := .mcp }}{{ if $server.Enabled }}
+    {{ yamlValue $name }}:
+      transport: {{ yamlValue $server.Transport }}
+{{ end }}{{ end }}
 {{ end }}
 {{ end -}}
-{{ with .issue -}}
-### Issue{{ with .number }} #{{ . }}{{ end }}
 
-{{ with .title }}{{ . }}
-{{ end }}
-{{ with .url }}URL: {{ . }}
-{{ end }}
-{{ with .body }}{{ . }}
-{{ end }}
-{{ end -}}
-{{ with .user_request -}}
-### Requested task
+{{ yamlBlock "context" . "omit-empty" }}
 
-{{ . }}
-
-{{ end -}}
-{{ end -}}
-{{ with .mcp -}}
-## MCP servers
-
-{{ range $name, $server := . -}}
-- {{ $name }} ({{ $server.Transport }})
-{{ end }}
-All tools exposed by these enabled servers are available through MCP.
-
-{{ end -}}
 ## Instructions
 
 {{ .chunks }}

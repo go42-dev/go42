@@ -19,7 +19,7 @@ func NewMetricsCollector() echo.MiddlewareFunc {
 
 			start := time.Now()
 
-			labels := map[string]interface{}{
+			labels := map[string]any{
 				"method": normalizeHTTPMethod(c.Request().Method),
 				"path":   c.Path(),
 			}

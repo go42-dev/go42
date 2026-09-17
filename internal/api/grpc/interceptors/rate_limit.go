@@ -44,10 +44,10 @@ func WithClientRateLimitScope(scope string) ClientRateLimiterOption {
 func UnaryServerRateLimiterInterceptor(limiter rateLimiterAcessor) grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
-		req interface{},
+		req any,
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
-	) (interface{}, error) {
+	) (any, error) {
 		if limiter == nil || DefaultSkipper(info.FullMethod) {
 			return handler(ctx, req)
 		}
@@ -64,7 +64,7 @@ func UnaryServerRateLimiterInterceptor(limiter rateLimiterAcessor) grpc.UnarySer
 
 func StreamServerRateLimiterInterceptor(limiter rateLimiterAcessor) grpc.StreamServerInterceptor {
 	return func(
-		srv interface{},
+		srv any,
 		stream grpc.ServerStream,
 		info *grpc.StreamServerInfo,
 		handler grpc.StreamHandler,
@@ -92,7 +92,7 @@ func UnaryClientRateLimiterInterceptor(
 	return func(
 		ctx context.Context,
 		method string,
-		req, reply interface{},
+		req, reply any,
 		cc *grpc.ClientConn,
 		invoker grpc.UnaryInvoker,
 		opts ...grpc.CallOption,

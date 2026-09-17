@@ -154,8 +154,8 @@ func TestUnaryClientRateLimiterInterceptor(t *testing.T) {
 			invoker := func(
 				context.Context,
 				string,
-				interface{},
-				interface{},
+				any,
+				any,
 				*grpc.ClientConn,
 				...grpc.CallOption,
 			) error {

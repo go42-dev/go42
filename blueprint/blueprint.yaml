@@ -1,0 +1,50 @@
+---
+
+scope:
+  root: ..
+  exclude:
+    - ".git/**"
+    - ".build/**"
+    - ".tools/**"
+
+variables:
+  - name: .GO42_APPLICATION_NAME
+    description: Name used by the application and its users.
+    type: string
+    order: 10
+    validations:
+      - required
+
+  - name: .GO42_APPLICATION_PURPOSE
+    description: >
+      Describe the problem the application solves, its intended users, and its main responsibilities.
+    type: string
+    order: 20
+    validations:
+      - required
+
+operations:
+  - action: replace
+    region: id-go42-app-purpose
+    value_from: .GO42_APPLICATION_PURPOSE
+
+  - action: remove
+    region: id-go42-blueprint-setup
+
+  - action: remove
+    paths:
+      - blueprint/blueprint.md
+      - blueprint/blueprint.yaml
+
+checks:
+  - command: task
+    args:
+      - "build"
+
+  - command: task
+    args:
+      - "test:unit"
+
+  - command: task
+    args:
+      - "docs:check"

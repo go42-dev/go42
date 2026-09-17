@@ -57,7 +57,7 @@ func WithName(name string) DatabaseObserverOption {
 
 // Observe starts collection of metrics.
 func (o *DatabaseObserver) Observe(ctx context.Context) {
-	labels := make(map[string]interface{}, 0)
+	labels := make(map[string]any, 0)
 	if o.name != "" {
 		labels["db_name"] = o.name
 	}
@@ -74,7 +74,7 @@ func (o *DatabaseObserver) Observe(ctx context.Context) {
 }
 
 // #nosec | Negative values are not expected.
-func (o *DatabaseObserver) updateDBMetrics(labels map[string]interface{}) {
+func (o *DatabaseObserver) updateDBMetrics(labels map[string]any) {
 	sqlStats := o.db.Stats()
 	metrics.
 		Gauge("go_sql_max_open_connections", labels).

@@ -8,7 +8,7 @@ sidebar_position: 8
 # Using the API
 
 This guide describes the implemented authentication and user interfaces. Use it to verify a local instance or diagnose
-a failed request. Follow [feature implementation](development.md#implementing-a-feature) when changing the interface.
+a failed request. Follow [feature implementation](05-development.md#implementing-a-feature) when changing the interface.
 
 ## Contracts and authentication
 
@@ -17,11 +17,11 @@ HTTP business routes use `/api/v1`; probes and metrics are at the root. The
 describe the contracts. HTTP handlers and error mappings are handwritten. The bundled `dummy.yaml` contract is a tooling
 placeholder and has no application handler.
 
-| Interface | Authentication and authorization |
-| --- | --- |
-| HTTP `/api/v1/auth/*` | Signup/login use credentials; refresh/logout use a refresh token in the body |
-| HTTP `/api/v1/users/*` | `Authorization: Bearer ACCESS_TOKEN` or `X-API-Key`; each route also checks its permission |
-| gRPC user methods | `x-api-key` metadata when authorization is enabled; each method needs its registered permissions |
+| Interface              | Authentication and authorization                                                                 |
+|------------------------|--------------------------------------------------------------------------------------------------|
+| HTTP `/api/v1/auth/*`  | Signup/login use credentials; refresh/logout use a refresh token in the body                     |
+| HTTP `/api/v1/users/*` | `Authorization: Bearer ACCESS_TOKEN` or `X-API-Key`; each route also checks its permission       |
+| gRPC user methods      | `x-api-key` metadata when authorization is enabled; each method needs its registered permissions |
 
 A normal signed-up user has self-service permissions and cannot list or administer other users. Use `/users/me` to verify
 that user's access. The inherited administrative test key is intended for administrative methods and does not grant
@@ -35,13 +35,13 @@ Permission enforcement is defined in the [HTTP adapter](../../internal/auth/adap
 
 HTTP `GET /api/v1/users` and gRPC `ListUsers` use the shared API pagination rules:
 
-| Input | Behavior |
-| --- | --- |
-| Limit omitted or `0` | Use the default limit of `10` |
-| Limit from `1` through `100` | Return at most that many users |
-| Offset omitted | Start at `0` |
-| Offset from `0` through `2147483647` | Skip that many users |
-| Negative or out-of-range values | Reject with HTTP `400` or gRPC `InvalidArgument` |
+| Input                                     | Behavior                                             |
+| ----------------------------------------- | ---------------------------------------------------- |
+| Limit omitted or `0`                      | Use the default limit of `10`                        |
+| Limit from `1` through `100`              | Return at most that many users                       |
+| Offset omitted                            | Start at `0`                                         |
+| Offset from `0` through `2147483647`      | Skip that many users                                 |
+| Negative or out-of-range values           | Reject with HTTP `400` or gRPC `InvalidArgument`     |
 | Valid offset beyond the available records | Return a successful response with an empty user list |
 
 HTTP pagination values must parse as integers. Present but empty values, such as `?limit=` or `?offset=`, and malformed
@@ -58,13 +58,13 @@ aligned when changing these rules.
 
 All paths below have the `/api/v1` prefix. Send JSON request bodies with `Content-Type: application/json`.
 
-| Request | Input | Expected successful result |
-| --- | --- | --- |
-| `POST /auth/signup` | `email`, `password` | `201` user record; creates the account |
-| `POST /auth/login` | `email`, `password` | `200` with `access_token`, `refresh_token`, and `expires_in` |
-| `GET /users/me` | Bearer access token | `200` with the authenticated user's UUID, roles, and permissions |
-| `POST /auth/refresh` | `token`: the current refresh token | `200` with a new token pair |
-| `POST /auth/logout` | `refresh_token`: the current refresh token | Empty `200`; ends the session |
+| Request              | Input                                      | Expected successful result                                       |
+|----------------------|--------------------------------------------|------------------------------------------------------------------|
+| `POST /auth/signup`  | `email`, `password`                        | `201` user record; creates the account                           |
+| `POST /auth/login`   | `email`, `password`                        | `200` with `access_token`, `refresh_token`, and `expires_in`     |
+| `GET /users/me`      | Bearer access token                        | `200` with the authenticated user's UUID, roles, and permissions |
+| `POST /auth/refresh` | `token`: the current refresh token         | `200` with a new token pair                                      |
+| `POST /auth/logout`  | `refresh_token`: the current refresh token | Empty `200`; ends the session                                    |
 
 Use the newly returned token pair after refresh. Refresh tokens are single-use; reusing one revokes its session, including
 successor tokens. A retry with an old refresh token is not a validity check. After logout, access and refresh using that
@@ -125,16 +125,16 @@ Application errors use `application/problem+json` with `type`, `title`, and `sta
 The current renderer puts the request URI in `type`. Capture the status, route, time, and request ID without credentials
 or tokens. Compare with the [HTTP error mapping](../../internal/auth/adapters/http/v1/errors.go).
 
-| Status | Investigate |
-| --- | --- |
-| `400` | Invalid input, pagination, email/password rules, or rejected login credentials |
-| `401` | Missing/invalid access credentials, expired or revoked session, or invalid/reused refresh token |
-| `403` | Recognized credentials lack the route's permission; an ordinary user cannot use administrative routes |
-| `404` | Incorrect route/prefix or missing resource; distinguish routing from an entity lookup |
-| `409` | User email already exists |
-| `429` | Authentication or transport rate limit; inspect the configured limiter and recent request volume |
-| `503` | Authentication dependency unavailable; inspect database/cache errors and readiness |
-| `500` | Unhandled server error; correlate request ID and component logs |
+| Status | Investigate                                                                                           |
+|--------|-------------------------------------------------------------------------------------------------------|
+| `400`  | Invalid input, pagination, email/password rules, or rejected login credentials                        |
+| `401`  | Missing/invalid access credentials, expired or revoked session, or invalid/reused refresh token       |
+| `403`  | Recognized credentials lack the route's permission; an ordinary user cannot use administrative routes |
+| `404`  | Incorrect route/prefix or missing resource; distinguish routing from an entity lookup                 |
+| `409`  | User email already exists                                                                             |
+| `429`  | Authentication or transport rate limit; inspect the configured limiter and recent request volume      |
+| `503`  | Authentication dependency unavailable; inspect database/cache errors and readiness                    |
+| `500`  | Unhandled server error; correlate request ID and component logs                                       |
 
 Login returns the same generic `400` problem response for an unknown email, incorrect password, or inactive account.
 It does not expose account status through a separate response. Protected user operations explicitly document `403`
@@ -156,4 +156,4 @@ and may be empty.
 For gRPC, inspect the returned status rather than HTTP codes: missing credentials map to `Unauthenticated`, missing
 permissions to `PermissionDenied`, and authentication dependency failures to `Unavailable`. The
 [gRPC error mapping](../../internal/auth/adapters/grpc/v1/errors.go) covers service errors. Use
-[operations](operations.md#failure-investigation-and-recovery) for evidence collection and recovery checks.
+[operations](11-operations.md#failure-investigation-and-recovery) for evidence collection and recovery checks.

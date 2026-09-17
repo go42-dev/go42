@@ -13,7 +13,7 @@
   "definitions": {
     "providerEnabled": {
       "type": "boolean",
-      "description": "Whether to generate configuration for this provider. Disabling preserves existing settings and removes generated CLAUDE.md/GEMINI.md imports. Shared AGENTS.md is always generated.",
+      "description": "Whether to generate configuration for this provider. Disabling preserves existing settings and instruction files, including with --clean. Shared AGENTS.md is always generated.",
       "default": true
     },
     "autoApproveTools": {
@@ -177,6 +177,14 @@
         "chunks-dir": {
           "type": "string",
           "description": "Chunk directory relative to .go42x; immediate *.tpl.md files load in filename order. Omit to include no chunks."
+        },
+        "go-env": {
+          "type": "array",
+          "description": "Additional go env variables published under golang.env, beyond GOVERSION, GOTOOLCHAIN, GOROOT, GOPATH, GOBIN, GOCACHE, GOMODCACHE, GOMOD, GOWORK, GOOS, GOARCH, CGO_ENABLED. Empty values are omitted.",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          }
         }
       }
     },

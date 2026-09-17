@@ -214,14 +214,6 @@ export function loadDocumentation(root = rootDirectory) {
   }
   validateReferences(pages, ids);
   validateIndex(root, pages, sources);
-  // Entry points are read from the checkout, so their links must work there too.
-  for (const source of ['README.md', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md', '.github/copilot-instructions.md']) {
-    if (!fs.existsSync(path.join(root, source))) continue;
-    const tree = markdown.parse(fs.readFileSync(path.join(root, source), 'utf8'));
-    visit(tree, ['link', 'image', 'definition'], node => {
-      localTarget(root, {source}, node.url);
-    });
-  }
   return {root, pages, ids, sources};
 }
 

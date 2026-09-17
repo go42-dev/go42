@@ -9,7 +9,7 @@ sidebar_position: 5
 
 Use this guide to take a change from a fresh checkout to a verified pull request. Start at the
 [documentation index](../README.md) for the application's context and relevant requirements and decisions. Follow the
-[project conventions](conventions.md) for engineering rules and the [documentation workflow](documentation.md) when
+[project conventions](03-conventions.md) for engineering rules and the [documentation workflow](01-documentation.md) when
 updating application knowledge alongside the implementation.
 
 [Taskfile.yaml](../../Taskfile.yaml) defines the executable workflows. Task runs commands; mise manages the project tools
@@ -121,8 +121,8 @@ The generated agent instructions use the configured gopls tools for Go navigatio
     implementations, and tests. Request file context or a package's public API when needed to understand unfamiliar code.
 2. After a coherent batch of saved Go edits, request diagnostics for the changed files. Investigate relevant findings,
     fix errors introduced by the change, and check again after fixes.
-3. Run the applicable [lint and test commands](testing.md#choosing-checks-before-review) before completing the change. Include
-    affected callers when selecting packages; diagnostics supplement those checks.
+3. Run the applicable [lint and test commands](06-testing.md#choosing-checks-before-review) before completing the change.
+    Include affected callers when selecting packages; diagnostics supplement those checks.
 
 The configured standalone gopls server reads saved files. Its results reflect the loaded workspace and build
 configuration; review affected build tags and platforms separately. If gopls is unavailable, use local source inspection
@@ -211,7 +211,7 @@ running `task generate` from a clean checkout must produce no changes.
 
 Generated outputs include `api/gen/`, package `mocks/` directories, `.env.example`, and the combined OpenAPI document.
 Documentation assembly owns `pages/docs/`, and the website build owns `pages/build/`; regenerate those through the
-[documentation commands](documentation.md#verification). Dependency tools own lockfiles such as `etc/mise.lock` and
+[documentation commands](01-documentation.md#verification). Dependency tools own lockfiles such as `etc/mise.lock` and
 `pages/package-lock.json`.
 
 Update vendored files, including Protobuf definitions under `api/proto/third_party/`, through their dependency update
@@ -219,11 +219,11 @@ process. Record versions and upstream sources in adjacent `.versions.yaml` files
 regenerate affected outputs. Follow [tool maintenance](#maintaining-the-workflow) when changing tool pins or configuration.
 
 For a new database migration, run `task generate:migration-id` once to obtain its filename prefix. Use the same filename
-across database engines and follow the [migration conventions](conventions.md#architecture-and-data).
+across database engines and follow the [migration conventions](03-conventions.md#architecture-and-data).
 
 ## Implementing a feature
 
-Use the [source map](architecture.md#source-map) to trace an existing operation with similar behavior. Confirm the desired
+Use the [source map](07-architecture.md#source-map) to trace an existing operation with similar behavior. Confirm the desired
 outcome and failure cases in the relevant requirement; record a significant new choice in a decision when needed.
 
 1. Define the transport contract in [OpenAPI](../../api/openapi/v1/auth.yaml) or
@@ -247,7 +247,7 @@ outcome and failure cases in the relevant requirement; record a significant new 
     transports expose an operation, verify both mappings. Run applicable API compatibility checks before review.
 8. Update the owning handbook page, requirement evidence, and any affected operating instructions with the change.
 
-For persisted-data or message-format changes, include the [migration handoff](deployment.md#migrations-and-change-handoff).
+For persisted-data or message-format changes, include the [migration handoff](10-deployment.md#migrations-and-change-handoff).
 
 For the existing authentication feature, a focused unit check is:
 
@@ -257,22 +257,22 @@ task test:unit -- ./internal/auth/... ./internal/api/...
 
 The [HTTP integration clients](../../tests/integration/http/v1/users_clients_test.go) exercise both generated HTTP SDKs;
 [gRPC integration tests](../../tests/integration/grpc/v1/auth_test.go) exercise the generated gRPC client. Follow the
-[integration prerequisites](testing.md#integration-test-environment) before running `task test:integration`.
+[integration prerequisites](06-testing.md#integration-test-environment) before running `task test:integration`.
 
 ## Formatting and linting
 
 Format only edited source files and review the diff; linters check without applying fixes. In the commands below, `FILE`
 is an existing file and `PACKAGE` is a local Go package or subtree. Use `task TASK --summary` for usage.
 
-| Source type | Formatter | Check |
-| --- | --- | --- |
-| Go | `task fmt:go -- "$FILE"` | `task lint:go -- "$PACKAGE"` |
-| Plain YAML, including workflows | `task fmt:yaml -- "$FILE"` | `task lint:yaml -- "$FILE"` |
-| JSON | `task fmt:json -- "$FILE"` | `task lint:json -- "$FILE"` |
-| TOML | `task fmt:toml -- "$FILE"` | `task lint:toml -- "$FILE"` |
-| Markdown | `task fmt:markdown -- "$FILE"` | `task lint:markdown -- "$FILE"` and `task lint:prose -- "$FILE"` |
-| Protobuf | `task fmt:proto -- "$FILE"` | `task lint:proto` checks the entire `api` module |
-| SQL migrations | `task fmt:sql DIALECT="$DIALECT" -- "$FILE"` | `task lint:sql DIALECT="$DIALECT" -- "$FILE"` |
+| Source type                     | Formatter                                    | Check                                                            |
+|---------------------------------|----------------------------------------------|------------------------------------------------------------------|
+| Go                              | `task fmt:go -- "$FILE"`                     | `task lint:go -- "$PACKAGE"`                                     |
+| Plain YAML, including workflows | `task fmt:yaml -- "$FILE"`                   | `task lint:yaml -- "$FILE"`                                      |
+| JSON                            | `task fmt:json -- "$FILE"`                   | `task lint:json -- "$FILE"`                                      |
+| TOML                            | `task fmt:toml -- "$FILE"`                   | `task lint:toml -- "$FILE"`                                      |
+| Markdown                        | `task fmt:markdown -- "$FILE"`               | `task lint:markdown -- "$FILE"` and `task lint:prose -- "$FILE"` |
+| Protobuf                        | `task fmt:proto -- "$FILE"`                  | `task lint:proto` checks the entire `api` module                 |
+| SQL migrations                  | `task fmt:sql DIALECT="$DIALECT" -- "$FILE"` | `task lint:sql DIALECT="$DIALECT" -- "$FILE"`                    |
 
 For SQL, use `DIALECT=sqlite` for `migrate/sqlite/`, `mysql` for `migrate/mysql/`, and `postgres` for `migrate/pgsql/`.
 Explicit files require a dialect. With no files, `task lint:sql` checks all three; adding `DIALECT` selects one.
@@ -290,14 +290,14 @@ JavaScript, TypeScript, CSS, shell, and Dockerfiles have no configured formatter
 
 ### Checks for specific purposes
 
-| Change | Additional checks |
-| --- | --- |
-| Workflow YAML | `task lint:actions -- "$FILE"` runs Actionlint and Zizmor; omit files for composite actions or shared workflow interfaces |
-| OpenAPI | `task lint:openapi` and `task lint:openapi-breaking` |
-| Protobuf | `task lint:proto-breaking`, in addition to the full-module checks above |
-| Dockerfile | `task lint:docker` |
-| Helm | `task lint:helm` checks tag and digest image references; format only plain chart YAML, preserving Go template syntax |
-| Standalone shell | `task tool -- shellcheck "$FILE"` |
+| Change           | Additional checks                                                                                                         |
+|------------------|---------------------------------------------------------------------------------------------------------------------------|
+| Workflow YAML    | `task lint:actions -- "$FILE"` runs Actionlint and Zizmor; omit files for composite actions or shared workflow interfaces |
+| OpenAPI          | `task lint:openapi` and `task lint:openapi-breaking`                                                                      |
+| Protobuf         | `task lint:proto-breaking`, in addition to the full-module checks above                                                   |
+| Dockerfile       | `task lint:docker`                                                                                                        |
+| Helm             | `task lint:helm` checks tag and digest image references; format only plain chart YAML, preserving Go template syntax      |
+| Standalone shell | `task tool -- shellcheck "$FILE"`                                                                                         |
 
 Regenerate affected outputs before API compatibility checks and ensure `origin/master` is available.
 
@@ -320,16 +320,16 @@ file paths.
 
 ## Testing and verification
 
-Use the [testing guide](testing.md) to select suites, prepare dependencies, and check results.
+Use the [testing guide](06-testing.md) to select suites, prepare dependencies, and check results.
 
 ### Integration test environment
 
-Follow [integration setup](testing.md#integration-test-environment) for application settings, test credentials, and
+Follow [integration setup](06-testing.md#integration-test-environment) for application settings, test credentials, and
 backend requirements.
 
 ### Choosing checks before review
 
-Follow the [review checks](testing.md#choosing-checks-before-review) and report commands, results, backends, and skips.
+Follow the [review checks](06-testing.md#choosing-checks-before-review) and report commands, results, backends, and skips.
 
 ## Preparing a pull request
 
@@ -337,7 +337,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) with 
 [etc/commitlint.yaml](../../etc/commitlint.yaml). Branch names must match `^[A-Za-z0-9/_.-]+$`, be descriptive, and
 include a task identifier when applicable. Prefer merge commits over rebasing, and keep rebase disabled. Use `.gitkeep`
 to preserve empty directories in Git and the `gh` client to access GitHub resources. Use
-[Semantic Versioning](https://semver.org/) for releases; follow [Release](release.md) for publishing artifacts.
+[Semantic Versioning](https://semver.org/) for releases; follow [Release](09-release.md) for publishing artifacts.
 
 Destructive operations require user confirmation in interactive mode. In non-interactive mode, allow them only when
 explicitly requested by the user.
@@ -345,7 +345,7 @@ explicitly requested by the user.
 Before opening or updating a pull request:
 
 1. Review the final diff, including generated outputs. Update affected documentation through its
-    [change workflow](documentation.md#change-workflow-for-contributors).
+    [change workflow](01-documentation.md#change-workflow-for-contributors).
 2. Use the [pull request template](../../.github/pull_request_template.md) for PRs created through the web interface
     or tools.
     Describe the problem and resulting behavior, with a brief before/after example when useful. Keep the title and
@@ -357,16 +357,16 @@ Before opening or updating a pull request:
     explain material skips.
 5. Add a `Deployment` section when adopting the change requires action. Describe relevant migrations, configuration or
     compatibility changes, rollout requirements, and rollback limitations. Link the relevant
-    [deployment instructions](deployment.md).
+    [deployment instructions](10-deployment.md).
 
 ## Maintaining the workflow
 
-| Setting | Source |
-| --- | --- |
-| Go version | [go.mod](../../go.mod) |
-| Tool versions and platform locks | [etc/mise.toml](../../etc/mise.toml) and [etc/mise.lock](../../etc/mise.lock) |
-| Commands | [Taskfile.yaml](../../Taskfile.yaml) |
-| Formatter and linter configuration | `etc/` |
+| Setting                            | Source                                                                        |
+| ---------------------------------- | ----------------------------------------------------------------------------- |
+| Go version                         | [go.mod](../../go.mod)                                                        |
+| Tool versions and platform locks   | [etc/mise.toml](../../etc/mise.toml) and [etc/mise.lock](../../etc/mise.lock) |
+| Commands                           | [Taskfile.yaml](../../Taskfile.yaml)                                          |
+| Formatter and linter configuration | `etc/`                                                                        |
 
 To change a mise-managed tool, select its key from `etc/mise.toml` and the required version:
 

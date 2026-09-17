@@ -73,7 +73,7 @@ func TestUnaryAuthInterceptor_APITokenUsesOwnerIdentityAndTokenPermissions(t *te
 		ctx,
 		nil,
 		&grpc.UnaryServerInfo{FullMethod: "/auth.v1.AuthService/ListUsers"},
-		func(ctx context.Context, _ interface{}) (interface{}, error) {
+		func(ctx context.Context, _ any) (any, error) {
 			authInfo := auth.RetrieveAuthFromContext(ctx)
 			if authInfo == nil {
 				t.Fatal("authentication context is nil")
@@ -205,7 +205,7 @@ func TestUnaryAccessInterceptorRequiresAuthentication(t *testing.T) {
 
 	response, err := authInterceptors.NewUnaryAccessInterceptor(registry)(
 		t.Context(), nil, &grpc.UnaryServerInfo{FullMethod: interceptorTestMethod},
-		func(context.Context, interface{}) (interface{}, error) {
+		func(context.Context, any) (any, error) {
 			handlerCalls++
 			return nil, nil
 		},
@@ -238,7 +238,7 @@ func TestStreamAccessInterceptorRequiresAuthenticatedStream(t *testing.T) {
 
 			err := authInterceptors.NewStreamAccessInterceptor(registry)(
 				nil, &interceptorTestStream{ctx: ctx}, &grpc.StreamServerInfo{FullMethod: interceptorTestMethod},
-				func(interface{}, grpc.ServerStream) error {
+				func(any, grpc.ServerStream) error {
 					handlerCalls++
 					return nil
 				},
@@ -397,10 +397,10 @@ func runAuthAccessInterceptors(
 		authorize := authInterceptors.NewStreamAccessInterceptor(registry)
 		return authenticate(
 			server, &interceptorTestStream{ctx: ctx}, info,
-			func(srv interface{}, ss grpc.ServerStream) error {
+			func(srv any, ss grpc.ServerStream) error {
 				return authorize(
 					srv, ss, info,
-					func(handlerSrv interface{}, handlerStream grpc.ServerStream) error {
+					func(handlerSrv any, handlerStream grpc.ServerStream) error {
 						assert.Same(t, server, handlerSrv)
 						assert.Same(t, ss, handlerStream)
 						return handler(handlerStream.Context())
@@ -415,10 +415,10 @@ func runAuthAccessInterceptors(
 	handlerCalled := false
 	response, err := authInterceptors.NewUnaryAuthInterceptor(service)(
 		ctx, request, info,
-		func(authCtx context.Context, req interface{}) (interface{}, error) {
+		func(authCtx context.Context, req any) (any, error) {
 			return authInterceptors.NewUnaryAccessInterceptor(registry)(
 				authCtx, req, info,
-				func(handlerCtx context.Context, handlerRequest interface{}) (interface{}, error) {
+				func(handlerCtx context.Context, handlerRequest any) (any, error) {
 					handlerCalled = true
 					assert.Same(t, request, handlerRequest)
 					return wantResponse, handler(handlerCtx)

@@ -188,7 +188,7 @@ func (s *Service) limitAuthentication(
 func (s *Service) SignUp(ctx context.Context, email string, password string) (*models.User, error) {
 	startTime := time.Now()
 	defer func() {
-		metrics.Histogram("auth_operation_duration_seconds", map[string]interface{}{
+		metrics.Histogram("auth_operation_duration_seconds", map[string]any{
 			"operation": "signup",
 		}).Update(time.Since(startTime).Seconds())
 	}()
@@ -258,7 +258,7 @@ func (s *Service) SignUp(ctx context.Context, email string, password string) (*m
 		span.SetStatus(codes.Ok, "user signed up")
 	}
 
-	metrics.Counter("auth_users_created_total", map[string]interface{}{
+	metrics.Counter("auth_users_created_total", map[string]any{
 		"method": "signup",
 	}).Inc()
 
@@ -268,7 +268,7 @@ func (s *Service) SignUp(ctx context.Context, email string, password string) (*m
 func (s *Service) Login(ctx context.Context, email string, password string) (*domain.Tokens, error) {
 	startTime := time.Now()
 	defer func() {
-		metrics.Histogram("auth_operation_duration_seconds", map[string]interface{}{
+		metrics.Histogram("auth_operation_duration_seconds", map[string]any{
 			"operation": "login",
 		}).Update(time.Since(startTime).Seconds())
 	}()
@@ -286,7 +286,7 @@ func (s *Service) Login(ctx context.Context, email string, password string) (*do
 			return nil, fmt.Errorf("%w: user lookup: %w", domain.ErrAuthenticationUnavailable, err)
 		}
 		compareDummyPassword(password)
-		metrics.Counter("auth_login_attempts_total", map[string]interface{}{
+		metrics.Counter("auth_login_attempts_total", map[string]any{
 			"result": "user_not_found",
 		}).Inc()
 		return nil, domain.ErrInvalidCredentials
@@ -294,7 +294,7 @@ func (s *Service) Login(ctx context.Context, email string, password string) (*do
 
 	if !user.IsActive() {
 		compareDummyPassword(password)
-		metrics.Counter("auth_login_attempts_total", map[string]interface{}{
+		metrics.Counter("auth_login_attempts_total", map[string]any{
 			"result": "user_inactive",
 		}).Inc()
 		return nil, domain.ErrInvalidCredentials
@@ -309,7 +309,7 @@ func (s *Service) Login(ctx context.Context, email string, password string) (*do
 			return nil
 		})
 	if err != nil {
-		metrics.Counter("auth_login_attempts_total", map[string]interface{}{
+		metrics.Counter("auth_login_attempts_total", map[string]any{
 			"result": "invalid_password",
 		}).Inc()
 		return nil, err
@@ -348,7 +348,7 @@ func (s *Service) Login(ctx context.Context, email string, password string) (*do
 		span.SetStatus(codes.Ok, "user logged in")
 	}
 
-	metrics.Counter("auth_login_attempts_total", map[string]interface{}{
+	metrics.Counter("auth_login_attempts_total", map[string]any{
 		"result": "success",
 	}).Inc()
 

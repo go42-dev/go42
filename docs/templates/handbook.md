@@ -8,29 +8,28 @@ related: []
 
 # Handbook template
 
-Follow the [authoring workflow](../handbook/documentation.md#creating-a-document). Choose an unused positive integer for
-`sidebar_position` and place the new page in that order in the documentation index. Adapt headings to the subject and
-remove optional sections when they add no useful information.
+Copy this file to `docs/handbook/NN-topic.md`. Replace the `id` and `title`, set `collection: handbook`, and choose an unused
+positive `sidebar_position`. Replace `NN` with that position padded to two digits, and `topic` with a descriptive name.
+Add the page to the index in that order. See
+[creating a document](../handbook/01-documentation.md#creating-a-document).
 
-When copying this template, change `collection` from `templates` to `handbook`.
+Use headings that fit the subject and remove prompts or sections you do not need.
 
 ## Purpose
 
-Describe the reader's task or concept, its scope, and any prerequisites. Name the applicable environment or backend when
-that affects the instructions.
+Explain what this page helps someone understand or do, and what they need before starting.
 
-## Topic
+## How it works
 
-Replace this heading with sections for the subject: architecture and data flows, reference settings and defaults, or
-procedure steps with commands and expected results. Link authoritative code or configuration. For a procedure, put required
-inputs, effects on state, failure checks, and cleanup beside the steps they affect; follow the
-[procedure and evidence guidance](../handbook/documentation.md#writing-procedures-and-evidence).
+Replace this heading with one that describes the topic. Explain the behavior or give the steps to follow. Show commands
+and expected results, and link useful code or configuration. Say which files or settings change and how to undo changes
+when needed.
 
-## Examples (optional)
+## Example
 
-Add a bounded example that helps the reader apply the explanation or procedure. State what its verification establishes
-and what it does not cover. Use placeholders or disposable values instead of credentials or private application data.
+Give a small example the reader can try. Explain placeholders and use sample values instead of secrets. Say what you
+tried and what is still untested.
 
-## Limitations (optional)
+## Problems and limits
 
-Describe applicable constraints, failure symptoms, and recovery guidance. Label planned behavior and unknowns.
+Describe common problems and how to fix them. Point out anything that is not ready or does not work in some environments.

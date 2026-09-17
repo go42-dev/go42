@@ -185,7 +185,7 @@ func New(opts ...Option) (*Server, error) {
 }
 
 func (s *Server) handlePanic(ctx context.Context, p any) error {
-	metrics.Counter("application_errors", map[string]interface{}{
+	metrics.Counter("application_errors", map[string]any{
 		"type": "grpc_panic",
 	}).Inc()
 	s.logger.ErrorContext(ctx, "grpc panic",

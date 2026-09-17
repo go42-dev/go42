@@ -10,12 +10,12 @@ const MIMEApplicationProblemJSON = "application/problem+json"
 // @see https://datatracker.ietf.org/doc/html/rfc9457/
 // @note subtle deviation from rfc - title and status are required.
 type Error struct {
-	Type     string        `json:"type"`
-	Title    string        `json:"title"`
-	Status   int           `json:"status"`
-	Detail   string        `json:"detail,omitempty"`
-	Instance string        `json:"instance,omitempty"`
-	Errors   []interface{} `json:"errors,omitempty"`
+	Type     string `json:"type"`
+	Title    string `json:"title"`
+	Status   int    `json:"status"`
+	Detail   string `json:"detail,omitempty"`
+	Instance string `json:"instance,omitempty"`
+	Errors   []any  `json:"errors,omitempty"`
 }
 
 func SendJSONError(ctx *echo.Context, status int, title string, opts ...ErrorOption) error {

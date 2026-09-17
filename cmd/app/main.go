@@ -998,12 +998,12 @@ func initProfiling(_ context.Context, cfg *config.Config) ShutMeDown {
 
 func initMetrics(_ context.Context, cfg *config.Config) http.Handler {
 	hostname, _ := os.Hostname()
-	metrics.RegisterGlobalLabels(map[string]interface{}{
+	metrics.RegisterGlobalLabels(map[string]any{
 		"service":     cfg.Core.ServiceName,
 		"environment": cfg.Core.Environment,
 		"hostname":    hostname,
 	})
-	metrics.Gauge("application_build", map[string]interface{}{
+	metrics.Gauge("application_build", map[string]any{
 		"build_tag":    xBuildTag,
 		"build_commit": xBuildCommit,
 	}).Set(1)

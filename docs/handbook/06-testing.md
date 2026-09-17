@@ -10,13 +10,13 @@ related:
 
 # Testing and verification
 
-Complete [environment setup](development.md#environment-setup) before running checks.
+Complete [environment setup](05-development.md#environment-setup) before running checks.
 [Taskfile.yaml](../../Taskfile.yaml) defines the commands and their outputs.
 
 ## Choose a test suite
 
 While editing, run the matching focused checks and tests for the affected behavior. Check Go packages together, including
-callers when interfaces change. Follow the [test design conventions](conventions.md#testing).
+callers when interfaces change. Follow the [test design conventions](03-conventions.md#testing).
 
 | Command                                | Coverage and prerequisites                                                                                |
 |----------------------------------------|-----------------------------------------------------------------------------------------------------------|
@@ -61,7 +61,7 @@ Repository tests create isolated databases through the [test helper](../../tests
 | `GRPC_API_KEY`        | Defaults to the seeded development key; override through the test process environment when needed                          |
 | `DATABASE_*`          | Select the engine and test database service; MySQL/PostgreSQL credentials need create/drop database privileges             |
 
-Start the application with its own configuration and verify [readiness](operations.md#run-and-verify-locally).
+Start the application with its own configuration and verify [readiness](11-operations.md#run-and-verify-locally).
 Keep `SERVER_GRPC_AUTHORIZATION_ENABLED=true` on the test application: the suite tests denied requests too.
 The app and test runner are separate processes, so changing the runner's settings does not reconfigure the app.
 
@@ -170,6 +170,6 @@ advisory task on non-master branches. Capability differences do not fail the tas
 
 For a documentation preview, use `task docs:serve`. For a focused metadata and source-link check after installing website
 dependencies, use `npm --prefix pages run validate-docs` with the
-[pinned tool environment](development.md#bootstrapping-task-and-invoking-tools-directly). The full documentation build
-also checks published links and anchors. Follow the [documentation policy](documentation.md#verification) for publishing
+[pinned tool environment](05-development.md#bootstrapping-task-and-invoking-tools-directly). The full documentation build
+also checks published links and anchors. Follow the [documentation policy](01-documentation.md#verification) for publishing
 and application-specific evidence. CI runs its configured jobs independently of the local checks selected here.

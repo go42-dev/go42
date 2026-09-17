@@ -40,7 +40,7 @@ func init() {
 }
 
 // ValidateStruct validates arbitrary struct
-func ValidateStruct(s interface{}) []ValidationError {
+func ValidateStruct(s any) []ValidationError {
 	err := validate.Struct(s)
 	if err == nil {
 		return nil
@@ -62,7 +62,7 @@ func ValidateStruct(s interface{}) []ValidationError {
 }
 
 // ValidateStructCompact calls ValidateStruct but returns single error instance
-func ValidateStructCompact(s interface{}) error {
+func ValidateStructCompact(s any) error {
 	return compactValidationErrors(ValidateStruct(s))
 }
 

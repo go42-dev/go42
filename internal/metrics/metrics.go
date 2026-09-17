@@ -11,7 +11,7 @@ import (
 
 var (
 	mutex        sync.RWMutex
-	globalLabels map[string]interface{}
+	globalLabels map[string]any
 	labelEscaper = strings.NewReplacer(
 		`\`, `\\`,
 		`"`, `\"`,
@@ -20,10 +20,10 @@ var (
 )
 
 func init() {
-	globalLabels = make(map[string]interface{})
+	globalLabels = make(map[string]any)
 }
 
-func RegisterGlobalLabels(labels map[string]interface{}) {
+func RegisterGlobalLabels(labels map[string]any) {
 	if len(labels) == 0 {
 		return
 	}
@@ -34,15 +34,15 @@ func RegisterGlobalLabels(labels map[string]interface{}) {
 	}
 }
 
-func Counter(name string, labels map[string]interface{}) *vmetrics.Counter {
+func Counter(name string, labels map[string]any) *vmetrics.Counter {
 	return vmetrics.GetOrCreateCounter(constructMetric(name, labels))
 }
 
-func Gauge(name string, labels map[string]interface{}) *vmetrics.Gauge {
+func Gauge(name string, labels map[string]any) *vmetrics.Gauge {
 	return vmetrics.GetOrCreateGauge(constructMetric(name, labels), nil)
 }
 
-func Histogram(name string, labels map[string]interface{}) *vmetrics.Histogram {
+func Histogram(name string, labels map[string]any) *vmetrics.Histogram {
 	return vmetrics.GetOrCreateHistogram(constructMetric(name, labels))
 }
 
@@ -51,7 +51,7 @@ func Histogram(name string, labels map[string]interface{}) *vmetrics.Histogram {
 // It is a little bit more complicated than just appending labels to the name, because
 // we need to sort the labels to make sure that the same labels in different order
 // will not create different metrics.
-func constructMetric(name string, labels map[string]interface{}) string {
+func constructMetric(name string, labels map[string]any) string {
 	// mutex actually may not be needed at all if we don't modify globalLabels
 	// aside from single call in main.go, but keep it for safety anyway
 	mutex.RLock()
@@ -103,7 +103,7 @@ func constructMetric(name string, labels map[string]interface{}) string {
 		builder.WriteString(k)
 		builder.WriteString(`="`)
 
-		var v interface{}
+		var v any
 		if val, exists := labels[k]; exists {
 			v = val
 		} else {
@@ -119,7 +119,7 @@ func constructMetric(name string, labels map[string]interface{}) string {
 	return builder.String()
 }
 
-func escapeLabelValue(value interface{}) string {
+func escapeLabelValue(value any) string {
 	// fmt.Sprintf may be slow, but it is a trade-off for accepting arbitrary label values.
 	return labelEscaper.Replace(fmt.Sprintf("%v", value)) //nolint:staticcheck
 }

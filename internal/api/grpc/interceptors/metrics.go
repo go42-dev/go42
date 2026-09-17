@@ -17,8 +17,8 @@ func UnaryMetricsInterceptor() grpc.UnaryServerInterceptor {
 		req any,
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
-	) (interface{}, error) {
-		labels := map[string]interface{}{
+	) (any, error) {
+		labels := map[string]any{
 			"grpc_type": "unary",
 			"method":    info.FullMethod,
 		}
@@ -48,7 +48,7 @@ func StreamMetricsInterceptor() grpc.StreamServerInterceptor {
 		info *grpc.StreamServerInfo,
 		handler grpc.StreamHandler,
 	) error {
-		labels := map[string]interface{}{
+		labels := map[string]any{
 			"grpc_type": "stream",
 			"method":    info.FullMethod,
 		}

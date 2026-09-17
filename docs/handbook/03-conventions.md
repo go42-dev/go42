@@ -8,8 +8,8 @@ sidebar_position: 3
 # Project conventions
 
 These engineering rules and preferences guide changes to the application in this repository. Follow the
-[development workflow](development.md) for setup, tooling, generation, verification, and contribution procedures, and the
-[documentation policy](documentation.md) when updating application knowledge.
+[development workflow](05-development.md) for setup, tooling, generation, verification, and contribution procedures, and
+the [documentation policy](01-documentation.md) when updating application knowledge.
 Paths are relative to the repository root. Preferences and exceptions are stated explicitly.
 
 ## Code conventions
@@ -29,6 +29,66 @@ Paths are relative to the repository root. Preferences and exceptions are stated
   in code files.
 * End text files with a newline.
 
+### Map and struct literals
+
+Write map literals with more than one entry and struct literals with more than one field across multiple lines,
+even when they fit within the line-length limit. Put each entry or field on its own line, use a trailing comma, and put
+the closing brace on a separate line. This also applies inside loop headers, function arguments, and return statements.
+Empty literals and literals with a single entry or field may stay on one line. Run the Go formatter to align keyed fields.
+
+Map entries in a loop header:
+
+```go
+for key, value := range map[Key]Value{
+    firstKey:  firstValue,
+    secondKey: secondValue,
+} {
+    consume(key, value)
+}
+```
+
+Struct fields in a return statement:
+
+```go
+return &Record{
+    first:  firstValue,
+    second: secondValue,
+}
+```
+
+### Named string constants
+
+Replace every magic string with a named constant, even when the value is used only once. Give each constant a name that
+explains its meaning. Declare these constants in a package-level `const` block at the top of the file, after imports and
+before other declarations. This rule also applies to test files. Reuse a constant from the package that owns the value
+when one already exists.
+
+Constants after imports and before other declarations:
+
+```go
+package example
+
+import "fmt"
+
+const (
+    firstLabel  = "first-label"
+    secondLabel = "second-label"
+)
+
+func printLabels() {
+    fmt.Println(firstLabel, secondLabel)
+}
+```
+
+### Automated checks
+
+Run `task fmt:go -- FILE.go` and `task lint:go -- ./PACKAGE` using the [development workflow](05-development.md#formatting-and-linting).
+The Go formatter replaces `interface{}` with `any`, and lint rejects `interface{}` in handwritten Go code.
+The current formatters preserve short, single-line literals. Check the multiline layout and magic string constants
+during review; these rules are not yet enforced by the configured Go linters. A repeated-string checker such as `goconst`
+can help find constants, but cannot identify every magic string used only once. Exact layout enforcement needs a
+custom Go syntax-tree check.
+
 ## Architecture and data
 
 * `cmd/app` composes dependencies and owns process lifecycle. Feature services own business operations. Within each
@@ -36,7 +96,7 @@ Paths are relative to the repository root. Preferences and exceptions are stated
   `repository/` owns persistence operations; versioned HTTP and gRPC adapters own transport conversion and registration.
 * Adapters validate pagination before invoking services. Use `tools.NormalizePagination` and the shared `tools.Pagination*`
   constants for defaults and bounds across features. Keep protocol parsing and error mapping in the adapter, and align API
-  contracts with the shared [pagination rules](api.md#user-list-pagination).
+  contracts with the shared [pagination rules](08-api.md#user-list-pagination).
 * Define dependency interfaces in the consuming package, containing only the methods it needs. Keep them beside their
   consumer or group them in `accessors.go`. Keep mock-generation directives with the interface definitions and generate
   mocks into the package's `mocks/` directory.
