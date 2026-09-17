@@ -1,4 +1,11 @@
-# Agentic Workflow
+---
+id: agentic-workflow
+title: Agentic workflow
+collection: handbook
+sidebar_position: 20
+---
+
+# Agentic workflow
 
 ```mermaid
 flowchart TD

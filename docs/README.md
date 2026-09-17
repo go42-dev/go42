@@ -43,6 +43,7 @@ The complete index follows the published sidebar's reading order.
 | [Deployment](handbook/10-deployment.md)               | Container and Helm configuration, migration handoff, and rollout verification  |
 | [Operations](handbook/11-operations.md)               | Probe checks, process lifecycle, outbox diagnosis, and failure recovery        |
 | [Monitoring](handbook/12-monitoring.md)               | Collect metrics, interpret signals, and configure the supplied dashboard       |
+| [Agentic workflow](handbook/20-agentic-workflow.md)   | AI workflow inputs, execution, and outputs                                     |
 
 ### Requirements
 
