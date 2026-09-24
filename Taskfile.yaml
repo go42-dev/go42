@@ -9,7 +9,7 @@
 # │                     go42                     │
 # ╰─────────────────────----------------─────────╯
 #
-# Before running any commands, ensure you have the following tools are installed:
+# Before running any commands, ensure following tools are installed:
 # - go @see https://go.dev/
 # - docker @see https://www.docker.com/
 # - mise @see https://mise.jdx.dev/
