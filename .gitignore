@@ -23,7 +23,6 @@ __pycache__/
 CLAUDE.md
 .codex/
 AGENTS.md
-.gemini/
-GEMINI.md
+.agents/plugins/project-tools/
 .crush/
 .crush.json

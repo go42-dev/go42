@@ -13,7 +13,7 @@
   "definitions": {
     "providerEnabled": {
       "type": "boolean",
-      "description": "Whether to generate configuration for this provider. Disabling preserves existing settings and instruction files, including with --clean. Shared AGENTS.md is always generated.",
+      "description": "Whether to generate configuration for this provider. Disabling preserves existing settings, including with --clean. Shared AGENTS.md is always generated.",
       "default": true
     },
     "autoApproveTools": {
@@ -163,7 +163,7 @@
     },
     "context": {
       "type": "object",
-      "description": "Shared instructions rendered to AGENTS.md; Claude and Gemini import this file.",
+      "description": "Shared instructions rendered to AGENTS.md; Claude imports this file and other providers read it directly.",
       "required": [
         "template"
       ],
@@ -177,6 +177,15 @@
         "chunks-dir": {
           "type": "string",
           "description": "Chunk directory relative to .go42x; immediate *.tpl.md files load in filename order. Omit to include no chunks."
+        },
+        "temp-dir": {
+          "type": "string",
+          "description": "Directory for intermediate agent outputs in generated instructions, available as .context.TempDir. Relative paths use the project root. Omit or leave empty to use .build.",
+          "default": ".build",
+          "pattern": "^$|\\S",
+          "not": {
+            "pattern": "\u0000"
+          }
         },
         "go-env": {
           "type": "array",
@@ -240,8 +249,15 @@
           },
           "additionalProperties": false
         },
-        "gemini": {
-          "$ref": "#/definitions/toolApprovalProvider"
+        "antigravity": {
+          "type": "object",
+          "description": "Workspace project-tools plugin with all enabled MCP servers. Tool approvals are managed in Antigravity user settings.",
+          "properties": {
+            "enabled": {
+              "$ref": "#/definitions/providerEnabled"
+            }
+          },
+          "additionalProperties": false
         },
         "crush": {
           "$ref": "#/definitions/toolApprovalProvider"
@@ -333,7 +349,7 @@
           },
           "cwd": {
             "type": "string",
-            "description": "Literal working directory for stdio servers. Relative paths resolve from the project directory; omit or leave empty for the client's default. Supported by Codex, Gemini, and Copilot; rejected on enabled servers when Claude or Crush is enabled. Environment variables and home expansion are not supported.",
+            "description": "Literal working directory for stdio servers. Relative paths resolve from the project directory; omit or leave empty for the client's default. Supported by Codex, Antigravity, and Copilot; rejected on enabled servers when Claude or Crush is enabled. Environment variables and home expansion are not supported.",
             "pattern": "^$|\\S",
             "not": {
               "pattern": "\u0000|\\$(?:[A-Za-z_]|\\{|\\()|%[A-Za-z_][A-Za-z0-9_]*%|^~"

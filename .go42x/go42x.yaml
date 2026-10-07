@@ -25,12 +25,21 @@ env: []
 context:
   template: agents.tpl.md
   chunks-dir: 'chunks/'
+  # Directory for intermediate agent outputs; relative paths use the project root.
+  # Omitted or empty defaults to .build. Templates use .context.TempDir.
+  temp-dir: .build
+  # Extra go env variables, e.g. [GOFLAGS, GOPRIVATE]. Values appear in shared context.
+  # Defaults: GOVERSION, GOTOOLCHAIN, GOROOT, GOPATH, GOBIN, GOCACHE, GOMODCACHE,
+  # GOMOD, GOWORK, GOOS, GOARCH, CGO_ENABLED. Empty values are omitted.
+  go-env: []
 
 # Generation makes all tools from enabled MCP servers available and updates tool approvals.
-# auto-approve-tools configures native tool approvals for Claude, Gemini, and Crush.
+# auto-approve-tools configures native tool approvals for Claude and Crush.
 # Other existing settings are preserved; defaults fill only missing fields.
 # Set enabled: false to skip a provider; omitted enabled defaults to true.
-# Disabling preserves existing settings and removes generated CLAUDE.md/GEMINI.md imports.
+# Keep shared defaults disabled; enable your providers in ignored go42x.local.yaml.
+# --providers or GO42X_PROVIDERS selects an exact list for generate and doctor.
+# Disabling preserves existing settings, including with --clean.
 # Shared AGENTS.md is still generated when all providers are disabled.
 providers:
   # -------------------------
@@ -68,25 +77,12 @@ providers:
     mcp-approval: approve
 
   # -------------------------
-  #          Gemini
+  #        Antigravity
   # -------------------------
-  gemini:
+  # Project MCP tools are packaged in .agents/plugins/project-tools/.
+  # Tool approvals are managed in Antigravity user settings.
+  antigravity:
     enabled: false
-    auto-approve-tools:
-      - list_directory
-      - read_file
-      - write_file
-      - grep_search
-      - glob
-      - replace
-      - run_shell_command
-      - web_fetch
-      - google_web_search
-      - ask_user
-      - write_todos
-      - activate_skill
-      - list_mcp_resources
-      - read_mcp_resource
 
   # -------------------------
   #           Crush
@@ -115,7 +111,7 @@ mcp:
   # Lists use raw tool names for context descriptions and client approval settings.
   # Set enabled: false to disable a server.
   # Optional cwd is a literal path for stdio servers; relative paths use the project directory.
-  # Codex, Gemini, and Copilot support cwd. Enabled Claude or Crush providers reject it.
+  # Codex, Antigravity, and Copilot support cwd. Enabled Claude or Crush providers reject it.
   # Omit cwd to use the client's default working directory.
   gopls:
     enabled: true
@@ -279,6 +275,126 @@ mcp:
       - update_gist
       - update_pull_request
       - update_pull_request_branch
+
+  gitlab:
+    enabled: false
+    type: stdio
+    name: gitlab
+    command: docker
+    args:
+      - run
+      - -i
+      - --rm
+      - -e
+      - GITLAB_PERSONAL_ACCESS_TOKEN
+      - -e
+      - GITLAB_API_URL
+      - -e
+      - GITLAB_READ_ONLY_MODE
+      - -e
+      - USE_GITLAB_WIKI
+      - -e
+      - USE_MILESTONE
+      - -e
+      - USE_PIPELINE
+      - iwakitakuma/gitlab-mcp
+    env:
+      GITLAB_PERSONAL_ACCESS_TOKEN: "${GITLAB_PERSONAL_ACCESS_TOKEN}"
+      GITLAB_API_URL: https://gitlab.com/api/v4
+      GITLAB_READ_ONLY_MODE: "false"
+      USE_GITLAB_WIKI: "false"
+      USE_MILESTONE: "false"
+      USE_PIPELINE: "true"
+    tools:
+      - bulk_publish_draft_notes
+      - cancel_pipeline
+      - cancel_pipeline_job
+      - create_branch
+      - create_draft_note
+      - create_issue
+      - create_issue_link
+      - create_issue_note
+      - create_label
+      - create_merge_request
+      - create_merge_request_discussion_note
+      - create_merge_request_note
+      - create_merge_request_thread
+      - create_note
+      - create_or_update_file
+      - create_pipeline
+      - create_release
+      - create_release_evidence
+      - create_repository
+      - delete_draft_note
+      - delete_issue
+      - delete_issue_link
+      - delete_label
+      - delete_merge_request_discussion_note
+      - delete_merge_request_note
+      - delete_release
+      - download_attachment
+      - download_release_asset
+      - execute_graphql
+      - fork_repository
+      - get_branch_diffs
+      - get_commit
+      - get_commit_diff
+      - get_draft_note
+      - get_file_contents
+      - get_issue
+      - get_issue_link
+      - get_label
+      - get_merge_request
+      - get_merge_request_diffs
+      - get_merge_request_note
+      - get_merge_request_notes
+      - get_namespace
+      - get_pipeline
+      - get_pipeline_job
+      - get_pipeline_job_output
+      - get_project
+      - get_project_events
+      - get_release
+      - get_repository_tree
+      - get_users
+      - list_commits
+      - list_draft_notes
+      - list_events
+      - list_group_iterations
+      - list_group_projects
+      - list_issue_discussions
+      - list_issue_links
+      - list_issues
+      - list_labels
+      - list_merge_request_diffs
+      - list_merge_requests
+      - list_namespaces
+      - list_pipeline_jobs
+      - list_pipeline_trigger_jobs
+      - list_pipelines
+      - list_project_members
+      - list_projects
+      - list_releases
+      - merge_merge_request
+      - mr_discussions
+      - my_issues
+      - play_pipeline_job
+      - publish_draft_note
+      - push_files
+      - resolve_merge_request_thread
+      - retry_pipeline
+      - retry_pipeline_job
+      - search_repositories
+      - update_draft_note
+      - update_issue
+      - update_issue_note
+      - update_label
+      - update_merge_request
+      - update_merge_request_discussion_note
+      - update_merge_request_note
+      - update_release
+      - upload_markdown
+      - verify_namespace
 
   # Primary Jira tools plus discovery/execution for the deferred catalog.
   # Available tools depend on the authenticated Atlassian account and scopes.
