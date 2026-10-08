@@ -89,12 +89,12 @@ FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec4
 # When updating image version, make sure to re-check package availability and versions
 # for that specific alpine version you are updating to.
 RUN apk add --no-cache \
-    ca-certificates=20260611-r0 \
+    ca-certificates=20260909-r0 \
     curl=8.22.0-r0 \
-    libcrypto3=3.5.8-r0 \
-    libssl3=3.5.8-r0 \
+    libcrypto3=3.5.9-r0 \
+    libssl3=3.5.9-r0 \
     tini=0.19.0-r3 \
-    tzdata=2026c-r0
+    tzdata=2026e-r0
 
 # We are running service as non-root user.
 RUN addgroup -g 1000 appuser && \

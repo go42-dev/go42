@@ -528,6 +528,8 @@ tasks:
   lint:go-security:
     desc: "Check handwritten Go code with Gosec"
     cmds:
+      - "go mod download"
+      - "go list -deps -export ./... > /dev/null"
       - '"{{.TOOLS_BIN}}/gosec" -terse -exclude-generated ./...'
 
   lint:vulnerabilities:

@@ -90,6 +90,10 @@ jobs:
           install_args: --locked go:github.com/securego/gosec/v2/cmd/gosec
           # Rebuild the cached binary when the project's Go version changes.
           cache_key_prefix: mise-gosec-v1-${{ hashFiles('go.mod') }}
+      - name: 'Download Go modules'
+        run: go mod download
+      - name: 'Load Go package export data'
+        run: go list -deps -export ./... > /dev/null
       - name: 'Run Gosec security scanner'
         shell: bash
         run: gosec -terse -exclude-generated ./...
