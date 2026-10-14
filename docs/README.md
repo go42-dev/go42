@@ -10,8 +10,8 @@ slug: /
 # Application documentation
 
 Use this handbook to run, change, and operate the application in this checkout. Read the
-[application profile](handbook/02-project.md) for purpose and ownership. Contributors follow the
-[project conventions](handbook/03-conventions.md) and [documentation rules](handbook/01-documentation.md).
+[application profile](handbook/03-project.md) for purpose and ownership. Contributors follow the
+[project conventions](handbook/02-conventions.md) and [documentation rules](handbook/01-documentation.md).
 
 ## Start here
 
@@ -32,8 +32,8 @@ The complete index follows the published sidebar's reading order.
 | Document                                              | Purpose                                                                        |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------ |
 | [Writing documentation](handbook/01-documentation.md) | Writing rules, document templates, checks, and publishing                      |
-| [Application profile](handbook/02-project.md)         | Purpose, ownership, current capabilities, and documentation gaps               |
-| [Project conventions](handbook/03-conventions.md)     | Engineering rules for code, architecture, data, runtime, and test design       |
+| [Project conventions](handbook/02-conventions.md)     | Application-specific rules and a reference to shared Go conventions            |
+| [Application profile](handbook/03-project.md)         | Purpose, ownership, current capabilities, and documentation gaps               |
 | [Configuration](handbook/04-configuration.md)         | Configuration sources, backend choices, defaults, and deployment settings      |
 | [Development workflow](handbook/05-development.md)    | Setup, implementation, generation, tooling, and contributions                  |
 | [Testing and verification](handbook/06-testing.md)    | Suite selection, test environments, coverage, and checks before review         |

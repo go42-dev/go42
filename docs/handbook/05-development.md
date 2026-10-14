@@ -9,7 +9,7 @@ sidebar_position: 5
 
 Use this guide to take a change from a fresh checkout to a verified pull request. Start at the
 [documentation index](../README.md) for the application's context and relevant requirements and decisions. Follow the
-[project conventions](03-conventions.md) for engineering rules and the [documentation workflow](01-documentation.md) when
+[project conventions](02-conventions.md) for engineering rules and the [documentation workflow](01-documentation.md) when
 updating application knowledge alongside the implementation.
 
 [Taskfile.yaml](../../Taskfile.yaml) defines the executable workflows. Task runs commands; mise manages the project tools
@@ -219,7 +219,7 @@ process. Record versions and upstream sources in adjacent `.versions.yaml` files
 regenerate affected outputs. Follow [tool maintenance](#maintaining-the-workflow) when changing tool pins or configuration.
 
 For a new database migration, run `task generate:migration-id` once to obtain its filename prefix. Use the same filename
-across database engines and follow the [migration conventions](03-conventions.md#architecture-and-data).
+across database engines and follow the [migration conventions](02-conventions.md#architecture-and-data).
 
 ## Implementing a feature
 

@@ -9,7 +9,7 @@ sidebar_position: 11
 
 Use this guide to check a running application, inspect its signals, diagnose failures, and recover service.
 [Deployment](10-deployment.md) covers container and Helm configuration, upgrades, and migrations. The
-[application profile](02-project.md#documentation-coverage) identifies the ownership and environment details that still
+[application profile](03-project.md#documentation-coverage) identifies the ownership and environment details that still
 need to be established.
 
 ## Run and verify locally

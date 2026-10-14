@@ -2,7 +2,7 @@
 id: project
 title: Application profile
 collection: handbook
-sidebar_position: 2
+sidebar_position: 3
 ---
 
 # Application profile

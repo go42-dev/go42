@@ -16,7 +16,7 @@ Complete [environment setup](05-development.md#environment-setup) before running
 ## Choose a test suite
 
 While editing, run the matching focused checks and tests for the affected behavior. Check Go packages together, including
-callers when interfaces change. Follow the [test design conventions](03-conventions.md#testing).
+callers when interfaces change. Follow the shared Go conventions linked from [Project conventions](02-conventions.md).
 
 | Command                                | Coverage and prerequisites                                                                                |
 |----------------------------------------|-----------------------------------------------------------------------------------------------------------|

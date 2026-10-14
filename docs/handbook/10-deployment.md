@@ -9,7 +9,7 @@ sidebar_position: 10
 
 Use this guide to configure the runtime container and Helm chart, prepare application upgrades, and verify a rollout.
 Select a published image through the [release workflow](09-release.md). The application's target environments, promotion
-procedure, secret delivery, and deployment ownership remain [documented gaps](02-project.md#documentation-coverage).
+procedure, secret delivery, and deployment ownership remain [documented gaps](03-project.md#documentation-coverage).
 
 ## Runtime container
 
@@ -74,7 +74,7 @@ Before handing off a change to schema or message format, record:
 | Recovery                  | A tested rollback or forward-repair path, required backup/restore steps, and any known irreversible effects |
 | Operator checks           | Expected startup/probe results, a representative application request, and persisted event progress          |
 
-Keep migration naming and authoring rules in [conventions](03-conventions.md#architecture-and-data). Existing
+Keep migration naming and authoring rules in [conventions](02-conventions.md#architecture-and-data). Existing
 [migration integration tests](../../tests/integration/database/migrate_test.go) exercise repeated runs, failures, and
 concurrent runners for MySQL/PostgreSQL; [SQLite tests](../../tests/integration/database/sqlite_test.go) cover that engine.
 Run the relevant engine cases with the [test environment](06-testing.md#integration-test-environment) configured.

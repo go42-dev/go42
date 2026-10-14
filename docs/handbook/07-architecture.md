@@ -7,8 +7,8 @@ sidebar_position: 7
 
 # Architecture
 
-This guide describes the implementation in this checkout. The [application profile](02-project.md) records its purpose
-and ownership gaps; [conventions](03-conventions.md#architecture-and-data) define the rules for changing the design.
+This guide describes the implementation in this checkout. The [application profile](03-project.md) records its purpose
+and ownership gaps; [conventions](02-conventions.md#architecture-and-data) define the rules for changing the design.
 
 ## Components and boundaries
 
