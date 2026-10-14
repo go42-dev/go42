@@ -134,7 +134,8 @@ Edit the [authored search guidance](../../.go42x/chunks/200-search.tpl.md) to ch
 ### Refreshing project knowledge
 
 The [AI preparation action](../../.github/actions/ai-prepare-env/action.yml) refreshes the knowledge base after generating
-agent configuration. Use the same order from the repository root when preparing a local session:
+agent configuration. The preparation actions are maintained in go42x; this blueprint keeps local copies so workflows
+use files from their own repository. Use the same order from the repository root when preparing a local session:
 
 ```sh
 task x -- agentenv generate
@@ -378,7 +379,8 @@ task bump TOOL=node VERSION=26.7.0
 existing platforms. Review both files together and align any duplicate CI pins.
 
 CI uses the same tool pins and lockfile. Review the [environment action](../../.github/actions/prepare-env/action.yaml)
-and affected workflows when changing setup or dependencies. Update Task definitions, CI callers, and this guide together
-when commands, prerequisites, or check scopes change. Fuzz and load steps need `--exit-code` to propagate failures.
+and affected workflows when changing setup or dependencies. Adopt shared action changes from go42x into the local copies
+after reviewing repository-specific customizations. Update Task definitions, CI callers, and this guide together when
+commands, prerequisites, or check scopes change. Fuzz and load steps need `--exit-code` to propagate failures.
 
 Upstream reference: [Task guide](https://taskfile.dev/docs/guide).
