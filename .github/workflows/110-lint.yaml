@@ -33,11 +33,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     steps:
       - name: 'Checkout repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -71,10 +66,9 @@ jobs:
           echo "Branch name '$BRANCH_NAME' is valid"
       - name: 'Install pinned commitlint'
         if: github.event_name == 'pull_request' || github.event_name == 'push'
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: ./.github/actions/setup-tools
         with:
-          version: '2026.9.1'
-          install_args: --locked node jq npm:@commitlint/cli npm:@commitlint/config-conventional
+          install-args: --locked node jq npm:@commitlint/cli npm:@commitlint/config-conventional
       - name: 'Validate commit messages'
         if: github.event_name == 'pull_request' || github.event_name == 'push'
         shell: bash
@@ -120,10 +114,6 @@ jobs:
     permissions:
       contents: read
     env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
       GOLANGCI_LINT_CACHE: ${{ github.workspace }}/.build/golangci-lint-cache
     # ----
     steps:
@@ -139,10 +129,9 @@ jobs:
           # Save lint's build outputs in the dedicated cache below.
           cache: false
       - name: 'Install pinned golangci-lint'
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: ./.github/actions/setup-tools
         with:
-          version: '2026.9.1'
-          install_args: --locked golangci-lint
+          install-args: --locked golangci-lint
       - name: 'Get lint cache metadata'
         id: lint-cache
         shell: bash
@@ -183,11 +172,6 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     steps:
       - name: 'Checkout repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -201,12 +185,11 @@ jobs:
           # Save Go build outputs and NilAway facts in the dedicated cache below.
           cache: false
       - name: 'Install pinned NilAway'
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: ./.github/actions/setup-tools
         with:
-          version: '2026.9.1'
-          install_args: --locked go:go.uber.org/nilaway/cmd/nilaway
+          install-args: --locked go:go.uber.org/nilaway/cmd/nilaway
           # Rebuild the cached binary when the project's Go version changes.
-          cache_key_prefix: mise-nilaway-v1-${{ hashFiles('go.mod') }}
+          cache-key-prefix: mise-nilaway-v1-${{ hashFiles('go.mod') }}
       - name: 'Get NilAway cache metadata'
         id: nilaway-cache
         shell: bash
@@ -251,11 +234,6 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     # ----
     steps:
       - name: Checkout repository
@@ -264,10 +242,9 @@ jobs:
           persist-credentials: false
       # ----
       - name: Install pinned Hadolint
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: ./.github/actions/setup-tools
         with:
-          version: '2026.9.1'
-          install_args: --locked hadolint
+          install-args: --locked hadolint
       - name: Run Hadolint
         shell: bash
         env:
@@ -302,21 +279,15 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install pinned Helm
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: ./.github/actions/setup-tools
         with:
-          version: '2026.9.1'
-          install_args: --locked helm
+          install-args: --locked helm
       - name: Lint Helm chart
         run: |-
           helm lint --strict infra/helm/app --set-string image.tag=ci-validation
@@ -332,11 +303,6 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     # ----
     steps:
       - name: 'Checkout repository'
@@ -345,10 +311,9 @@ jobs:
           fetch-depth: 0 # Include the PR base for protobuf compatibility checks.
           persist-credentials: false
       - name: 'Install pinned Buf'
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: ./.github/actions/setup-tools
         with:
-          version: '2026.9.1'
-          install_args: --locked buf
+          install-args: --locked buf
       - name: 'Build Protobuf schema'
         id: build
         run: buf build api
@@ -376,10 +341,6 @@ jobs:
     permissions:
       contents: read
     env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
       OPENAPI_BASE_REF: >-
         ${{ github.event.pull_request.base.sha || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before)
         || 'HEAD^' }}
@@ -391,10 +352,10 @@ jobs:
           persist-credentials: false
           fetch-depth: 0 # Include the PR base and previous push for compatibility checks.
       - name: 'Install pinned OpenAPI tools'
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: ./.github/actions/setup-tools
         with:
-          version: '2026.9.1'
-          install_args: --locked task node npm:@redocly/cli github:oasdiff/oasdiff
+          install-task: 'true'
+          install-args: --locked node npm:@redocly/cli github:oasdiff/oasdiff
       - name: 'Run redocly OpenAPI linter'
         run: redocly lint --config etc/redocly.yaml --format github-actions api/openapi/**/*.yaml
       - name: Report breaking OpenAPI changes (advisory)
@@ -411,11 +372,6 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     # ----
     steps:
       - name: 'Checkout repository'
@@ -423,10 +379,9 @@ jobs:
         with:
           persist-credentials: false
       - name: 'Install pinned Actionlint and helpers'
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: ./.github/actions/setup-tools
         with:
-          version: '2026.9.1'
-          install_args: --locked python uv actionlint shellcheck pipx:pyflakes
+          install-args: --locked python uv actionlint shellcheck pipx:pyflakes
       - name: 'Run actionlint'
         shell: bash
         run: actionlint -oneline --config-file etc/actionlint.yaml
@@ -440,11 +395,6 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     # ----
     steps:
       - name: 'Checkout repository'
@@ -452,14 +402,57 @@ jobs:
         with:
           persist-credentials: false
       - name: 'Install pinned Zizmor'
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: ./.github/actions/setup-tools
         with:
-          version: '2026.9.1'
-          install_args: --locked zizmor
+          install-args: --locked zizmor
       - name: 'Run zizmor security audit'
         shell: bash
         run: zizmor -q --persona regular --min-severity high --min-confidence high --offline --format plain --color never
           --no-progress .
+
+  # Agentic workflow sources and compiler-owned lock files.
+  # @see https://github.github.com/gh-aw/
+  agentic-lint:
+    name: agentic-lint
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: ${{ inputs.continue_on_error }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 'Setup Go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: 'Install pinned agentic workflow tools'
+        uses: ./.github/actions/setup-tools
+        with:
+          install-task: 'true'
+          install-args: --locked node actionlint go:github.com/go42-dev/go42x github:github/gh-aw
+      - name: 'Generate and compile agentic workflows'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: task --exit-code agentic:compile
+      - name: 'Check for uncommitted changes'
+        shell: bash
+        run: |-
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "Uncommitted changes detected after running 'task agentic:compile'"
+            echo "The following files have changes:"
+            git status --porcelain
+            echo ""
+            echo "Please run 'task setup && task agentic:compile' locally and commit the changes."
+            exit 1
+          else
+            echo "No uncommitted changes detected"
+          fi
+      - name: 'Check compiled GitHub Agentic Workflows'
+        run: task --exit-code agentic:lint
 
   # Linter for sql migrations.
   # @see https://github.com/sqlfluff/sqlfluff
@@ -470,11 +463,6 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     strategy:
       matrix:
         database:
@@ -498,10 +486,9 @@ jobs:
         with:
           persist-credentials: false
       - name: 'Install pinned SQLFluff'
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: ./.github/actions/setup-tools
         with:
-          version: '2026.9.1'
-          install_args: --locked python uv pipx:sqlfluff
+          install-args: --locked python uv pipx:sqlfluff
       - name: 'Run SQLFluff linter'
         shell: bash
         run: >-
@@ -518,11 +505,6 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     steps:
       - name: 'Checkout repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -534,11 +516,11 @@ jobs:
           go-version-file: 'go.mod'
           cache: false
       - name: 'Install pinned Task, jsonfmt, yamlfmt, and Tombi'
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: ./.github/actions/setup-tools
         with:
-          version: '2026.9.1'
-          install_args: >-
-            --locked task go:github.com/caarlos0/jsonfmt go:github.com/google/yamlfmt/cmd/yamlfmt tombi
+          install-task: 'true'
+          install-args: >-
+            --locked go:github.com/caarlos0/jsonfmt go:github.com/google/yamlfmt/cmd/yamlfmt tombi
       - name: 'Check JSON formatting'
         run: task --exit-code lint:json
       - name: 'Check YAML formatting'
@@ -568,6 +550,8 @@ jobs:
         with:
           setup-task: setup:generators
       # -----
+      - name: 'Check vendored files'
+        run: task vendor:check
       - name: 'Generate code'
         run: task generate
       - name: 'Check for uncommitted changes'
@@ -592,11 +576,6 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     # ----
     steps:
       - name: 'Checkout repository'
@@ -604,13 +583,13 @@ jobs:
         with:
           persist-credentials: false
       - name: 'Install pinned EditorConfig Checker'
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: ./.github/actions/setup-tools
         with:
-          version: '2026.9.1'
-          install_args: --locked editorconfig-checker
+          install-task: 'true'
+          install-args: --locked editorconfig-checker
       - name: 'Run editorconfig-checker'
         shell: bash
-        run: ec
+        run: task lint:editorconfig
 
   # Documentation checks and website build.
   docs-lint:
@@ -620,21 +599,16 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     steps:
       - name: 'Checkout repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: 'Install pinned documentation tools'
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: ./.github/actions/setup-tools
         with:
-          version: '2026.9.1'
-          install_args: --locked task node markdownlint-cli2 vale
+          install-task: 'true'
+          install-args: --locked node markdownlint-cli2 vale
       - name: 'Sync pinned Vale styles'
         shell: bash
         run: vale --config etc/vale.ini sync

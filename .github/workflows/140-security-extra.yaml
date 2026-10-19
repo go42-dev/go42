@@ -29,15 +29,33 @@ permissions: {}
 
 jobs:
   trivy:
-    name: trivy
+    name: trivy-${{ matrix.arch }}
     runs-on: ${{ inputs.runs_on }}
     continue-on-error: ${{ inputs.continue_on_error }}
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
       packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - amd64
+          - arm64
+    env:
+      TRIVY_PLATFORM: linux/${{ matrix.arch }}
+      TRIVY_IMAGE_SRC: remote
     # ----
     steps:
+      - name: 'Validate image reference'
+        env:
+          IMAGE_REFERENCE: ${{ inputs.image_reference }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$IMAGE_REFERENCE" =~ ^ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$ ]]; then
+            echo 'image_reference must be an immutable GHCR digest reference' >&2
+            exit 1
+          fi
       # Registry authentication from the build job is not shared with this job.
       - name: 'Log in to GitHub Container Registry'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -45,25 +63,26 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # Keep a complete, non-blocking inventory in the job log. This includes
-      # every severity and unfixed findings, so the enforcement policy below
-      # does not hide vulnerabilities that currently have no remediation.
+      # Keep every severity and unfixed finding visible in the advisory report.
       - name: 'Report all image vulnerabilities'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ inputs.image_reference }}
+          scanners: vuln
+          timeout: 10m
           format: 'table'
+          version: v0.70.0
           exit-code: '0'
           ignore-unfixed: false
           vuln-type: 'os,library'
           severity: 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL'
-      # Trivy has one severity/fixability policy per invocation. Run it again
-      # to enforce the narrower merge policy while reusing the installation
-      # from the reporting pass above.
-      - name: 'Enforce fixable high and critical image vulnerabilities'
+      # Highlight fixable high and critical findings. Callers keep this job advisory.
+      - name: 'Report fixable high and critical image vulnerabilities (advisory)'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ inputs.image_reference }}
+          scanners: vuln
+          timeout: 10m
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true # fail only when remediation exists

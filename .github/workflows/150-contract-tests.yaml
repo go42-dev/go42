@@ -36,11 +36,6 @@ jobs:
     permissions:
       contents: read
       packages: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     strategy:
       fail-fast: false
       matrix:
@@ -109,10 +104,10 @@ jobs:
             exit 1
           fi
       - name: 'Install pinned Task and contract tools'
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: ./.github/actions/setup-tools
         with:
-          version: '2026.9.1'
-          install_args: --locked task python uv pipx:pyflakes pipx:schemathesis
+          install-task: 'true'
+          install-args: --locked python uv pipx:pyflakes pipx:schemathesis
       - name: 'Check HTTP API contracts'
         id: contract
         run: task test:contract

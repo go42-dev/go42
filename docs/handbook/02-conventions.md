@@ -58,4 +58,4 @@ The rules below cover application-specific choices and exceptions.
   so Kubernetes can restart the container. Keep dependency availability checks in readiness. Run graceful shutdown when
   a termination signal is received.
 
-[go42x-codestyle]: https://github.com/go42-dev/go42x/blob/master/assets/agentenv/chunks/300-codestyle.tpl.md
+[go42x-codestyle]: ../../.go42x/chunks/300-codestyle.tpl.md

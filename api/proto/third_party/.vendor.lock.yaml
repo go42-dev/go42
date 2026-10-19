@@ -1,0 +1,9 @@
+---
+manifest: .vendor.yaml
+manifest-sha256: 093fa5a34bc1b615f885c1fc55c2ff2a69e52c3b3ca9f2336b99b9239c3e8907
+dependencies:
+  protovalidate:
+    resolved:
+      sha256: c0e3b275119f744f034c0764d6f0fe10313ac89b06955fae0effa3e707a46ab9
+    files:
+      buf/validate/validate.proto: c0e3b275119f744f034c0764d6f0fe10313ac89b06955fae0effa3e707a46ab9

@@ -29,3 +29,7 @@ globs:
   - docs/**/*.md
 
 gitignore: true
+
+# Preserve upstream bytes even when a save-time formatter passes explicit files.
+ignores:
+  - '**/.go42x/upstream/**/*.md'

@@ -1,0 +1,15 @@
+---
+
+# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/v0.38.0/assets/schemas/vendor.schema.yaml
+
+version: "1.0"
+
+dependencies:
+  protovalidate:
+    source:
+      type: http
+      url: https://raw.githubusercontent.com/bufbuild/protovalidate/v1.0.0-rc.6/proto/protovalidate/buf/validate/validate.proto
+      sha256: c0e3b275119f744f034c0764d6f0fe10313ac89b06955fae0effa3e707a46ab9
+    files:
+      - from: validate.proto
+        to: buf/validate/validate.proto

@@ -50,12 +50,12 @@ those checks; report their scope and any unresolved errors or unavailable tools.
 {{ end }}
 
 {{if hasMCPTool .mcp "go42x" "project_context"}}
-Use `project_context` with the task and affected project-relative paths to load
-project guidance and relevant evidence. Follow source continuation pointers when
-needed. Check coverage diagnostics before relying on retrieval results.
-Preserve exact identifiers such as `Service.Init` in the task. Supplied files
-are read directly; directory paths scope source searches before supporting
-searches. A response can include multiple distinct ranges from one file.
+Use `project_context` with affected project-relative `paths` to load project
+guidance and linked documentation. Supplied files are read directly; directory
+paths select documentation impact without searching source files. Use
+`kwb_search` with a focused query and language-server tools to discover code.
+The context tool does not require a search index. Follow source continuation
+pointers and check coverage diagnostics before relying on the response.
 Configure up to eight guidance document IDs with `go42x mcp
 --context-doc=project,conventions` or `GO42X_CONTEXT_DOC="project conventions"`.
 Use IDs authored by the application. Guidance uses at most a quarter of the
@@ -63,10 +63,14 @@ source budget when other evidence is available; unused space returns to evidence
 {{end}}
 {{if hasMCPTool .mcp "go42x" "docs_get"}}
 Use `docs_get` to read a requirement, decision, or handbook page by its authored ID.
-Documents can live anywhere in the project. YAML front matter supplies `id`,
-`title`, and optional `collection`; directory names do not determine document type.
-The documentation entrypoint defaults to `docs/README.md`; configure another path
-with `go42x mcp --docs-entrypoint`. Discovery respects `.gitignore` files.
+Documents live in the directory containing the documentation entrypoint and its
+subdirectories. YAML front matter supplies `id`, `title`, and optional
+`collection`; directory names do not determine document type. Markdown outside
+this directory, including upstream references, remains searchable without
+project-record validation.
+Configure the documentation entrypoint with `project.documentation-entrypoint` in
+`.go42x/go42x.yaml`; omitted or empty defaults to `docs/README.md`.
+Local overrides in `.go42x/go42x.local.yaml` apply. Discovery respects `.gitignore` files.
 Draft and proposed records require agreement before implementation. Acceptance
 alone does not establish delivery; retain the status and replacement chain when
 using historical records.
@@ -177,13 +181,19 @@ Indexing respects `.gitignore` files inside the selected root, including nested
 rules and negation. It excludes its own index directory, build/tool directories,
 binary files, symlinks, generated Go files, and common lockfiles. Use
 `--include-ext=.xyz` to add an extension, or a filename such as `Makefile.custom`.
-Authored `.go42x/go42x.yaml`, instruction templates, and `.env.example` are
-eligible. Generated state, backups, local overrides, and the index are excluded.
-`kwb build` creates `.go42x/kwb.ignore` with a comment header when missing;
-existing files are preserved. Add root-relative Git ignore patterns to omit
-generated bundles while retaining handwritten files, or pass `--exclude-file`
-at build time.
-These exclusions cannot re-include files excluded by `.gitignore` or defaults.
+Authored `.go42x/go42x.yaml`, instruction templates, `.env.example`, and Markdown
+references under `.go42x/upstream/` are eligible. Generated state, backups, local
+overrides, and the index are excluded.
+`kwb build` creates `.go42x/kwb.ignore` from the bundled template when missing and
+refreshes its managed `# go42x -- START` / `# go42x -- END` block before indexing.
+The block excludes compiled `.github/workflows/*.lock.yml` files by default.
+Existing files are backed up under `.go42x/backups/updates/` only when changed;
+the build result includes the backup directory. All text outside the block is
+preserved. Malformed markers fail the build before a new index is published.
+Agent environment commands and knowledge-base reads leave this file unchanged.
+Keep custom root-relative Git ignore patterns after the block,
+including `!` exceptions to bundled rules, or pass `--exclude-file` at build time.
+Ignore-file exceptions cannot override `.gitignore` or built-in indexing filters.
 Changing exclusions takes effect on the next incremental build.
 The index is local and requires no embedding service.
 

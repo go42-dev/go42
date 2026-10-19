@@ -17,7 +17,8 @@ on:
 permissions: {}
 
 concurrency:
-  group: release-${{ inputs.version }}
+  # Stable releases share the latest image tag, so publication must be serialized.
+  group: release
   cancel-in-progress: false
 
 jobs:
@@ -190,12 +191,12 @@ jobs:
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
           permission-contents: write
+          # Tagging commits that update workflow files also requires Workflows access.
+          permission-workflows: write
       - name: 'Create Git tag and GitHub release'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          ACTUAL_APP_SLUG: ${{ steps.release-app.outputs.app-slug }}
           CI_URL: ${{ needs.validate-release.outputs.ci_url }}
-          EXPECTED_APP_SLUG: ${{ vars.RELEASE_APP_NAME }}
           IMAGE_DIGEST: ${{ needs.docker-build.outputs.image_digest }}
           IS_PRERELEASE: ${{ needs.validate-release.outputs.is_prerelease }}
           RELEASE_VERSION: ${{ needs.validate-release.outputs.release_version }}
@@ -203,11 +204,6 @@ jobs:
         with:
           github-token: ${{ steps.release-app.outputs.token }}
           script: |-
-            const expectedAppSlug = process.env.EXPECTED_APP_SLUG?.trim();
-            if (!expectedAppSlug || process.env.ACTUAL_APP_SLUG !== expectedAppSlug) {
-              throw new Error('Release App slug does not match RELEASE_APP_NAME');
-            }
-
             const version = process.env.RELEASE_VERSION;
             const sourceSha = process.env.SOURCE_SHA;
             const image =
@@ -240,3 +236,45 @@ jobs:
               .addRaw(`Image: \`${image}\`\n\n`)
               .addLink('GitHub release', release.data.html_url)
               .write();
+
+  promote-docker:
+    name: promote-docker
+    needs:
+      - validate-release
+      - docker-build
+      - publish-release
+    if: needs.validate-release.outputs.is_prerelease == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      packages: write
+    steps:
+      - name: 'Set up Docker Buildx'
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - name: 'Log in to GitHub Container Registry'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 'Publish stable image as latest'
+        env:
+          IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/go42
+          IMAGE_REFERENCE: ${{ needs.docker-build.outputs.image_reference }}
+          IMAGE_DIGEST: ${{ needs.docker-build.outputs.image_digest }}
+        run: |-
+          set -euo pipefail
+          docker buildx imagetools create --tag "$IMAGE_NAME:latest" "$IMAGE_REFERENCE"
+          latest_digest=$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$IMAGE_NAME:latest")
+          if [ "$latest_digest" != "$IMAGE_DIGEST" ]; then
+            echo '::error::The latest tag does not identify the published image.'
+            exit 1
+          fi
+
+          {
+            echo '## Docker image promotion'
+            echo
+            printf -- "- Latest: \`%s:latest\`\n" "$IMAGE_NAME"
+            printf -- "- Image: \`%s\`\n" "$IMAGE_REFERENCE"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"

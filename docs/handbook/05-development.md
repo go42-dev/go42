@@ -17,9 +17,10 @@ and their locked versions. This guide explains which commands to use, their scop
 
 ## Environment setup
 
-Install Go, mise, and Task and ensure their executables are on `PATH`. Use the Go version from [go.mod](../../go.mod) and
-the minimum mise version from [etc/mise.toml](../../etc/mise.toml). Install Docker for container workflows.
-If Task is missing, use the bootstrap instructions below.
+Install Go and mise using the Go version from [go.mod](../../go.mod) and the minimum mise version from
+[etc/mise.toml](../../etc/mise.toml). Install Task separately using its
+[installation instructions](https://taskfile.dev/docs/installation). Ensure these executables are on `PATH`, and install
+Docker for container workflows.
 
 From the repository root, install the project tools:
 
@@ -27,8 +28,15 @@ From the repository root, install the project tools:
 task setup
 ```
 
-This installs all tools locked in [etc/mise.lock](../../etc/mise.lock), including Task and gopls. It also syncs Vale styles
-and downloads Go modules.
+This installs all tools locked in [etc/mise.lock](../../etc/mise.lock), including gopls. It also syncs Vale styles and
+downloads Go modules. Task is an external prerequisite.
+
+In CI, the local [setup-tools action](../../.github/actions/setup-tools/action.yaml) installs mise using `min_version`
+from [etc/mise.toml](../../etc/mise.toml). It also defines the pinned Task version and installs Task when requested.
+It configures mise's project paths and caches the project's tools at job completion, including tools installed by later
+Task steps. Cache entries distinguish selected tools, setup tasks, operating systems, and architectures.
+Jobs select the mise tools they need; the [prepare-env action](../../.github/actions/prepare-env/action.yaml) uses it
+before running `task setup` for a full development environment.
 
 The [MCP configuration](../../.go42x/go42x.yaml) runs the local servers through `task tool -- gopls mcp`,
 `task tool -- go42x mcp`, and `task tool -- mise mcp`. Start these commands from the repository root to use the project
@@ -39,7 +47,7 @@ configuration sets `MISE_EXPERIMENTAL=1`. Workflows remain in Taskfile; no mise 
 tool cannot execute Taskfile commands directly.
 
 GitHub MCP uses [GitHub's hosted HTTP server](https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md)
-at `https://api.githubcopilot.com/mcp/`. Export `GITHUB_PERSONAL_ACCESS_TOKEN` in the MCP client's environment; the
+at `https://api.githubcopilot.com/mcp/`. Export `GITHUB_TOKEN` with your PAT in the MCP client's environment; the
 configuration uses it for bearer authentication and sets `X-MCP-Toolsets: all`. After changing the MCP configuration,
 run `task x -- agentenv generate` and restart the client.
 
@@ -58,7 +66,7 @@ Task supplies mise's project paths, so Task commands work without shell exports.
 `.tools/shims` or `mise exec`. Existing exported mise settings override Taskfile defaults. Go commands use the installed
 `go` executable; Task defaults to `GOTOOLCHAIN=local` and adds the project shims to `PATH` for generators.
 
-### Bootstrapping Task and invoking tools directly
+### Invoking tools directly
 
 For direct tool calls from a shell or editor, configure the project paths from the repository root:
 
@@ -70,8 +78,7 @@ export MISE_STATE_DIR="$MISE_DATA_DIR/state"
 export PATH="$MISE_DATA_DIR/shims:$PATH"
 ```
 
-If Task is missing, run `mise install --locked task` after these exports, then `task setup`. The tool shims load applicable
-mise settings, including Redocly's update-notice and telemetry settings.
+The tool shims load applicable mise settings, including Redocly's update-notice and telemetry settings.
 
 ## Using Task
 
@@ -135,7 +142,9 @@ Edit the [authored search guidance](../../.go42x/chunks/200-search.tpl.md) to ch
 
 The [AI preparation action](../../.github/actions/ai-prepare-env/action.yml) refreshes the knowledge base after generating
 agent configuration. The preparation actions are maintained in go42x; this blueprint keeps local copies so workflows
-use files from their own repository. Use the same order from the repository root when preparing a local session:
+use files from their own repository. The [Copilot setup workflow](../../.github/workflows/copilot-setup-steps.yml) follows
+the same approach, passing `providers: copilot` to generate its configuration once before indexing.
+Use the same order from the repository root when preparing a local session:
 
 ```sh
 task x -- agentenv generate
@@ -143,16 +152,51 @@ task x -- kwb build
 ```
 
 The [project exclusions](../../.go42x/kwb.ignore) omit generated Swagger JavaScript bundles while retaining handwritten
-JavaScript. Reading this file, indexing authored `.go42x` configuration and `.env.example`, and `kwb check` require the
-go42x KB-01–06 source changes dated September 14, 2026; they are not included in this repository's pinned 0.28.0 release.
-After adopting a release containing those changes, run `task x -- kwb check --json` to verify freshness without updating
-the index. It exits 0 for a complete, fresh scan and 1 for stale, unavailable, or incomplete results. Build again to apply
-source or exclusion changes. The scan uses recorded build settings and current ignore files.
+JavaScript. The knowledge base also indexes authored `.go42x` configuration, instruction templates, vendored Markdown,
+and `.env.example`. Run `task x -- kwb check --json` to verify freshness without updating the index. It exits 0 for a
+complete, fresh scan and 1 for stale, unavailable, or incomplete results. Build again to apply source or exclusion changes.
+The scan uses recorded build settings and current ignore files.
 
-That version also supports `--context-doc=project,conventions,documentation` in the go42x MCP server's arguments to load
-these authored guidance IDs. Add it to the [MCP configuration](../../.go42x/go42x.yaml) after upgrading, then regenerate
-agent output and restart the client. Context requests can retrieve multiple source ranges and documentation sections
-from one file; supplied files are read directly and directory paths scope searches.
+The go42x MCP server supports `--context-doc=project,conventions,documentation` to load these authored guidance IDs.
+Configure it in the [MCP configuration](../../.go42x/go42x.yaml), regenerate agent output, and restart the client when
+changing the server's arguments. Context requests read supplied files directly. Directory paths select documentation
+impact; use knowledge-base search and gopls to discover source declarations.
+
+### GitHub Agentic Workflows
+
+The [PR description workflow](../../.github/workflows/910-aw-description.md) updates a generated summary when a
+non-draft pull request changes. The [agent request workflow](../../.github/workflows/920-aw-agent.md) responds to
+`/agent` comments on issues and pull requests from contributors with write, maintain, or admin access. Questions receive
+a comment; implementation requests produce a draft pull request or update the triggering same-repository branch.
+Fork pull requests receive comments. Initial credentials and repository setup belong to the
+[blueprint adoption instructions](../../blueprint/blueprint.md#github-and-agentic-workflow-setup).
+
+Keep workflow Markdown in `.github/workflows/9XX-aw-*.md`. Edit workflow triggers, permissions, engine, and task prompts
+there. The shared MCP definitions come from [go42x configuration](../../.go42x/go42x.yaml); each local server keeps its
+command and an optional container definition for gh-aw. Refresh and verify from the repository root:
+
+```sh
+task agentic:compile
+task agentic:lint
+task test:workflows
+task lint:actions
+```
+
+`agentic:generate` runs the mise-installed go42x to generate shared instructions and `900-aw-mcp.md` with the exact
+provider list `gh-aw`. `agentic:compile` runs generation and the pinned gh-aw compiler. `agentic:lint` checks the compiled
+workflows. Review and commit the Markdown sources, generated MCP fragment, `.lock.yml` files, and
+[action resolution lock](../../.github/aw/actions-lock.json) together. The separate `agentic-lint` CI job repeats generation,
+compilation, and linting and fails if they leave changes. Plain YAML formatting excludes compiler-owned workflow locks;
+Actionlint and Zizmor still check them. The `.gitattributes` entry marks these files as generated in GitHub's diff view.
+
+At runtime, each workflow uses the local AI preparation action to install the full development toolset, generate
+instructions, and index the checkout. An empty `providers` input generates shared instructions only; gh-aw supplies its
+own runtime configuration from the committed workflow. `pull-mcp-image: true` pulls the go42x image matching the version
+selected by mise and resolves its immutable digest for the MCP containers. Upgrade that pin only after its matching image
+has been published. Local MCP commands continue to run through Task.
+
+The workflows compile with the Codex engine. `GH_AW_DEFAULT_MODEL_CODEX` supplies an optional model default at runtime;
+changing the engine requires editing and recompiling the workflow source.
 
 ## Running and debugging
 
@@ -160,12 +204,12 @@ The launch tasks require `.env` through `task check:env`. They load defaults fro
 from `.env`. Start the services required by the selected database, cache, and event settings.
 
 | Command           | Behavior                                                                            |
-|-------------------|-------------------------------------------------------------------------------------|
+| ----------------- | ----------------------------------------------------------------------------------- |
 | `task run`        | Run the application locally with race detection and compiler optimizations disabled |
 | `task run:docker` | Run the application in a Linux Go container with the checkout mounted               |
 | `task debug`      | Start the headless Delve debugger on port 2345                                      |
 | `task build`      | Build `.build/app` with race detection and compiler optimizations disabled          |
-| `task image`      | Build the development Docker image for Linux amd64 and arm64                        |
+| `task image`      | Build and load a cached development image for the host platform                     |
 
 `task run` and `task run:docker` treat exit code 1 as success, as recorded in Taskfile. Check the application output when
 verifying startup or shutdown behavior.
@@ -215,9 +259,27 @@ Documentation assembly owns `pages/docs/`, and the website build owns `pages/bui
 [documentation commands](01-documentation.md#verification). Dependency tools own lockfiles such as `etc/mise.lock` and
 `pages/package-lock.json`.
 
-Update vendored files, including Protobuf definitions under `api/proto/third_party/`, through their dependency update
-process. Record versions and upstream sources in adjacent `.versions.yaml` files, retain upstream license notices, and
-regenerate affected outputs. Follow [tool maintenance](#maintaining-the-workflow) when changing tool pins or configuration.
+Vendored dependencies use a `.vendor.yaml` manifest and `.vendor.lock.yaml` beside their files:
+
+| Manifest                                                                       | Contents                       |
+| ------------------------------------------------------------------------------ | ------------------------------ |
+| [.go42x/.vendor.yaml](../../.go42x/.vendor.yaml)                               | Go and Google style references |
+| [api/proto/third_party/.vendor.yaml](../../api/proto/third_party/.vendor.yaml) | Protovalidate definitions      |
+| [static/swagger/.vendor.yaml](../../static/swagger/.vendor.yaml)               | Swagger UI and themes          |
+
+Run `task vendor:check` to verify all three against their locks. Run `task vendor:sync` to restore locked files without
+selecting newer versions. To upgrade one dependency, edit its source version or URL and checksum in the relevant manifest,
+then update that manifest, for example:
+
+```sh
+task x -- vendor update --manifest static/swagger/.vendor.yaml
+task vendor:check
+```
+
+Review the changed manifest, lock, and files together. External Proto files and published npm archives use exact release
+URLs and SHA-256 checksums. Regenerate affected outputs with `task generate` after changing API definitions. CI checks
+vendor locks before code generation. Follow [tool maintenance](#maintaining-the-workflow) when changing tool pins or
+configuration.
 
 For a new database migration, run `task generate:migration-id` once to obtain its filename prefix. Use the same filename
 across database engines and follow the [migration conventions](02-conventions.md#architecture-and-data).
@@ -266,7 +328,7 @@ Format only edited source files and review the diff; linters check without apply
 is an existing file and `PACKAGE` is a local Go package or subtree. Use `task TASK --summary` for usage.
 
 | Source type                     | Formatter                                    | Check                                                            |
-|---------------------------------|----------------------------------------------|------------------------------------------------------------------|
+| ------------------------------- | -------------------------------------------- | ---------------------------------------------------------------- |
 | Go                              | `task fmt:go -- "$FILE"`                     | `task lint:go -- "$PACKAGE"`                                     |
 | Plain YAML, including workflows | `task fmt:yaml -- "$FILE"`                   | `task lint:yaml -- "$FILE"`                                      |
 | JSON                            | `task fmt:json -- "$FILE"`                   | `task lint:json -- "$FILE"`                                      |
@@ -279,8 +341,10 @@ For SQL, use `DIALECT=sqlite` for `migrate/sqlite/`, `mysql` for `migrate/mysql/
 Explicit files require a dialect. With no files, `task lint:sql` checks all three; adding `DIALECT` selects one.
 
 YAML, JSON, and TOML checks default to tracked files and unignored untracked files, skipping deleted files.
-YAML skips Helm templates and combined OpenAPI output; JSON skips `package-lock.json`; TOML selects `*.toml`.
+YAML skips Helm templates, combined OpenAPI output, and compiled workflow locks; JSON skips `package-lock.json`;
+TOML selects `*.toml`.
 Markdown and prose default to `docs/`. Let the owning tools update lockfiles.
+Markdown formatting excludes vendored references, including when explicit files are passed.
 
 [Go formatter settings](../../etc/golangci.yaml) control line length and import grouping; use `go mod edit -fmt` for
 `go.mod`. TOML tasks load [etc/tombi.toml](../../etc/tombi.toml), use offline schemas, and treat lint warnings as errors.
@@ -288,11 +352,13 @@ Markdown formatting fixes supported issues; remaining diagnostics need manual ed
 
 JavaScript, TypeScript, CSS, shell, and Dockerfiles have no configured formatter. Follow the surrounding style and
 [.editorconfig](../../.editorconfig); check edited files with `task lint:editorconfig -- "$FILE"`.
+Checker exceptions live in [etc/editorconfig.json](../../etc/editorconfig.json): language formatters handle indentation,
+and vendored upstream snapshots are excluded.
 
 ### Checks for specific purposes
 
 | Change           | Additional checks                                                                                                         |
-|------------------|---------------------------------------------------------------------------------------------------------------------------|
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Workflow YAML    | `task lint:actions -- "$FILE"` runs Actionlint and Zizmor; omit files for composite actions or shared workflow interfaces |
 | OpenAPI          | `task lint:openapi` and `task lint:openapi-breaking`                                                                      |
 | Protobuf         | `task lint:proto-breaking`, in addition to the full-module checks above                                                   |
@@ -315,7 +381,7 @@ and run `task setup` first.
 The VS Code preset runs Task commands in sequence, formats Go before package linting, selects SQL dialects, and skips
 Helm templates for YAML formatting. Per-project `.idea/` and `.vscode/` settings are ignored.
 
-Keep tool calls aligned with Taskfile and the [tool environment](#bootstrapping-task-and-invoking-tools-directly).
+Keep tool calls aligned with Taskfile and the [tool environment](#invoking-tools-directly).
 Markdown calls need `--no-globs` for file-specific fixes; Tombi needs `etc/` as its working directory and absolute
 file paths.
 

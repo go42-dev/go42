@@ -1,27 +1,24 @@
 ---
 
 config-variables:
+  - AI_APP_CLIENT_ID
+  - GH_AW_DEFAULT_ARTIFACT_RETENTION_DAYS
+  - GH_AW_DEFAULT_DETECTION_MAX_AI_CREDITS
+  - GH_AW_DEFAULT_MAX_AI_CREDITS
+  - GH_AW_DEFAULT_MAX_DAILY_AI_CREDITS
+  - GH_AW_DEFAULT_MAX_TURNS
+  - GH_AW_DEFAULT_MODEL_CODEX
+  - GH_AW_DEFAULT_OTLP_ENDPOINT
+  - GH_AW_MODEL_AGENT_CODEX
+  - GH_AW_POLICY_ALLOW_CREATE_PULL_REQUEST
+  - GH_AW_RUNTIME_FEATURES
   - RELEASE_APP_CLIENT_ID
-  - RELEASE_APP_NAME
-  # ----
-  - CLAUDE_ENABLE
-  - CLAUDE_MODEL
-  - CLAUDE_APP_ID
-  - CLAUDE_APP_NAME
-  - CLAUDE_TIMEOUT
-  - CLAUDE_MAX_TURNS
-  # ----
-  - GEMINI_ENABLE
-  - GEMINI_MODEL
-  - GEMINI_APP_ID
-  - GEMINI_APP_NAME
-  - GEMINI_TIMEOUT
-  - GEMINI_MAX_TURNS
-  # ----
-  - SUMMARY_ENABLE
-  - SUMMARY_MODEL
 
 paths:
+  .github/workflows/*.lock.yml:
+    ignore:
+      # The compiler emits concurrency queueing before actionlint supports it.
+      - 'unexpected key "queue" for "concurrency" section.+'
   .github/workflows/210-github-pages.yaml:
     ignore:
       # GitHub supports concurrency queueing, but actionlint 1.7.12 does not yet
@@ -37,7 +34,3 @@ paths:
     ignore:
       # actionlint does not support service container commands yet
       - 'unexpected key "command" for "services" section.+'
-  .github/workflows/*.{yml,yaml}:
-    ignore:
-      # actionlint does not support the `models` permission scope as of now
-      - 'unknown permission scope \"models\".+'

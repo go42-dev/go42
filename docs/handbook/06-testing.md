@@ -19,7 +19,7 @@ While editing, run the matching focused checks and tests for the affected behavi
 callers when interfaces change. Follow the shared Go conventions linked from [Project conventions](02-conventions.md).
 
 | Command                                | Coverage and prerequisites                                                                                |
-|----------------------------------------|-----------------------------------------------------------------------------------------------------------|
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | `task test:unit`                       | Full unit suite with race detection and coverage; excludes generated code, mocks, and external test trees |
 | `task test:unit -- ./internal/metrics` | Selected packages with race detection; no coverage report                                                 |
 | `task test:fuzz`                       | All fuzz targets; 30 seconds per target by default                                                        |
@@ -27,8 +27,11 @@ callers when interfaces change. Follow the shared Go conventions linked from [Pr
 | `task test:contract`                   | HTTP contract checks and probes against a dedicated test application                                      |
 | `task test:resilience`                 | Recovery tests with an instrumented app and combined coverage; needs Toxiproxy and backing services       |
 | `task test:load`                       | HTTP and gRPC k6 suites against a running application by default                                          |
+| `task test:workflows`                  | Publication, cleanup, MCP image selection, and agent permission checks with local fixtures; needs jq      |
 
 Coverage reports are written under `.build/`. Resilience tests are build-tagged and excluded from other test tasks.
+Workflow tests mock Docker and GitHub commands and do not build images or call a registry. CI runs them alongside unit
+tests; they do not contribute application coverage.
 Use the [resilience suite](../../tests/resilience/application_test.go) and
 [CI service configuration](../../.github/workflows/120-resilience-tests.yaml) to identify its required backends.
 
@@ -170,6 +173,6 @@ advisory task on non-master branches. Capability differences do not fail the tas
 
 For a documentation preview, use `task docs:serve`. For a focused metadata and source-link check after installing website
 dependencies, use `npm --prefix pages run validate-docs` with the
-[pinned tool environment](05-development.md#bootstrapping-task-and-invoking-tools-directly). The full documentation build
+[pinned tool environment](05-development.md#invoking-tools-directly). The full documentation build
 also checks published links and anchors. Follow the [documentation policy](01-documentation.md#verification) for publishing
 and application-specific evidence. CI runs its configured jobs independently of the local checks selected here.

@@ -8,7 +8,6 @@
 !pkg
 !static
 !.env.example
-!entrypoint.sh
 !go.mod
 !go.sum
 !README.md

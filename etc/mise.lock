@@ -85,6 +85,62 @@ checksum = "sha256:126c8fa83500389078f6b2072a04170f063787ec9905e5d1ab69a5a62ee5b
 url = "https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v3.11.3/ec-darwin-amd64.tar.gz"
 url_api = "https://api.github.com/repos/editorconfig-checker/editorconfig-checker/releases/assets/543324099"
 
+[[tools."github:github/gh-aw"]]
+version = "0.91.12"
+backend = "github:github/gh-aw"
+specifiers = ["0.91.12"]
+
+[tools."github:github/gh-aw".options]
+asset_pattern = "linux-arm64"
+
+[tools."github:github/gh-aw"."platforms.linux-arm64"]
+checksum = "sha256:c8fc25e43fba0e0eed9b98db0d052954f96b8591b1bcffa74f39b572ad48019c"
+url = "https://github.com/github/gh-aw/releases/download/v0.91.12/linux-arm64"
+url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/639256034"
+provenance = "github-attestations"
+
+[[tools."github:github/gh-aw"]]
+version = "0.91.12"
+backend = "github:github/gh-aw"
+specifiers = ["0.91.12"]
+
+[tools."github:github/gh-aw".options]
+asset_pattern = "darwin-arm64"
+
+[tools."github:github/gh-aw"."platforms.macos-arm64"]
+checksum = "sha256:1bf033fdb69d657ac76e882d5c69c86f3380dfb74cb6e8a3526ebed625b44190"
+url = "https://github.com/github/gh-aw/releases/download/v0.91.12/darwin-arm64"
+url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/639255924"
+provenance = "github-attestations"
+
+[[tools."github:github/gh-aw"]]
+version = "0.91.12"
+backend = "github:github/gh-aw"
+specifiers = ["0.91.12"]
+
+[tools."github:github/gh-aw".options]
+asset_pattern = "linux-amd64"
+
+[tools."github:github/gh-aw"."platforms.linux-x64"]
+checksum = "sha256:004808fd27a4f1aec7f4ad5976769f16e3ae771886f3592d9f708a2c68981bf5"
+url = "https://github.com/github/gh-aw/releases/download/v0.91.12/linux-amd64"
+url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/639256013"
+provenance = "github-attestations"
+
+[[tools."github:github/gh-aw"]]
+version = "0.91.12"
+backend = "github:github/gh-aw"
+specifiers = ["0.91.12"]
+
+[tools."github:github/gh-aw".options]
+asset_pattern = "darwin-amd64"
+
+[tools."github:github/gh-aw"."platforms.macos-x64"]
+checksum = "sha256:cbe352d16276d153470372df8c591b349e66c4844d481beb4e0bbec8dde1592e"
+url = "https://github.com/github/gh-aw/releases/download/v0.91.12/darwin-amd64"
+url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/639255925"
+provenance = "github-attestations"
+
 [[tools."github:oasdiff/oasdiff"]]
 version = "1.31.0"
 backend = "github:oasdiff/oasdiff"
@@ -151,9 +207,9 @@ backend = "go:github.com/go-delve/delve/cmd/dlv"
 specifiers = ["1.27.1"]
 
 [[tools."go:github.com/go42-dev/go42x"]]
-version = "0.35.0"
+version = "0.38.0"
 backend = "go:github.com/go42-dev/go42x"
-specifiers = ["0.35.0"]
+specifiers = ["0.38.0"]
 
 [[tools."go:github.com/google/capslock/cmd/..."]]
 version = "0.3.3"
@@ -179,8 +235,8 @@ specifiers = ["1.24.0"]
 version = "2.29.1-0.20260914113419-9e8e5d91f2f3"
 backend = "go:github.com/securego/gosec/v2/cmd/gosec"
 specifiers = [
-  "2.29.1-0.20260914113419-9e8e5d91f2f3",
-  "v2.29.1-0.20260914113419-9e8e5d91f2f3",
+    "2.29.1-0.20260914113419-9e8e5d91f2f3",
+    "v2.29.1-0.20260914113419-9e8e5d91f2f3",
 ]
 
 [[tools."go:go.uber.org/mock/mockgen"]]
@@ -194,9 +250,9 @@ backend = "go:go.uber.org/nilaway/cmd/nilaway"
 specifiers = ["v0.0.0-20260808063849-8649a03c818a"]
 
 [[tools."go:golang.org/x/tools/gopls"]]
-version = "0.23.0"
+version = "0.24.0"
 backend = "go:golang.org/x/tools/gopls"
-specifiers = ["0.23.0"]
+specifiers = ["0.24.0"]
 
 [[tools."go:golang.org/x/vuln/cmd/govulncheck"]]
 version = "1.7.0"
@@ -490,31 +546,6 @@ url_api = "https://api.github.com/repos/koalaman/shellcheck/releases/assets/2790
 checksum = "sha256:3c89db4edcab7cf1c27bff178882e0f6f27f7afdf54e859fa041fca10febe4c6"
 url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.x86_64.tar.xz"
 url_api = "https://api.github.com/repos/koalaman/shellcheck/releases/assets/279056930"
-
-[[tools.task]]
-version = "3.53.1"
-backend = "aqua:go-task/task"
-specifiers = ["3.53.1"]
-
-[tools.task."platforms.linux-arm64"]
-checksum = "sha256:e3ad19101493a0112e1f22ae8ccc54bf03e533b1076a0ca1e6c782a09ad2e588"
-url = "https://github.com/go-task/task/releases/download/v3.53.1/task_linux_arm64.tar.gz"
-url_api = "https://api.github.com/repos/go-task/task/releases/assets/519645523"
-
-[tools.task."platforms.linux-x64"]
-checksum = "sha256:a54a408f6861ff921f6e87774180db31bacd8c1e7c944ca696db9fea49a82fc7"
-url = "https://github.com/go-task/task/releases/download/v3.53.1/task_linux_amd64.tar.gz"
-url_api = "https://api.github.com/repos/go-task/task/releases/assets/519645449"
-
-[tools.task."platforms.macos-arm64"]
-checksum = "sha256:85d2d96c2380b33d7855b07b3f7a20dc7ca0eda999a26efa0fb5f6f32b366cd7"
-url = "https://github.com/go-task/task/releases/download/v3.53.1/task_darwin_arm64.tar.gz"
-url_api = "https://api.github.com/repos/go-task/task/releases/assets/519645491"
-
-[tools.task."platforms.macos-x64"]
-checksum = "sha256:7f1a702d54a789cb818a636039a83df071f4179893133afafa4eba351a7e19ef"
-url = "https://github.com/go-task/task/releases/download/v3.53.1/task_darwin_amd64.tar.gz"
-url_api = "https://api.github.com/repos/go-task/task/releases/assets/519645492"
 
 [[tools.tombi]]
 version = "1.5.4"

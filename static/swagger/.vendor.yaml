@@ -1,0 +1,37 @@
+---
+
+# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/v0.38.0/assets/schemas/vendor.schema.yaml
+
+version: "1.0"
+
+dependencies:
+  swagger-ui-dist:
+    source:
+      type: http
+      url: https://registry.npmjs.org/swagger-ui-dist/-/swagger-ui-dist-5.27.0.tgz
+      sha256: f6818faec8420173e1f7781f0fa7b9fd5ce29b5f1af4ca26b880596d41543500
+    files:
+      - from: package/swagger-ui.css
+        to: swagger-ui.css
+      - from: package/swagger-ui-bundle.js
+        to: swagger-ui-bundle.js
+      - from: package/swagger-ui-standalone-preset.js
+        to: swagger-ui-standalone-preset.js
+
+  swagger-theme-dark:
+    source:
+      type: http
+      url: https://cdn.jsdelivr.net/npm/swagger-themes@1.4.3/themes/dark.min.css
+      sha256: 1b2ef30998100e3dfa00f1c001d59405aeb18ee12f4c44e9d3c6a15617de2c26
+    files:
+      - from: dark.min.css
+        to: dark.min.css
+
+  swagger-theme-one-dark:
+    source:
+      type: http
+      url: https://cdn.jsdelivr.net/npm/swagger-themes@1.4.3/themes/one-dark.min.css
+      sha256: e9ada8052ed57ac9cf8e954a583f7867704614ac421f38b954c547b51c28df5d
+    files:
+      - from: one-dark.min.css
+        to: one-dark.min.css

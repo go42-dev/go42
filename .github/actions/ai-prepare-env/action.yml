@@ -3,11 +3,27 @@
 name: ai-prepare-env
 description: 'Prepares the environment for ai agents'
 
+inputs:
+  setup-task:
+    description: 'Task used to install project tools'
+    required: false
+    default: 'setup'
+  providers:
+    description: 'Exact provider list; empty generates shared instructions only'
+    required: false
+    default: ''
+  pull-mcp-image:
+    description: 'Pull the MCP tools image matching the mise go42x version'
+    required: false
+    default: 'false'
+
 runs:
   using: composite
   steps:
     - name: 'Prepare project environment'
       uses: ./.github/actions/prepare-env
+      with:
+        setup-task: ${{ inputs.setup-task }}
     # -----
     - name: 'Generate ai agent environment'
       env:
@@ -23,9 +39,41 @@ runs:
         GITHUB_SHA: ${{ github.sha }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_RUN_ID: ${{ github.run_id }}
-      run: task x -- agentenv generate
+        INPUT_PROVIDERS: ${{ inputs.providers }}
+      run: task x -- agentenv generate --providers="$INPUT_PROVIDERS"
       shell: bash
     # -----
     - name: 'Refresh knowledge base after generation'
       run: task x -- kwb build
       shell: bash
+    # -----
+    - name: 'Authenticate to GitHub Container Registry'
+      if: inputs.pull-mcp-image == 'true'
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+    # -----
+    - name: 'Pull MCP tools image'
+      if: inputs.pull-mcp-image == 'true'
+      shell: bash
+      run: |-
+        set -euo pipefail
+        image_repository=ghcr.io/go42-dev/go42x
+        version=$(mise current go:github.com/go42-dev/go42x)
+        version=${version#v}
+        if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+          echo '::error::mise must select one go42x release version for the MCP image.'
+          exit 1
+        fi
+        image_tag="v$version"
+        image_reference="$image_repository:$image_tag"
+        docker pull "$image_reference"
+        image=$(docker image inspect --format '{{index .RepoDigests 0}}' "$image_reference")
+        digest=${image#"$image_repository@"}
+        if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+          echo '::error::The MCP image has no immutable registry digest.'
+          exit 1
+        fi
+        echo "GO42X_MCP_IMAGE_VERSION=$image_tag@$digest" >> "$GITHUB_ENV"

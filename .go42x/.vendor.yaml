@@ -1,0 +1,42 @@
+---
+
+# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/v0.38.0/assets/schemas/vendor.schema.yaml
+
+version: "1.0"
+
+dependencies:
+  go-wiki:
+    source:
+      type: git
+      url: https://github.com/golang/wiki.git
+      ref: master
+    files:
+      - from: CodeReviewComments.md
+        to: upstream/go/code-review-comments.md
+
+  go-website:
+    source:
+      type: git
+      url: https://github.com/golang/website.git
+      ref: master
+    files:
+      - from: _content/blog/package-names.md
+        to: upstream/go/package-names.md
+      - from: _content/doc/effective_go.html
+        to: upstream/go/effective-go.md
+        converter: html-to-markdown
+
+  google-go-style:
+    source:
+      type: git
+      url: https://github.com/google/styleguide.git
+      ref: gh-pages
+    files:
+      - from: go/index.md
+        to: upstream/google-go/index.md
+      - from: go/guide.md
+        to: upstream/google-go/guide.md
+      - from: go/decisions.md
+        to: upstream/google-go/decisions.md
+      - from: go/best-practices.md
+        to: upstream/google-go/best-practices.md

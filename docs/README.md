@@ -29,21 +29,20 @@ The complete index follows the published sidebar's reading order.
 
 ### Handbook
 
-| Document                                              | Purpose                                                                        |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [Writing documentation](handbook/01-documentation.md) | Writing rules, document templates, checks, and publishing                      |
-| [Project conventions](handbook/02-conventions.md)     | Application-specific rules and a reference to shared Go conventions            |
-| [Application profile](handbook/03-project.md)         | Purpose, ownership, current capabilities, and documentation gaps               |
-| [Configuration](handbook/04-configuration.md)         | Configuration sources, backend choices, defaults, and deployment settings      |
-| [Development workflow](handbook/05-development.md)    | Setup, implementation, generation, tooling, and contributions                  |
-| [Testing and verification](handbook/06-testing.md)    | Suite selection, test environments, coverage, and checks before review         |
-| [Architecture](handbook/07-architecture.md)           | Source map, component boundaries, request and event flows, and lifecycle       |
-| [Using the API](handbook/08-api.md)                   | Credentials, session flow, local verification, and request failure diagnosis   |
-| [Release](handbook/09-release.md)                     | Version selection, release validation, published artifacts, and image identity |
-| [Deployment](handbook/10-deployment.md)               | Container and Helm configuration, migration handoff, and rollout verification  |
-| [Operations](handbook/11-operations.md)               | Probe checks, process lifecycle, outbox diagnosis, and failure recovery        |
-| [Monitoring](handbook/12-monitoring.md)               | Collect metrics, interpret signals, and configure the supplied dashboard       |
-| [Agentic workflow](handbook/20-agentic-workflow.md)   | AI workflow inputs, execution, and outputs                                     |
+| Document                                                    | Purpose                                                                        |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| [Writing documentation](handbook/01-documentation.md)       | Writing rules, document templates, checks, and publishing                      |
+| [Project conventions](handbook/02-conventions.md)           | Application-specific rules and a reference to shared Go conventions            |
+| [Application profile](handbook/03-project.md)               | Purpose, ownership, current capabilities, and documentation gaps               |
+| [Configuration](handbook/04-configuration.md)               | Configuration sources, backend choices, defaults, and deployment settings      |
+| [Development workflow](handbook/05-development.md)          | Setup, implementation, generation, tooling, and contributions                  |
+| [Testing and verification](handbook/06-testing.md)          | Suite selection, test environments, coverage, and checks before review         |
+| [Architecture](handbook/07-architecture.md)                 | Source map, component boundaries, request and event flows, and lifecycle       |
+| [Using the API](handbook/08-api.md)                         | Credentials, session flow, local verification, and request failure diagnosis   |
+| [Release](handbook/09-release.md)                           | Version selection, release validation, published artifacts, and image identity |
+| [Deployment](handbook/10-deployment.md)                     | Container and Helm configuration, migration handoff, and rollout verification  |
+| [Operations](handbook/11-operations.md)                     | Probe checks, process lifecycle, outbox diagnosis, and failure recovery        |
+| [Monitoring](handbook/12-monitoring.md)                     | Collect metrics, interpret signals, and configure the supplied dashboard       |
 
 ### Requirements
 

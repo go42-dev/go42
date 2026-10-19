@@ -14,8 +14,8 @@ procedure, secret delivery, and deployment ownership remain [documented gaps](03
 ## Runtime container
 
 The [runtime image](../../Dockerfile) contains the application binary, migrations, and static API files. It runs as user
-ID `1000`, with `tini` forwarding signals through the [entrypoint](../../entrypoint.sh). Give that user access to any
-mounted database files and writable directories.
+ID `1000`, with `tini` forwarding signals directly to the application and reaping orphaned child processes. Give that user
+access to any mounted database files and writable directories.
 
 Supply configuration through the container environment. The image's `.env.example` is a reference and is not loaded
 automatically. Resource paths and backend settings are documented in [configuration](04-configuration.md#configuration-sources).

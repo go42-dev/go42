@@ -21,7 +21,5 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - uses: ./.github/actions/ai-prepare-env
-      # -----
-      - name: 'Build agent instructions'
-        run: task x -- agentenv generate --providers=copilot
-        shell: bash
+        with:
+          providers: copilot

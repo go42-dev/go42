@@ -25,11 +25,10 @@ Before dispatching:
 2. Choose an unused version such as `v1.2.3` or `v1.2.3-rc.1`: a `v` prefix and valid SemVer are required, build metadata
     such as `+build.7` is rejected, and the complete string must be at most 128 characters. Neither a Git tag nor a GitHub
     release may already exist for this version.
-3. Configure `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_NAME` as repository or organization variables.
+3. Configure `RELEASE_APP_CLIENT_ID` as a repository or organization variable.
     Add `RELEASE_APP_PRIVATE_KEY` as a secret in the `release` environment. The App installation must cover this repository
-    and permit Contents write access.
-    `RELEASE_APP_NAME` must match the App slug; surrounding whitespace is ignored. These values are used in the
-    publication job, after the image is pushed.
+    and permit Contents and Workflows write access. Workflows access allows tagging commits that change workflow files.
+    These credentials are used in the publication job, after the image is pushed.
 4. Ensure the workflow's `GITHUB_TOKEN` can publish the `go42` package to GHCR. The build job declares Packages write,
     Contents read, Actions read, Attestations write, and ID token write permissions; repository and organization settings
     must allow those operations.
@@ -41,7 +40,7 @@ timeout is 30 minutes to allow time for API requests.
 
 Validation requires the workflow definition and dispatch SHA to match the selected `master` commit. It checks the
 `master` head before and after waiting for CI. If the head has changed, validation fails; dispatch again for the new head.
-Dispatches for the same version share a concurrency group and do not cancel an active run.
+All release dispatches share a concurrency group and do not cancel an active run.
 
 ## Release key isolation
 
@@ -55,13 +54,13 @@ The environments have no tag rules, required reviewers, or wait timers. Both pub
 The saved environment policies were verified through the GitHub API.
 
 The GitHub API review on 2026-09-14 confirmed `RELEASE_APP_PRIVATE_KEY` exists in each `release` environment. Neither
-repository has a repository-level copy or access to an organization-level copy. App client IDs and names are available
+repository has a repository-level copy or access to an organization-level copy. App client IDs are available
 through repository or organization variables. Secret values were not read by the verification.
 
 The [go42 release run](https://github.com/go42-dev/go42/actions/runs/34832061399) and
 [go42x release run](https://github.com/go42-dev/go42x/actions/runs/34832029483) on 2026-09-14 both generated App tokens
-inside their `release` environment jobs. The go42x release completed; go42 stopped at the App slug comparison because
-its organization variable included a trailing line break. These runs confirm key access from `master`.
+inside their `release` environment jobs. The go42x release completed; go42 stopped at the now-removed App slug check
+because its organization variable included a trailing line break. These runs confirm key access from `master`.
 
 ### Verify release access
 
@@ -99,13 +98,14 @@ and access requirements.
 In the repository's GitHub Actions view, open the `release` workflow, choose **Run workflow**, select `master`, enter the
 version, and run it. This writes a container image, attestations, a Git tag, and a published GitHub release.
 
-The workflow runs three jobs in sequence:
+The workflow runs the following jobs in sequence; prereleases skip image promotion:
 
 | Job                | Behavior and expected result                                                                                                         |
 |--------------------|--------------------------------------------------------------------------------------------------------------------------------------|
 | `validate-release` | Validates the version, source commit, and completed CI run; records the source SHA and CI link in its summary                        |
 | `docker-build`     | Checks out that SHA, builds and pushes both Linux architectures, validates the digest, and produces provenance and SBOM attestations |
-| `publish-release`  | Checks the release App slug, then creates the tag at the selected SHA and a non-draft release named `Release <version>`              |
+| `publish-release`  | Creates the tag at the selected SHA and a non-draft release named `Release <version>`                                                |
+| `promote-docker`   | For stable releases, moves `latest` to the published image digest and verifies that both references identify the same image          |
 
 The GitHub release includes generated release notes plus the source SHA, immutable image reference, successful CI link,
 and release workflow link. Versions containing a prerelease suffix produce GitHub prereleases and are not marked latest;
@@ -119,8 +119,14 @@ provide a deployment workflow consuming that event. Publishing a release does no
 The [container build workflow](../../.github/workflows/140-docker-build.yaml) publishes
 `ghcr.io/<repository-owner>/go42:<version>`. The service/package name is explicitly `go42`, even if the repository is
 renamed. The exact published image is identified by `ghcr.io/<repository-owner>/go42@sha256:<digest>` in the release body;
-use that digest when selecting an image for deployment. The workflow publishes the supplied version tag and does not
-configure `latest`, major-version, or minor-version image aliases.
+use that digest when selecting an image for deployment. The container build workflow publishes only the supplied tag.
+After image publication, attestations, and GitHub release creation succeed, the release workflow moves `latest` to the
+stable image's digest and verifies it. CI builds and prereleases do not move `latest`. Major-version and minor-version
+aliases are not configured. Release runs are serialized because stable versions share `latest`.
+
+The container build workflow checks out and verifies the source SHA supplied by its caller, then builds and pushes the
+image under the supplied tag. Unified CI passes its triggering SHA and a `ci-<run-id>-<run-attempt>` tag. The release
+workflow passes the version and source SHA produced by `validate-release`.
 
 The release build targets `linux/amd64` and `linux/arm64`. The [Dockerfile](../../Dockerfile) compiles the application with
 CGO disabled, using the Go version from [go.mod](../../go.mod), and embeds the source commit and requested release version.
@@ -132,18 +138,24 @@ build provenance and SBOM attestations to that image identity through GitHub's a
 does not package standalone application binaries or Helm charts as release assets.
 
 [Unified CI](../../.github/workflows/100-unified-workflow.yaml) uses separate `ci-<run-id>-<run-attempt>` image tags.
+CI binaries embed the same tag as `build_tag`, alongside the exact source commit as `build_commit`.
 A release rebuilds the tested source with the requested version; it does not promote the CI image digest. The release
 workflow does not rerun the application test suites against its new image. CI also treats image security scans and load
 tests as non-blocking, so a successful run does not establish that every advisory check passed.
 
-[Local build tasks](../../Taskfile.yaml) serve development: `task build` produces `.build/app`, and `task image` requests
-a multi-platform build tagged `ghcr.io/go42-dev/go42:dev` without a push or load option. Neither task publishes a release.
+After CI, [cleanup](../../.github/workflows/160-cleanup.yaml) removes the temporary image tag. GHCR rejects deletion of
+a package's last tagged version; cleanup reports a warning and retains that version. Other API failures fail cleanup.
+
+[Local build tasks](../../Taskfile.yaml) serve development: `task build` produces `.build/app`, and `task image` builds
+for the host platform and loads the image into the local Docker store. It uses the build cache and defaults to
+`ghcr.io/go42-dev/go42:dev`; override `IMAGE` and `VERSION` when needed. Neither task publishes a release.
 
 ## Verify publication and investigate failures
 
 After the workflow completes:
 
-1. Confirm all three release jobs succeeded. Open the linked GitHub release and compare its source SHA with the commit
+1. Confirm the first three jobs succeeded and `promote-docker` succeeded for a stable release or was skipped for a
+    prerelease. Open the linked GitHub release and compare its source SHA with the commit
     shown by the linked successful Unified CI run. Confirm the tag resolves to that SHA and the prerelease status matches
     the requested version.
 2. Open the image package in GHCR and check the version tag and manifest digest against the release's immutable image
@@ -154,12 +166,9 @@ After the workflow completes:
 
 The image is pushed before attestations, SBOM generation, and GitHub release creation. A later failure can therefore leave
 an image or attestations without a GitHub release; the workflow has no automatic rollback. Inspect the failed step and
-existing image, tag, and release before retrying. Validation rejects an existing Git tag or release, but does not check
+existing image, tag, and release before retrying. A promotion failure leaves the GitHub release published; inspect the
+`latest` digest and rerun the failed promotion job. Validation rejects an existing Git tag or release, but does not check
 whether the version's GHCR image tag already exists.
-
-If publication reports `Release App slug does not match RELEASE_APP_NAME`, check the effective variable at organization,
-repository, and environment scope. Store only the App slug, such as `go42-release`, without spaces or line breaks.
-The publication step trims surrounding whitespace and still rejects an empty value or a different App identity.
 
 These instructions describe checked-in workflow behavior. App installation, repository permissions, published artifacts,
 and environment promotion policy need verification in the target repository; they are not established by source review.

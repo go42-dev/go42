@@ -37,7 +37,6 @@ env:
   MISE_DATA_DIR: '{{.ROOT_DIR}}/.tools'
   MISE_CACHE_DIR: '{{.ROOT_DIR}}/.tools/cache'
   MISE_STATE_DIR: '{{.ROOT_DIR}}/.tools/state'
-  MISE_EXEC_AUTO_INSTALL: 'false'
   TASK_TEMP_DIR: '{{.ROOT_DIR}}/.tools/task'
 
 tasks:
@@ -49,7 +48,6 @@ tasks:
     cmds:
       - "task --list --sort none"
 
-  ## x | run go42x
   x:
     desc: "run go42x"
     summary: "Usage: task x [-- COMMAND ...]"
@@ -57,7 +55,6 @@ tasks:
     cmds:
       - '"{{.TOOLS_BIN}}/go42x" {{.CLI_ARGS}}'
 
-  ## tool | run a command with the project tools
   tool:
     desc: "Run a command with the project tools"
     summary: "Usage: task tool -- COMMAND [ARGS...]"
@@ -69,7 +66,6 @@ tasks:
     cmds:
       - 'mise exec -- {{.CLI_ARGS}}'
 
-  ## setup | install dependencies
   setup:
     desc: "install dependencies"
     cmds:
@@ -77,19 +73,18 @@ tasks:
       - '"{{.TOOLS_BIN}}/vale" --config etc/vale.ini sync'
       - "go mod download"
 
-  ## setup:generators | install dependencies for code generation
   setup:generators:
     desc: "install dependencies for code generation"
     cmds:
       - |
         mise install --locked \
-          task node yq buf oapi-codegen npm:@redocly/cli \
+          node yq buf oapi-codegen npm:@redocly/cli \
+          go:github.com/go42-dev/go42x \
           go:go.uber.org/mock/mockgen \
           go:github.com/ogen-go/ogen/cmd/ogen \
           go:google.golang.org/protobuf/cmd/protoc-gen-go \
           go:google.golang.org/grpc/cmd/protoc-gen-go-grpc
 
-  ## bump | set a mise tool dependency to a version
   bump:
     desc: "Set a mise tool dependency to a version (writes)"
     summary: "Usage: task bump TOOL=go:github.com/go42-dev/go42x VERSION=0.23.0"
@@ -110,7 +105,6 @@ tasks:
   # │                   Testing                    │
   # ╰─────────────────────----------------─────────╯
 
-  ## test:unit | run unit tests with coverage, or selected packages with race detection
   # -count=1 is needed to prevent caching of test results.
   test:unit:
     desc: "run unit tests with coverage, or selected packages with race detection"
@@ -134,20 +128,23 @@ tasks:
         if [ "$#" -gt 0 ]; then
           exec go test -count=1 -race -skip '^Fuzz' "$@"
         fi
+
         mkdir -p .build
+
         unit_packages=$(go list ./...)
         unit_exclude_pattern=$(printf '%s\n' api/gen mocks tests | paste -sd '|' -)
         unit_packages=$(printf '%s\n' "$unit_packages" | grep -vE "/($unit_exclude_pattern)(/|$)")
+
         # go list returns separate package names; preserve word splitting here.
         # shellcheck disable=SC2086
         go test -count=1 -v -race -skip '^Fuzz' -covermode=atomic \
           -coverpkg="$(printf '%s\n' "$unit_packages" | paste -sd, -)" \
           -coverprofile=.build/coverage.out $unit_packages \
           | sed -E 's/(coverage: [0-9.]+% of statements) in .*/\1/'
+
         go tool cover -html=.build/coverage.out -o=.build/coverage.html
         go tool cover -func=.build/coverage.out | grep '^total:'
 
-  ## test:fuzz | run all fuzz targets (30 seconds per target by default)
   test:fuzz:
     desc: "run all fuzz targets (30 seconds per target by default)"
     summary: "Usage: task test:fuzz [FUZZ_TIME=30s]. Also accepts FUZZ_TIME from the environment."
@@ -156,26 +153,29 @@ tasks:
     cmds:
       - 'go run ./cmd/fuzz -fuzztime {{.FUZZ_TIME | shellQuote}}'
 
-  ## test:integration | run integration tests with coverage
   # -count=1 is needed to prevent caching of test results.
   # Uses application settings from .env when present.
   test:integration:
     desc: "run integration tests with coverage"
     cmds:
-      - "mkdir -p .build"
       - |
         set -eo pipefail
+        mkdir -p .build
+
         # The optional runtime configuration is supplied by the contributor.
         # shellcheck disable=SC1091
         if [ -f .env ]; then set -a; . ./.env; set +a; fi
+
         coverage_packages=$(go list -deps -test -f '{{`{{if .Module}}{{if .Module.Main}}{{.ImportPath}}{{end}}{{end}}`}}' ./tests/integration/...)
         coverage_exclude_pattern=$(printf '%s\n' api/gen mocks tests | paste -sd '|' -)
         coverage_packages=$(printf '%s\n' "$coverage_packages" | grep -vE "/($coverage_exclude_pattern)(/|$)" | paste -sd, -)
+
         go test -count=1 -v -race -covermode=atomic -coverpkg="$coverage_packages" \
           -coverprofile=.build/coverage-integration.out ./tests/integration/... \
           | sed -E 's/(coverage: [0-9.]+% of statements) in .*/\1/'
-      - "go tool cover -html=.build/coverage-integration.out -o=.build/coverage-integration.html"
-      - "go tool cover -func=.build/coverage-integration.out | grep '^total:'"
+
+        go tool cover -html=.build/coverage-integration.out -o=.build/coverage-integration.html
+        go tool cover -func=.build/coverage-integration.out | grep '^total:'
 
   test:contract:
     desc: "Check all HTTP API contracts against a running test application"
@@ -188,21 +188,22 @@ tasks:
         "$contract_python" -m unittest discover -s tests/contract
         "$contract_python" tests/contract/run.py
 
-  ## test:resilience | verify dependency recovery with coverage
   # Resilience tests are build-tagged and excluded from all other test targets.
   # @note Requires `toxiproxy pgsql mysql redis memcached nats kafka rabbitmq`
   test:resilience:
     desc: "verify dependency recovery with coverage"
     cmds:
-      - "rm -rf .build/coverage-resilience{.out,.out.tmp,.html,-tests,-app}"
-      - "mkdir -p .build/coverage-resilience-{tests,app}"
       - |
         set -eo pipefail
+        rm -rf .build/coverage-resilience{.out,.out.tmp,.html,-tests,-app}
+        mkdir -p .build/coverage-resilience-{tests,app}
+
         coverage_exclude_pattern=$(printf '%s\n' api/gen mocks tests | paste -sd '|' -)
         app_packages=$(go list -deps -f '{{`{{if .Module}}{{if .Module.Main}}{{.ImportPath}}{{end}}{{end}}`}}' ./cmd/app)
         app_packages=$(printf '%s\n' "$app_packages" | grep -vE "/($coverage_exclude_pattern)(/|$)" | paste -sd, -)
         resilience_packages=$(go list -deps -test -tags=resilience -f '{{`{{if .Module}}{{if .Module.Main}}{{.ImportPath}}{{end}}{{end}}`}}' ./tests/resilience/...)
         resilience_packages=$(printf '%s\n' "$resilience_packages" | grep -vE "/($coverage_exclude_pattern)(/|$)" | paste -sd, -)
+
         go build -race -cover -covermode=atomic -coverpkg="$app_packages" -o .build/resilience-app ./cmd/app
         export RESILIENCE_APP_BINARY="${PWD}/.build/resilience-app"
         export RESILIENCE_APP_COVERDIR="${PWD}/.build/coverage-resilience-app"
@@ -210,16 +211,23 @@ tasks:
           -coverpkg="$resilience_packages" ./tests/resilience/... \
           -args -test.gocoverdir="${PWD}/.build/coverage-resilience-tests" \
           | sed -E 's/(coverage: [0-9.]+% of statements) in .*/\1/'
-      - "ls .build/coverage-resilience-{tests,app}/cov{meta,counters}.* > /dev/null"
-      - |
+
+        ls .build/coverage-resilience-{tests,app}/cov{meta,counters}.* > /dev/null
         go tool covdata textfmt \
           -i=.build/coverage-resilience-tests,.build/coverage-resilience-app \
           -o=.build/coverage-resilience.out.tmp
-      - "mv .build/coverage-resilience.out.tmp .build/coverage-resilience.out"
-      - "go tool cover -html=.build/coverage-resilience.out -o=.build/coverage-resilience.html"
-      - "go tool cover -func=.build/coverage-resilience.out | grep '^total:'"
+        mv .build/coverage-resilience.out.tmp .build/coverage-resilience.out
 
-  ## test:load | run load tests (http and grpc by default, or one explicit suite)
+        go tool cover -html=.build/coverage-resilience.out -o=.build/coverage-resilience.html
+        go tool cover -func=.build/coverage-resilience.out | grep '^total:'
+
+  test:workflows:
+    desc: "Test workflow publication, cleanup, and agent permissions with local fixtures"
+    cmds:
+      - |
+        export PATH="{{.TOOLS_BIN}}:$PATH"
+        go test -count=1 -race ./tests/workflows/...
+
   test:load:
     desc: "run load tests (http and grpc by default, or one explicit suite)"
     summary: "Usage: task test:load [K6_TEST_PATH=FILE.js K6_SUMMARY_PATH=FILE.json]. Also accepts both from the environment."
@@ -230,34 +238,41 @@ tasks:
       - sh: |
           load_test_path={{.K6_TEST_PATH | shellQuote}}
           load_summary_path={{.K6_SUMMARY_PATH | shellQuote}}
+
           if [ -z "$load_test_path" ] && [ -z "$load_summary_path" ]; then exit 0; fi
+
           [ -f "$load_test_path" ] && [ -n "$load_summary_path" ]
         msg: "For one load suite, set K6_TEST_PATH to an existing file and K6_SUMMARY_PATH to its output path."
     cmds:
       - |
         load_test_path={{.K6_TEST_PATH | shellQuote}}
         load_summary_path={{.K6_SUMMARY_PATH | shellQuote}}
+
         if [ -n "$load_test_path" ]; then
           rm -f -- "$load_summary_path"
           mkdir -p "$(dirname "$load_summary_path")"
+
           "{{.TOOLS_BIN}}/k6" version
           exec "{{.TOOLS_BIN}}/k6" run --summary-export="$load_summary_path" "$load_test_path"
         fi
+
         rm -f .build/k6-summary-{http,grpc}-v1.json
         mkdir -p .build
+
         "{{.TOOLS_BIN}}/k6" version
+
         load_status=0
         for protocol in http grpc; do
           "{{.TOOLS_BIN}}/k6" run --summary-export=.build/k6-summary-$protocol-v1.json \
             tests/load/$protocol/v1/auth_test.js || load_status=$?
         done
+
         exit $load_status
 
   # ╭────────────────────----------------──────────╮
   # │               General workflow               │
   # ╰─────────────────────----------------─────────╯
 
-  ## run | run application
   # `-N -l` disables compiler optimizations and inlining, which makes debugging easier.
   # `[ $? -eq 1 ]` treats exit code 1 as success. Exit after signal will always be != 0.
   run:
@@ -275,7 +290,6 @@ tasks:
         export SERVER_HTTP_SWAGGER_ROOT="$PWD/api/openapi" && \
         go run -gcflags="all=-N -l" -race ./cmd/app/main.go || [ $? -eq 1 ]
 
-  ## run:docker | run application in docker container (linux environment)
   # `-N -l` disables compiler optimizations and inlining, which makes debugging easier.
   # Using golang image version from go.mod file.
   # `[ $? -eq 1 ]` treats exit code 1 as success. Exit after signal will always be != 0.
@@ -305,7 +319,6 @@ tasks:
         "golang:$(grep '^go ' go.mod | awk '{print $2}')" \
         go run -gcflags="all=-N -l" -race ./cmd/app/main.go || [ $? -eq 1 ]
 
-  ## debug | run application with delve debugger
   debug:
     desc: "run application with delve debugger"
     interactive: true
@@ -321,33 +334,37 @@ tasks:
         export SERVER_HTTP_SWAGGER_ROOT="$PWD/api/openapi" && \
         "{{.TOOLS_BIN}}/dlv" debug ./cmd/app --headless --listen=:2345 --accept-multiclient --api-version=2
 
-  ## build | build development version of binary
   build:
     desc: "build development version of binary"
     cmds:
       - "go build -gcflags=\"all=-N -l\" -race -v -o ./.build/app ./cmd/app/main.go"
       - "file -h ./.build/app && du -h ./.build/app && sha256sum ./.build/app && go tool buildid ./.build/app"
 
-  ## image | build docker image
   # @see https://reproducible-builds.org/docs/source-date-epoch/
   image:
-    desc: "build docker image"
+    desc: "Build and load the host platform's application image"
+    summary: "Usage: task image [IMAGE=ghcr.io/go42-dev/go42:dev VERSION=dev]"
+    vars:
+      IMAGE: '{{default "ghcr.io/go42-dev/go42:dev" .IMAGE}}'
+      VERSION: '{{default "dev" .VERSION}}'
+      GO_VERSION:
+        sh: "awk '/^go / {print $2}' go.mod"
+      COMMIT:
+        sh: "git rev-parse HEAD"
     cmds:
-      - |
-        export SOURCE_DATE_EPOCH=0 && \
-        docker buildx build --no-cache --platform linux/amd64,linux/arm64 \
-        --build-arg "GO_VERSION=$(grep '^go ' go.mod | awk '{print $2}')" \
-        --build-arg "COMMIT_HASH=$(git rev-parse HEAD 2>/dev/null || echo '')" \
-        --build-arg "RELEASE_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo '')" \
-        -t ghcr.io/go42-dev/go42:dev \
-        .
+      - >-
+        docker buildx build --load
+        --build-arg {{printf "GO_VERSION=%s" .GO_VERSION | shellQuote}}
+        --build-arg {{printf "COMMIT_HASH=%s" .COMMIT | shellQuote}}
+        --build-arg {{printf "RELEASE_TAG=%s" .VERSION | shellQuote}}
+        --build-arg SOURCE_DATE_EPOCH=0
+        --tag {{.IMAGE | shellQuote}} .
 
-  ## generate | generate code for all modules
   # Side effects of this command should to be commited.
   generate:
     desc: "generate code for all modules"
     cmds:
-      - "go mod tidy -e"
+      - "go mod tidy"
       - "rm -rf api/gen"
       - '"{{.TOOLS_BIN}}/buf" generate api --template api/buf.gen.yaml'
       - |
@@ -464,7 +481,6 @@ tasks:
   # │                   Linters                    │
   # ╰─────────────────────----------------─────────╯
 
-  ## lint | run code and project linters
   lint:
     desc: "run code and project linters"
     preconditions:
@@ -493,6 +509,8 @@ tasks:
       - task: "lint:yaml"
       - task: "lint:json"
       - task: "lint:toml"
+      - task: "vendor:check"
+      - task: "agentic:lint"
 
   lint:commits:
     desc: "Check commit messages against origin/master"
@@ -682,17 +700,18 @@ tasks:
     cmds:
       - |
         set -- {{.CLI_ARGS}}
-        "{{.TOOLS_BIN}}/ec" "$@"
+        "{{.TOOLS_BIN}}/ec" -config etc/editorconfig.json "$@"
 
   lint:yaml:
     desc: "Check plain YAML source formatting, or explicit files (read only)"
-    summary: "Usage: task lint:yaml [-- FILE.yaml ...]; defaults exclude Helm templates and combined OpenAPI output."
+    summary: "Usage: task lint:yaml [-- FILE.yaml ...]; defaults exclude Helm templates, combined OpenAPI output, and compiled
+      workflows."
     vars:
       SOURCE_FILES:
         sh: |
           {{if not .CLI_ARGS}}
           git ls-files --cached --others --exclude-standard -z -- '*.yaml' '*.yml' \
-            ':!:infra/helm/app/templates/**' ':!:api/openapi/**/.combined.yaml'
+            ':!:infra/helm/app/templates/**' ':!:api/openapi/**/.combined.yaml' ':!:.github/workflows/*.lock.yml'
           {{end}}
     preconditions:
       - *file_paths
@@ -783,7 +802,6 @@ tasks:
   # │                Documentation                 │
   # ╰─────────────────────----------------─────────╯
 
-  ## docs:check | validate documentation
   docs:check:
     desc: "validate documentation"
     cmds:
@@ -796,7 +814,6 @@ tasks:
       - '"{{.TOOLS_BIN}}/npm" --prefix pages ci --no-audit --no-fund'
       - '"{{.TOOLS_BIN}}/npm" --prefix pages run check'
 
-  ## docs:serve | build and serve documentation locally
   docs:serve:
     desc: "build and serve documentation locally"
     interactive: true
@@ -809,7 +826,6 @@ tasks:
   # │                Miscellaneous                 │
   # ╰─────────────────────----------------─────────╯
 
-  ## check:env | check if .env file exists
   check:env:
     desc: "check if .env file exists"
     cmds:
@@ -819,13 +835,11 @@ tasks:
           exit 1
         fi
 
-  ## generate:migration-id | generate migration file prefix
   generate:migration-id:
     desc: "generate migration file prefix"
     cmds:
       - "date +%Y%m%d%H%M%S"
 
-  ## generate:dep-graph | generate dependency graph
   # Dependencies:
   #   * brew install graphviz
   #   * go install github.com/loov/goda@latest
@@ -834,7 +848,6 @@ tasks:
     cmds:
       - "goda graph \"github.com/go42-dev/go42/...\" | dot -Tsvg -o dep-graph.svg"
 
-  ## grpcui | run grpcui for debugging gRPC services
   # Dependencies:
   #   * brew install grpcui
   grpcui:
@@ -842,3 +855,28 @@ tasks:
     interactive: true
     cmds:
       - "grpcui -plaintext localhost:50051"
+
+  # ╭────────────────────----------------──────────╮
+  # │              Agentic workflows               │
+  # ╰─────────────────────----------------─────────╯
+
+  agentic:lint:
+    desc: "Lint compiled GitHub Agentic Workflows"
+    summary: "Usage: task agentic:lint [-- FILE.lock.yml ...]; defaults to all workflow locks."
+    preconditions:
+      - *file_paths
+    cmds:
+      - 'PATH="{{.TOOLS_BIN}}:$PATH" "{{.TOOLS_BIN}}/gh-aw" lint {{.CLI_ARGS}}'
+
+  agentic:generate:
+    desc: "Generate agent instructions and gh-aw MCP declarations"
+    cmds:
+      - task: x
+        vars:
+          CLI_ARGS: 'agentenv generate --providers=gh-aw'
+
+  agentic:compile:
+    desc: "Generate and compile GitHub Agentic Workflows"
+    cmds:
+      - task: agentic:generate
+      - 'PATH="{{.TOOLS_BIN}}:$PATH" "{{.TOOLS_BIN}}/gh-aw" compile --no-check-update --strict --purge --approve'

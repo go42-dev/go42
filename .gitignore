@@ -14,15 +14,16 @@ coverage.out
 dep-graph.svg
 __pycache__/
 
-# go42x generated files
+# go42x -- START
 .go42x/go42x.local.yaml
 .go42x/kwb/
 .go42x/backups/
 .mcp.json
 .claude/
-CLAUDE.md
 .codex/
-AGENTS.md
 .agents/plugins/project-tools/
 .crush/
 .crush.json
+AGENTS.md
+# go42x -- END
+CLAUDE.md

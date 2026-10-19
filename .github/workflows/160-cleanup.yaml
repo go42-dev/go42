@@ -122,5 +122,11 @@ jobs:
           fi
 
           echo "Deleting CI image version $version_id..."
-          gh api --method DELETE "$package_endpoint/versions/$version_id" >/dev/null
-          echo "Successfully deleted version with tag $TARGET_TAG (ID: $version_id)"
+          if delete_error=$(gh api --method DELETE "$package_endpoint/versions/$version_id" 2>&1); then
+            echo "Successfully deleted version with tag $TARGET_TAG (ID: $version_id)"
+          elif [[ "$delete_error" == *"gh: You cannot delete the last tagged version of a package. You must delete the package instead. (HTTP 400)"* ]]; then
+            echo "::warning::Retaining CI tag $TARGET_TAG: GHCR requires at least one tagged version in the package."
+          else
+            printf '%s\n' "$delete_error" >&2
+            exit 1
+          fi

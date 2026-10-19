@@ -1,0 +1,8 @@
+{
+  "Exclude": [
+    "^(\\.go42x|assets/agentenv)/upstream/"
+  ],
+  "Disable": {
+    "Indentation": true
+  }
+}

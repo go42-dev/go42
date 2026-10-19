@@ -34,11 +34,6 @@ jobs:
     permissions:
       contents: read
       packages: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     strategy:
       fail-fast: false
       matrix:
@@ -156,10 +151,10 @@ jobs:
         with:
           persist-credentials: false
       - name: 'Install pinned Task and k6'
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: ./.github/actions/setup-tools
         with:
-          version: '2026.9.1'
-          install_args: --locked task k6
+          install-task: 'true'
+          install-args: --locked k6
       - name: 'Run K6 load tests'
         shell: bash
         run: task --exit-code test:load

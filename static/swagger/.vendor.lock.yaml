@@ -1,0 +1,21 @@
+---
+manifest: .vendor.yaml
+manifest-sha256: e0d9ad8282fc8681f897b8cefb0ac4dba697ea782a221182378468ba12561951
+dependencies:
+  swagger-theme-dark:
+    resolved:
+      sha256: 1b2ef30998100e3dfa00f1c001d59405aeb18ee12f4c44e9d3c6a15617de2c26
+    files:
+      dark.min.css: 1b2ef30998100e3dfa00f1c001d59405aeb18ee12f4c44e9d3c6a15617de2c26
+  swagger-theme-one-dark:
+    resolved:
+      sha256: e9ada8052ed57ac9cf8e954a583f7867704614ac421f38b954c547b51c28df5d
+    files:
+      one-dark.min.css: e9ada8052ed57ac9cf8e954a583f7867704614ac421f38b954c547b51c28df5d
+  swagger-ui-dist:
+    resolved:
+      sha256: f6818faec8420173e1f7781f0fa7b9fd5ce29b5f1af4ca26b880596d41543500
+    files:
+      swagger-ui-bundle.js: bd2c846c71b05d9147f51a5b42a51e300ea7319be5c6709e95b6d04094ada51f
+      swagger-ui-standalone-preset.js: 8710b6d90ece7113dd467500fa14ed33b5848b68b8695ad075f8d5c6c9af3b01
+      swagger-ui.css: bc5e8d5c013477cf1f35e2fb8ba1dff66be0f72f24e669a509635657145e1acb

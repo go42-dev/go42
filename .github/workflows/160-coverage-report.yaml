@@ -137,6 +137,7 @@ jobs:
           sha256sum: bce196efd0d22bbdcfa2ab45dc38ad40e96acc5802356b48be358a43958674a0
           coverage-artifact-name: combined-coverage
           coverage-file-name: coverage-total.out
+          github-baseline-workflow-ref: 100-unified-workflow.yaml
           root-package: github.com/go42-dev/go42
           trim: github.com/go42-dev/go42
           exclude: '(^|/)(api/gen|mocks)/'

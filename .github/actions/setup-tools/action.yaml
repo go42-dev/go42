@@ -1,0 +1,78 @@
+---
+
+name: setup-tools
+description: 'Configure mise, cache project tools, and optionally install Task and selected tools'
+
+inputs:
+  install-task:
+    description: 'Install the pinned Task executable as a CI prerequisite'
+    required: false
+    default: 'false'
+  install-args:
+    description: 'Arguments for mise install; empty installs mise without project tools'
+    required: false
+    default: ''
+  cache:
+    description: 'Enable caching for mise and project tools'
+    required: false
+    default: 'true'
+  cache-key-prefix:
+    description: 'Prefix for the project tools cache key'
+    required: false
+    default: 'mise-v1'
+  cache-scope:
+    description: 'Cache scope for tools installed by later steps; defaults to the job ID'
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: 'Configure project tooling'
+      shell: bash
+      run: |
+        echo "MISE_DEFAULT_CONFIG_FILENAME=etc/mise.toml" >> "$GITHUB_ENV"
+        echo "MISE_DATA_DIR=$GITHUB_WORKSPACE/.tools" >> "$GITHUB_ENV"
+        echo "MISE_CACHE_DIR=$GITHUB_WORKSPACE/.tools/cache" >> "$GITHUB_ENV"
+        echo "MISE_STATE_DIR=$GITHUB_WORKSPACE/.tools/state" >> "$GITHUB_ENV"
+    # -----
+    - name: 'Read mise configuration'
+      id: mise-config
+      shell: bash
+      env:
+        PROJECT_INSTALL_ARGS: ${{ inputs.install-args }}
+        PROJECT_CACHE_SCOPE: ${{ inputs.cache-scope || github.job }}
+      run: |
+        mise_version=$(sed -n 's/^min_version = "\([^"]*\)"$/\1/p' etc/mise.toml)
+        if [[ ! "$mise_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo '::error::etc/mise.toml must define min_version as an exact mise release.'
+          exit 1
+        fi
+        echo "version=$mise_version" >> "$GITHUB_OUTPUT"
+
+        cache_selection=$(printf '%s\0%s\0' "$PROJECT_INSTALL_ARGS" "$PROJECT_CACHE_SCOPE" | shasum -a 256 | cut -d ' ' -f 1)
+        echo "cache-selection=$cache_selection" >> "$GITHUB_OUTPUT"
+    # -----
+    - name: 'Restore and save project tools'
+      if: inputs.cache == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        # Save at job completion, including tools installed by later Task steps.
+        key: ${{ inputs.cache-key-prefix }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.mise-config.outputs.cache-selection
+          }}-${{ hashFiles('etc/mise.toml', 'etc/mise.lock', 'go.mod', 'Taskfile.yaml', '.github/actions/setup-tools/action.yaml')
+          }}
+    # -----
+    - name: 'Install mise and selected tools'
+      uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      with:
+        version: ${{ steps.mise-config.outputs.version }}
+        install: ${{ inputs.install-args != '' }}
+        install_args: ${{ inputs.install-args }}
+        cache: false
+    # -----
+    - name: 'Install Task'
+      if: inputs.install-task == 'true'
+      uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+      with:
+        version: '3.53.1'

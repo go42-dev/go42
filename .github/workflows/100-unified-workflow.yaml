@@ -148,6 +148,7 @@ jobs:
       continue_on_error: false
       service_name: "go42"
       image_tag: ${{ needs.docker-prepare-tag.outputs.tag }}
+      source_sha: ${{ github.sha }}
       platforms: "linux/amd64,linux/arm64"
       attestation: ${{ github.ref == 'refs/heads/master' }}
       generate_sbom: true

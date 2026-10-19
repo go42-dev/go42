@@ -12,6 +12,8 @@ project:
   name: {{ yamlValue .project.name }}
   description: {{ yamlValue .project.description }}
   language: {{ yamlValue .project.language }}
+  repository: {{ yamlValue .project.repository }}
+  documentation-entrypoint: {{ yamlValue (index .project "documentation-entrypoint") }}
   tags: {{ yamlValue .project.tags }}
   metadata: {{ yamlValue .project.metadata }}
 repository:
@@ -51,17 +53,6 @@ github_actions:
     url: {{ yamlValue .github_actions.issue.url }}
     body: {{ yamlValue .github_actions.issue.body }}
   user_request: {{ yamlValue .github_actions.user_request }}
-{{ $hasMCP := false }}
-{{ range .mcp }}{{ if .Enabled }}{{ $hasMCP = true }}{{ end }}{{ end }}
-{{ if $hasMCP }}
-mcp:
-  tools: all_exposed
-  servers:
-{{ range $name, $server := .mcp }}{{ if $server.Enabled }}
-    {{ yamlValue $name }}:
-      transport: {{ yamlValue $server.Transport }}
-{{ end }}{{ end }}
-{{ end }}
 {{ end -}}
 
 {{ yamlBlock "context" . "omit-empty" }}

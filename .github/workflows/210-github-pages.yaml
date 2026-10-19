@@ -29,11 +29,6 @@ jobs:
     permissions:
       contents: read
       pages: read
-    env:
-      MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-      MISE_DATA_DIR: ${{ github.workspace }}/.tools
-      MISE_CACHE_DIR: ${{ github.workspace }}/.tools/cache
-      MISE_STATE_DIR: ${{ github.workspace }}/.tools/state
     steps:
       - name: 'Checkout repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -41,10 +36,9 @@ jobs:
           persist-credentials: false
       # ----
       - name: 'Install pinned Node.js'
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: ./.github/actions/setup-tools
         with:
-          version: '2026.9.1'
-          install_args: --locked node
+          install-args: --locked node
       # ----
       - name: 'Install dependencies'
         working-directory: pages

@@ -1,0 +1,23 @@
+---
+manifest: .vendor.yaml
+manifest-sha256: 90bcd5a369ea5ff8ce003469abbb5fd8bd4ff5d6e96e9d26a4b2fd92478c1789
+dependencies:
+  go-website:
+    resolved:
+      commit: 575a6925e2d55ad160ed77f402bfaa4ec7458749
+    files:
+      upstream/go/effective-go.md: fb2c9c2a15bfd5845a5c5edf4ad93726052514a1691e06b6035955d261f08667
+      upstream/go/package-names.md: 06aec3ea1ae94a724dc1f8502624465d4f797570652408abe79fb510bb16126c
+  go-wiki:
+    resolved:
+      commit: 597c1be3575fe7c21913ea1bfb955ec364254f09
+    files:
+      upstream/go/code-review-comments.md: f24a50f00951ea2dddb309506037c9250a4dbb9c7bdfa6d5aef1be16ee60a48a
+  google-go-style:
+    resolved:
+      commit: 0a7d5c8768211371646a3c1beeff8cd224b974be
+    files:
+      upstream/google-go/best-practices.md: e44180b492c3585b4a20bd44e7cb277a55a9f264ad352f33f287b639e9e75b56
+      upstream/google-go/decisions.md: 3a0b54ef41aca49f8bf0a4d4ce2d0b4662721b52197256d121b6cc95616f4850
+      upstream/google-go/guide.md: f12051c22045953c3688a85f9eba94f7cf61b6a769762671cdbf1ca4d2b3aa1b
+      upstream/google-go/index.md: 95f228a13481ffefab9da3303446484e2b22c6cffa34a273169c844ad33a3435

@@ -9,13 +9,6 @@ name: docker-build
 
 on:
   workflow_call:
-    outputs:
-      image_digest:
-        description: "Manifest digest of the pushed image"
-        value: ${{ jobs.docker-build.outputs.image_digest }}
-      image_reference:
-        description: "Immutable reference of the pushed image"
-        value: ${{ jobs.docker-build.outputs.image_reference }}
     inputs:
       runs_on:
         required: true
@@ -23,25 +16,15 @@ on:
       continue_on_error:
         required: true
         type: boolean
-      service_name:
-        required: true
-        type: string
-      image_tag:
-        required: true
-        type: string
-      source_sha:
-        required: false
-        type: string
-        default: ""
-      platforms:
-        required: true
-        type: string
       attestation:
         required: true
         type: boolean
       generate_sbom:
         required: true
         type: boolean
+      platforms:
+        required: true
+        type: string
       attestation_sbom:
         required: true
         type: boolean
@@ -49,68 +32,53 @@ on:
         required: false
         type: number
         default: 30
+      service_name:
+        description: Container package name.
+        type: string
+        required: true
+      image_tag:
+        description: Temporary CI tag or validated release version.
+        type: string
+        required: true
+      source_sha:
+        description: Exact source commit to build.
+        type: string
+        required: true
+    outputs:
+      image_digest:
+        description: Manifest digest of the published image.
+        value: ${{ jobs.docker-build.outputs.image_digest }}
+      image_reference:
+        description: Immutable reference of the published image.
+        value: ${{ jobs.docker-build.outputs.image_reference }}
 
+# Callers grant registry writes and any requested attestation permissions.
 permissions: {}
 
 jobs:
-  # build image, pushes to ghcr.io and generates metadata
+  # CI callers scan the published digest and clean up temporary images.
   docker-build:
     name: docker-build
     runs-on: ${{ inputs.runs_on }}
     continue-on-error: ${{ inputs.continue_on_error }}
     timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+      attestations: write
+      id-token: write
     outputs:
       image_digest: ${{ steps.validate-digest.outputs.image_digest }}
       image_reference: ${{ steps.validate-digest.outputs.image_reference }}
-    permissions:
-      packages: write
-      contents: read
-      attestations: write
-      id-token: write
-      actions: read
     # ----
     steps:
-      - name: 'Validate image publication target'
-        env:
-          CALLER_WORKFLOW_REF: ${{ github.workflow_ref }}
-          CALLER_WORKFLOW_SHA: ${{ github.workflow_sha }}
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_REF: ${{ github.ref }}
-          EVENT_SHA: ${{ github.sha }}
-          IMAGE_TAG: ${{ inputs.image_tag }}
-          REPOSITORY: ${{ github.repository }}
-          SOURCE_SHA: ${{ inputs.source_sha }}
-        run: |
-          set -euo pipefail
-          if [[ ! "$IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
-            echo "Invalid OCI image tag: $IMAGE_TAG" >&2
-            exit 1
-          fi
-          if [[ -n "$SOURCE_SHA" && ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Invalid source commit SHA: $SOURCE_SHA" >&2
-            exit 1
-          fi
-
-          # Version tags are permanent release aliases. Only the master-only
-          # release workflow may create them. Bind publication to its exact
-          # dispatch commit so another caller cannot replace a release image.
-          if [[ "$IMAGE_TAG" == v* ]]; then
-            expected_workflow_ref="${REPOSITORY}/.github/workflows/300-release.yaml@refs/heads/master"
-            if [[ "$EVENT_NAME" != "workflow_dispatch" || "$EVENT_REF" != "refs/heads/master" || \
-              "$CALLER_WORKFLOW_REF" != "$expected_workflow_ref" || \
-              "$CALLER_WORKFLOW_SHA" != "$SOURCE_SHA" || "$EVENT_SHA" != "$SOURCE_SHA" ]]; then
-              echo "Release image tags may only be published by the master release workflow" >&2
-              exit 1
-            fi
-          fi
-      # ----
       - name: 'Checkout repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.source_sha || github.sha }}
+          ref: ${{ inputs.source_sha }}
           persist-credentials: false
       - name: 'Validate checked-out source'
-        if: inputs.source_sha != ''
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
@@ -120,28 +88,22 @@ jobs:
             exit 1
           fi
       # ----
-      - name: 'Extract Go version and cache platform key'
+      - name: 'Extract build versions and cache platform key'
         env:
           PLATFORMS: ${{ inputs.platforms }}
         run: |
-          echo "go_version=$(grep '^go ' go.mod | awk '{print $2}')" >> "$GITHUB_ENV"
-          # Cache keys cannot contain the commas in a multi-platform build list.
-          echo "go_cache_platforms=$(printf '%s' "$PLATFORMS" | sha256sum | cut -d ' ' -f1)" >> "$GITHUB_ENV"
+          {
+            echo "go_version=$(awk '/^go / {print $2}' go.mod)"
+            # Cache keys cannot contain commas from the multi-platform build list.
+            echo "go_cache_platforms=$(printf '%s' "$PLATFORMS" | sha256sum | cut -d ' ' -f1)"
+          } >> "$GITHUB_ENV"
       - name: 'Extract commit hash'
         run: echo "commit_hash=$(git rev-parse HEAD 2>/dev/null || echo '')" >> "$GITHUB_ENV"
-      - name: 'Extract release tag'
-        env:
-          IMAGE_TAG: ${{ inputs.image_tag }}
-        run: |
-          set -euo pipefail
-          release_tag=''
-          if [[ "$IMAGE_TAG" == v* ]]; then
-            release_tag="$IMAGE_TAG"
-          else
-            release_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
-          fi
-          echo "release_tag=$release_tag" >> "$GITHUB_ENV"
       # ----
+      - name: 'Set up target architecture emulation'
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: all
       - name: 'Set up Docker Buildx'
         id: buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
@@ -181,14 +143,12 @@ jobs:
           # Exact hits cannot be saved again, so avoid copying the cache back out.
           skip-extraction: ${{ steps.go-cache.outputs.cache-hit == 'true' }}
       # ----
-      # For single platform builds `index` annotations will fail - check and set levels accordingly.
       - name: 'Determine annotation levels'
         id: annotations-levels
         env:
           PLATFORMS: ${{ inputs.platforms }}
         run: |
-          count=$(echo "$PLATFORMS" | awk -F',' '{print NF}')
-          if [ "$count" -gt 1 ]; then
+          if [[ "$PLATFORMS" == *,* ]]; then
             echo "levels=manifest,index" >> "$GITHUB_OUTPUT"
           else
             echo "levels=manifest" >> "$GITHUB_OUTPUT"
@@ -204,12 +164,12 @@ jobs:
             type=raw,value=${{ inputs.image_tag }}
           # @see https://github.com/opencontainers/image-spec/blob/main/annotations.md
           labels: |
-            org.opencontainers.image.title: ${{ inputs.service_name }}
-            org.opencontainers.image.source: https://github.com/${{ github.repository_owner }}/${{ inputs.service_name }}
-            org.opencontainers.image.url: https://github.com/${{ github.repository_owner }}/${{ inputs.service_name }}
-            org.opencontainers.image.version: ${{ inputs.image_tag }}
-            org.opencontainers.image.revision: ${{ env.commit_hash }}
-            org.opencontainers.image.licenses: MIT
+            org.opencontainers.image.title=${{ inputs.service_name }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ inputs.image_tag }}
+            org.opencontainers.image.revision=${{ env.commit_hash }}
+            org.opencontainers.image.licenses=MIT
         env:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: ${{ steps.annotations-levels.outputs.levels }}
       # ----
@@ -221,20 +181,21 @@ jobs:
           context: ${{ github.workspace }}/
           file: ${{ github.workspace }}/Dockerfile
           platforms: ${{ inputs.platforms }}
-          cache-from: type=gha
+          cache-from: type=gha,scope=docker-build
           # Cache export is an optimization, not a publication requirement.
           # A cache-service write failure must not cancel the image push.
-          cache-to: type=gha,mode=max,ignore-error=true
+          cache-to: type=gha,scope=docker-build,mode=max,ignore-error=true
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
             GO_VERSION=${{ env.go_version }}
+            SOURCE_DATE_EPOCH=0
             COMMIT_HASH=${{ env.commit_hash }}
-            RELEASE_TAG=${{ env.release_tag }}
+            RELEASE_TAG=${{ inputs.image_tag }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
         env:
-          # This also will make images to show as created `55 years ago`.
+          # Fix image filesystem timestamps independently of the publishing time.
           # @see https://reproducible-builds.org/docs/source-date-epoch/
           SOURCE_DATE_EPOCH: 0
           # @see https://github.com/orgs/community/discussions/45969
@@ -252,8 +213,7 @@ jobs:
           echo "image_digest=$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
           echo "image_reference=${IMAGE_NAME}@${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
       # ----
-      # Record provenance immediately after publication. Later SBOM processing
-      # cannot leave a pushed image without a source/run identity attestation.
+      # Record requested provenance immediately after publication.
       - name: 'Attest build provenance'
         if: ${{ inputs.attestation }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -285,3 +245,17 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           sbom-path: sbom-${{ inputs.service_name }}-${{ inputs.image_tag }}.spdx.json
           show-summary: true
+      - name: 'Summarize published image'
+        env:
+          IMAGE_REFERENCE: ${{ steps.validate-digest.outputs.image_reference }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |-
+          {
+            echo '## Docker image'
+            echo
+            printf -- "- Tag: \`%s\`\n" "$IMAGE_TAG"
+            printf -- "- Image: \`%s\`\n" "$IMAGE_REFERENCE"
+            printf -- "- Source: \`%s\`\n" "$SOURCE_SHA"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
