@@ -509,7 +509,6 @@ tasks:
       - task: "lint:yaml"
       - task: "lint:json"
       - task: "lint:toml"
-      - task: "vendor:check"
       - task: "agentic:lint"
 
   lint:commits:

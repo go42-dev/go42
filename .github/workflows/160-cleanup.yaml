@@ -42,6 +42,8 @@ jobs:
         run: |-
           set -euo pipefail
 
+          PACKAGE_NAME=$(printf '%s' "$PACKAGE_NAME" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+
           echo "Starting cleanup for $PACKAGE_NAME with tag: $TARGET_TAG"
 
           # This reusable workflow has package deletion permission. Restrict it
