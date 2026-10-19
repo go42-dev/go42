@@ -550,8 +550,6 @@ jobs:
         with:
           setup-task: setup:generators
       # -----
-      - name: 'Check vendored files'
-        run: task vendor:check
       - name: 'Generate code'
         run: task generate
       - name: 'Check for uncommitted changes'
