@@ -93,14 +93,6 @@ session transitions. The [HTTP client suite](../../tests/integration/http/v1/use
 with both generated SDKs, and the [probe checks](../../tests/integration/http/v1/auth_test.go) verify health, readiness,
 and application metrics.
 
-The [schema tests](../../api/openapi/v1/auth_test.go) reject incomplete or invalid user and token responses. They also check
-conditional current-password requirements and the distinction between missing and nonempty invalid refresh tokens.
-Run them without a running application:
-
-```sh
-task test:unit -- ./api/openapi/v1
-```
-
 `User` responses require a UUID, email, creation time, roles, and permissions; empty role and permission arrays are valid.
 Creation time retains the existing `YYYY-MM-DD HH:MM:SS` format. Token responses require nonempty access and refresh tokens
 and a nonnegative integer lifetime in whole seconds. Subsecond lifetimes round down to zero.
