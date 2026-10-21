@@ -1,204 +1,114 @@
 ### Searching documentation and code
 
-Use the tools available in the current session. Prefer `rg --files` to locate
-files and `rg` for literal or regular-expression searches within them. Narrow
-searches by path, filename, language, or symbol before reading large files.
-Read relevant source before editing and preserve unrelated work.
+Use `rg --files` to locate files and `rg` for text searches. Narrow searches
+before reading large files. Read relevant source before editing and preserve
+unrelated work. Verify indexed results against current source.
 
-For code relationships, use an available language server to find definitions,
-references, implementations, type information, and call relationships. For
-documentation and broad code discovery, use an available knowledge-base search.
-Confirm indexed results against current source before making changes, especially
-for recently edited files.
+Use only tools exposed in the current session. Tool names below are raw names;
+clients may add a server prefix. When a service is unavailable, continue with
+local file search and source inspection.
+{{- if .mcp.go42x }}
 
-MCP tool names in these instructions are raw tool names. Select the matching
-tool exposed by the named server in your client; clients may add their own prefix.
-Only call tools exposed in the current session. When a service is unavailable,
-continue with local file search and source inspection.
+#### Project knowledge
 
-{{ if or (hasMCPTool .mcp "gopls" "go_symbol_references") (hasMCPTool .mcp "gopls" "go_file_context") (hasMCPTool .mcp "gopls" "go_package_api") (hasMCPTool .mcp "gopls" "go_diagnostics") -}}
+| When                                           | Tool              |
+| ---------------------------------------------- | ----------------- |
+| Load project guidance for affected paths       | `project_context` |
+| Read a project document by its authored ID     | `docs_get`        |
+| Find documentation to review for changed paths | `docs_impact`     |
+| Discover documentation, code, or configuration | `kwb_search`      |
+| Read current source lines for a search result  | `kwb_get_file`    |
+| Browse indexed files                           | `kwb_list_files`  |
+| Inspect index availability and scope           | `kwb_stats`       |
+
+Start with `project_context` for affected project-relative paths. It reads supplied
+files directly; directory paths select documentation impact. `project_context`,
+`docs_get`, and `docs_impact` work without a search index. Use search and
+language-server tools to discover declarations beyond supplied files.
+
+Respect document status and replacement chains. Draft and proposed records
+require agreement before implementation. Review documentation affected by a
+change; missing impact links do not prove that no documentation needs updating.
+
+Use focused plain-text queries and narrow by kind, language, or project-relative
+path when useful. Search results reflect the last index build; file reads reflect
+current source. Read matching source before following definitions or references.
+
+Follow continuation pointers and inspect coverage diagnostics. Narrow truncated
+searches; if the index generation changes during pagination, restart the search.
+
+#### Index maintenance
+
+Run `go42x kwb build` from the project root after changing indexed files or
+exclusions, or when the index is missing or stale. After changing agent
+configuration or templates, run `go42x agentenv generate` before building the
+index. Builds update changed files and remove deleted or newly excluded files.
+A running MCP server picks up the updated index on its next request. Use
+`go42x kwb build --rebuild` when a full rebuild is needed.
+
+Use `go42x kwb check --json` to check freshness without updating the index.
+Exit status 0 confirms a complete, fresh scan. Status 1 means the index is stale,
+missing, unavailable, or the scan could not confirm freshness. Inspect reported
+completeness, truncation, and diagnostics before relying on the index; address
+diagnostics for incomplete or unavailable scans.
+
+Indexing respects project `.gitignore` files and built-in filters for generated
+state, binary files, and tool or build directories. Authored `.go42x`
+configuration, instruction templates, vendored Markdown, and `.env.example` can
+be indexed. Generated agent files and local overrides are excluded.
+
+Keep custom root-relative Git ignore patterns in `.go42x/kwb.ignore`, after the
+managed block. `!` exceptions can override bundled rules, but cannot include
+files excluded by `.gitignore` or built-in filters.
+
+#### Knowledge-base configuration
+
+Project documents live under the configured documentation entrypoint's directory.
+The default entrypoint is `docs/README.md`; set `project.documentation-entrypoint`
+in `.go42x/go42x.yaml` to change it. Document IDs and status come from YAML front
+matter. Markdown references outside that directory remain searchable.
+
+The MCP server's `--context-doc` argument selects authored document IDs to include
+as project guidance; `--search-timeout` controls read deadlines. Set these
+arguments in the project's MCP definition. Regenerate agent configuration and
+restart the client after changing them. Use the same go42x release for generation
+and the MCP server.
+
+Consult the installed `go42x kwb --help` and `go42x mcp --help` for supported
+commands and options.
+{{- end }}
+{{- if .mcp.gopls }}
 
 #### Go navigation and diagnostics
 
-Use the available `gopls` tools to understand the impact of Go changes and check
-saved edits. Results reflect the loaded workspace and build configuration;
-review other affected build tags or platforms through the project's checks.
-
-{{ if hasMCPTool .mcp "gopls" "go_symbol_references" -}}
 Before changing a function signature, shared type, or interface, use
-`go_symbol_references` with the declaration's `file` and `symbol`. Read affected
-callers, implementations, and tests before editing.
-{{ end }}
-{{ if hasMCPTool .mcp "gopls" "go_file_context" -}}
-Use `go_file_context` with `file` when you need to understand declarations used
-from other files in the same package.
-{{ end }}
-{{ if hasMCPTool .mcp "gopls" "go_package_api" -}}
-Use `go_package_api` with `packagePaths` when you need the public API of an
-unfamiliar package. Supply Go import paths.
-{{ end }}
-{{ if hasMCPTool .mcp "gopls" "go_diagnostics" -}}
-After a coherent batch of saved Go edits, run `go_diagnostics` with `files`
-containing the changed files' absolute paths. Investigate relevant diagnostics,
-fix errors introduced by the change, and rerun diagnostics after fixes.
-Standalone `gopls mcp` sees saved files on disk, so save edits before checking.
-{{ end }}
+`go_symbol_references` and read affected callers, implementations, and tests.
 
-Before completing the change, run the project's prescribed lint and test
-commands for the changed packages and affected callers. Diagnostics supplement
-those checks; report their scope and any unresolved errors or unavailable tools.
-{{ end }}
+Use `go_file_context` to understand a file's dependencies on its package.
 
-{{if hasMCPTool .mcp "go42x" "project_context"}}
-Use `project_context` with affected project-relative `paths` to load project
-guidance and linked documentation. Supplied files are read directly; directory
-paths select documentation impact without searching source files. Use
-`kwb_search` with a focused query and language-server tools to discover code.
-The context tool does not require a search index. Follow source continuation
-pointers and check coverage diagnostics before relying on the response.
-Configure up to eight guidance document IDs with `go42x mcp
---context-doc=project,conventions` or `GO42X_CONTEXT_DOC="project conventions"`.
-Use IDs authored by the application. Guidance uses at most a quarter of the
-source budget when other evidence is available; unused space returns to evidence.
-{{end}}
-{{if hasMCPTool .mcp "go42x" "docs_get"}}
-Use `docs_get` to read a requirement, decision, or handbook page by its authored ID.
-Documents live in the directory containing the documentation entrypoint and its
-subdirectories. YAML front matter supplies `id`, `title`, and optional
-`collection`; directory names do not determine document type. Markdown outside
-this directory, including upstream references, remains searchable without
-project-record validation.
-Configure the documentation entrypoint with `project.documentation-entrypoint` in
-`.go42x/go42x.yaml`; omitted or empty defaults to `docs/README.md`.
-Local overrides in `.go42x/go42x.local.yaml` apply. Discovery respects `.gitignore` files.
-Draft and proposed records require agreement before implementation. Acceptance
-alone does not establish delivery; retain the status and replacement chain when
-using historical records.
-{{end}}
-{{if hasMCPTool .mcp "go42x" "docs_impact"}}
-Use `docs_impact` with changed paths to find linked documentation to review.
-Unmapped paths still need judgment: missing links do not prove that documentation
-is unaffected. Maintain the application's local docs according to its policy.
-{{end}}
+Use `go_package_api` to inspect an unfamiliar package's public API.
 
-{{ if or (hasMCPTool .mcp "context7" "resolve-library-id") (hasMCPTool .mcp "context7" "query-docs") -}}
+After a coherent batch of saved Go edits, run `go_diagnostics` for the changed
+files. Fix errors introduced by the change and rerun diagnostics after fixes.
 
-#### Library documentation with Context7
+Language-server results reflect the loaded workspace and build configuration.
+Run the project's applicable lint and tests, including affected callers, build
+tags, and platforms. Report check results and unresolved verification gaps.
+{{- end }}
+{{- if .mcp.context7 }}
 
-Use the `context7` MCP server to look up external library and framework APIs,
-setup instructions, and code examples. Check the project's dependency manifests
-or lockfiles for the version in use before applying examples.
+#### External documentation
 
-{{ if hasMCPTool .mcp "context7" "resolve-library-id" -}}
-Use `resolve-library-id` with `libraryName` and a focused `query` describing the
-task to find the matching library. Select the result by package identity and
-documentation relevance. Skip resolution when the user supplies a valid Context7
-library ID.
-{{ end }}
-{{ if hasMCPTool .mcp "context7" "query-docs" -}}
-Use `query-docs` with `libraryId` and a specific `query` about the API or behavior
-needed. Use the exact library ID returned by resolution or supplied by the user;
-do not guess IDs. When a matching version is listed, use its version-specific ID
-in the form `/org/project/version`.
-{{ end }}
+Check dependency manifests or lockfiles for the version in use before consulting
+Context7 for library APIs, setup, or examples.
 
-If Context7 is unavailable or lacks the needed library or version, consult the
-library's official documentation and installed source. Verify examples against
-the project's actual dependency version and existing usage.
-{{ end }}
+Use `resolve-library-id` to find the matching library unless the user supplied
+a valid Context7 library ID.
 
-{{ if or (hasMCPTool .mcp "go42x" "kwb_search") (hasMCPTool .mcp "go42x" "kwb_get_file") (hasMCPTool .mcp "go42x" "kwb_list_files") (hasMCPTool .mcp "go42x" "kwb_stats") -}}
+Use `query-docs` with the resolved or supplied ID and a focused question.
+Prefer a matching version when available; do not guess library IDs.
 
-#### Knowledge-base search
-
-Use the knowledge-base tools from the `go42x` MCP server to find documentation
-sections, code declarations, configuration keys, examples, and related files.
-
-The knowledge base indexes Markdown by heading and Go by declaration. Other text
-formats use bounded line chunks. Exact symbols, headings, and filenames receive
-more weight than body matches. Code identifiers can also match component words:
-`NewHTTPServer` is searchable as `http server`.
-
-| Tool                         | Arguments                                                              | Result                                                                               |
-|------------------------------|------------------------------------------------------------------------|--------------------------------------------------------------------------------------|
-{{ if hasMCPTool .mcp "go42x" "kwb_search" -}}
-| `kwb_search`     | `query`; optional `kind`, `language`, `path_prefix`, `limit`, `offset` | Ranked snippets with path, title, kind, language, score, and source line ranges      |
-{{ end -}}
-{{ if hasMCPTool .mcp "go42x" "kwb_get_file" -}}
-| `kwb_get_file`   | `path`; optional `start_line`, `end_line`                              | Current source lines and the next line to read                                       |
-{{ end -}}
-{{ if hasMCPTool .mcp "go42x" "kwb_list_files" -}}
-| `kwb_list_files` | Optional `type`, `language`, `path_prefix`, `limit`, `offset`          | Unique files in path order, total, and the next offset                               |
-{{ end -}}
-{{ if hasMCPTool .mcp "go42x" "kwb_stats" -}}
-| `kwb_stats`      | None                                                                   | File count (`document_count`), chunk count, project root, index path, and generation |
-{{ end }}
-
-These tools return structured JSON with a matching JSON text fallback.
-Search results also include `chunk_id`, `symbols`, `chunk_start_line`, and
-`chunk_end_line`; snippet line ranges can cover only part of the original chunk.
-
-Search queries are plain text. Use `kind="documentation"` for prose,
-`kind="code"` for source, or `kind="config"` for configuration. The file listing
-uses the argument `type` for the same categories. `language` narrows further,
-for example `go`, `md`, `ts`, or `json`. `path_prefix` is a project-relative prefix.
-
-{{ if and (hasMCPTool .mcp "go42x" "kwb_search") (hasMCPTool .mcp "go42x" "kwb_get_file") -}}
-Example workflow:
-
-1. Search with `query="http server", kind="code", language="go"`.
-2. Read a result using its `path`, `start_line`, and `end_line`.
-3. Use an available Go language server to resolve references or implementations.
-4. Follow `next_offset` to paginate or `next_start_line` to continue reading.
-{{ end }}
-
-Search defaults to 10 results and allows at most 100 per page. Search offsets
-are limited to 10,000; `window_limited=true` means filters are needed to reach
-additional matches. File listing defaults
-to 100 files and allows up to 500 per page, without the former 1,000-file cutoff.
-If the returned `generation` changes between pages, restart pagination to avoid
-mixing snapshots. Search totals count chunks; file-list totals count unique files.
-
-File reads default to 200 lines and are limited to 500 lines and 64 KiB per
-response. Line numbers are one-based and inclusive. Paths resolve relative to
-the indexed project root, including when the server starts elsewhere. File reads
-reflect current source; search results reflect the last completed index update.
-
-Run `go42x kwb build` after changing files. It hashes eligible source files, indexes
-only changed files, and removes deleted or newly ignored files. An unchanged
-project does not publish another index. Use `go42x kwb build --rebuild` for a full rebuild.
-The old index remains available until the new generation is published, and a
-running MCP server picks it up on its next request.
-Run `go42x kwb check --json` to check freshness without updating the index.
-It hashes eligible source using the recorded build settings and current ignore
-files. Exit 0 means a complete scan was fresh; exit 1 means stale, missing,
-unavailable, or incomplete. Review `complete`, `truncated`, generation, counts,
-and diagnostics. `doctor` also checks freshness. This scan costs a source walk;
-ordinary MCP reads do not scan the whole index for freshness.
-Run `go42x kwb` or `go42x kwb --help` to list the available subcommands.
-
-Indexing respects `.gitignore` files inside the selected root, including nested
-rules and negation. It excludes its own index directory, build/tool directories,
-binary files, symlinks, generated Go files, and common lockfiles. Use
-`--include-ext=.xyz` to add an extension, or a filename such as `Makefile.custom`.
-Authored `.go42x/go42x.yaml`, instruction templates, `.env.example`, and Markdown
-references under `.go42x/upstream/` are eligible. Generated state, backups, local
-overrides, and the index are excluded.
-`kwb build` creates `.go42x/kwb.ignore` from the bundled template when missing and
-refreshes its managed `# go42x -- START` / `# go42x -- END` block before indexing.
-The block excludes compiled `.github/workflows/*.lock.yml` files by default.
-Existing files are backed up under `.go42x/backups/updates/` only when changed;
-the build result includes the backup directory. All text outside the block is
-preserved. Malformed markers fail the build before a new index is published.
-Agent environment commands and knowledge-base reads leave this file unchanged.
-Keep custom root-relative Git ignore patterns after the block,
-including `!` exceptions to bundled rules, or pass `--exclude-file` at build time.
-Ignore-file exceptions cannot override `.gitignore` or built-in indexing filters.
-Changing exclusions takes effect on the next incremental build.
-The index is local and requires no embedding service.
-
-Set `go42x mcp --search-timeout=5s` or `GO42X_SEARCH_TIMEOUT=5s` to control the
-maximum duration of knowledge-base reads. Flags override `GO42X_*` environment
-variables. Build settings include `--root`, `--index`, `--exclude-dir`, `--exclude-file`,
-`--include-ext`, and `--rebuild` (`GO42X_REBUILD=true`).
-{{ end }}
+When Context7 is unavailable or lacks the needed information, use official
+documentation and installed source. Verify examples against the project's
+dependency version and existing usage.
+{{- end }}

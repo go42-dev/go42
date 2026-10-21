@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "v-prefixed SemVer without +metadata (for example, v1.2.3-build.7)"
+        description: "Release version: v1.2.3 or v1.2.3-rc.1"
         required: true
         type: string
 

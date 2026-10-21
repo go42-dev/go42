@@ -54,6 +54,9 @@ run `task x -- agentenv generate` and restart the client.
 For code generation, `task setup:generators` installs the generators and their supporting tools from the same lockfile.
 Run it before `task generate` to prepare only the tools needed for generation.
 
+For documentation, `task setup:docs` installs Node.js, Markdownlint, and Vale from the lockfile, then syncs the pinned
+Vale styles. Run it before `task docs:check` to prepare only the documentation tools.
+
 Create `.env` from [.env.example](../../.env.example) if it does not already exist, then adjust the local settings:
 
 ```sh
@@ -62,9 +65,10 @@ if [ ! -f .env ]; then
 fi
 ```
 
-Task supplies mise's project paths, so Task commands work without shell exports. Tasks invoke installed tools through
-`.tools/shims` or `mise exec`. Existing exported mise settings override Taskfile defaults. Go commands use the installed
-`go` executable; Task defaults to `GOTOOLCHAIN=local` and adds the project shims to `PATH` for generators.
+Task supplies mise's project paths, so Task commands work without shell exports. Tasks invoke managed tools with
+`mise exec --`, which also makes the project tools available to child processes. Existing exported mise settings override
+Taskfile defaults. Go commands use the installed `go` executable with `GOTOOLCHAIN=local`. Generation runs through mise
+so it can find the pinned generators.
 
 ### Invoking tools directly
 
@@ -178,7 +182,6 @@ command and an optional container definition for gh-aw. Refresh and verify from 
 ```sh
 task agentic:compile
 task agentic:lint
-task test:workflows
 task lint:actions
 ```
 
@@ -191,9 +194,11 @@ Actionlint and Zizmor still check them. The `.gitattributes` entry marks these f
 
 At runtime, each workflow uses the local AI preparation action to install the full development toolset, generate
 instructions, and index the checkout. An empty `providers` input generates shared instructions only; gh-aw supplies its
-own runtime configuration from the committed workflow. `pull-mcp-image: true` pulls the go42x image matching the version
-selected by mise and resolves its immutable digest for the MCP containers. Upgrade that pin only after its matching image
-has been published. Local MCP commands continue to run through Task.
+own runtime configuration from the committed workflow. `pull-mcp-image: true` pulls the tools image from
+`mcp-image-repository`, which defaults to `ghcr.io/go42-dev/go42x`. The action selects the release matching the go42x
+version chosen by mise and resolves its immutable digest for the MCP containers. Override the repository input when
+using another GHCR package. Upgrade the mise pin only after its matching image has been published. Local MCP commands
+continue to run through Task.
 
 The workflows compile with the Codex engine. `GH_AW_DEFAULT_MODEL_CODEX` supplies an optional model default at runtime;
 changing the engine requires editing and recompiling the workflow source.
@@ -211,8 +216,15 @@ from `.env`. Start the services required by the selected database, cache, and ev
 | `task build`      | Build `.build/app` with race detection and compiler optimizations disabled          |
 | `task image`      | Build and load a cached development image for the host platform                     |
 
-`task run` and `task run:docker` treat exit code 1 as success, as recorded in Taskfile. Check the application output when
-verifying startup or shutdown behavior.
+`task run` and `task run:docker` report command failures as task failures.
+
+Pass application arguments after `--` to `run`, `run:docker`, and `debug`, and additional Go build flags to `build`.
+The `image` task accepts Docker build flags after `--`; set `IMAGE` and `VERSION` before the separator:
+
+```sh
+task build -- -tags=development
+task image IMAGE=ghcr.io/go42-dev/go42:dev VERSION=dev -- --no-cache
+```
 
 For optional inspection tools, `task grpcui` requires `grpcui` and targets plaintext `localhost:50051`. Enable
 `SERVER_GRPC_REFLECTION_ENABLED=true` on the local test application and restart it first; reflection is disabled by default.

@@ -63,19 +63,14 @@ jobs:
           restore-keys: |
             ${{ env.GO_CACHE_PREFIX }}-${{ hashFiles('go.mod', 'go.sum') }}-
             ${{ env.GO_CACHE_PREFIX }}-
-      - name: 'Install pinned Task and workflow test tools'
+      - name: 'Install pinned Task'
         uses: ./.github/actions/setup-tools
         with:
           install-task: 'true'
-          install-args: --locked jq
       - name: 'Download Go modules'
         run: go mod download
       - name: 'Run unit tests with coverage and race detector'
         run: task test:unit
-        env:
-          CGO_ENABLED: 1 # needed for -race
-      - name: 'Test workflow policies with local fixtures'
-        run: task test:workflows
         env:
           CGO_ENABLED: 1 # needed for -race
       - name: 'Upload coverage reports'

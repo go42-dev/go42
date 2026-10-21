@@ -602,13 +602,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: 'Install pinned documentation tools'
+      - name: 'Install mise and Task'
         uses: ./.github/actions/setup-tools
         with:
           install-task: 'true'
-          install-args: --locked node markdownlint-cli2 vale
-      - name: 'Sync pinned Vale styles'
-        shell: bash
-        run: vale --config etc/vale.ini sync
-      - name: 'Check documentation and build the website'
+      - name: 'Set up documentation tools'
+        run: task setup:docs
+      - name: 'Check documentation'
         run: task docs:check

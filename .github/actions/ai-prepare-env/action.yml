@@ -16,6 +16,10 @@ inputs:
     description: 'Pull the MCP tools image matching the mise go42x version'
     required: false
     default: 'false'
+  mcp-image-repository:
+    description: 'MCP tools image repository in ghcr.io'
+    required: false
+    default: 'ghcr.io/go42-dev/go42x'
 
 runs:
   using: composite
@@ -58,9 +62,10 @@ runs:
     - name: 'Pull MCP tools image'
       if: inputs.pull-mcp-image == 'true'
       shell: bash
+      env:
+        IMAGE_REPOSITORY: ${{ inputs.mcp-image-repository }}
       run: |-
         set -euo pipefail
-        image_repository=ghcr.io/go42-dev/go42x
         version=$(mise current go:github.com/go42-dev/go42x)
         version=${version#v}
         if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
@@ -68,10 +73,10 @@ runs:
           exit 1
         fi
         image_tag="v$version"
-        image_reference="$image_repository:$image_tag"
+        image_reference="$IMAGE_REPOSITORY:$image_tag"
         docker pull "$image_reference"
         image=$(docker image inspect --format '{{index .RepoDigests 0}}' "$image_reference")
-        digest=${image#"$image_repository@"}
+        digest=${image#"$IMAGE_REPOSITORY@"}
         if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
           echo '::error::The MCP image has no immutable registry digest.'
           exit 1

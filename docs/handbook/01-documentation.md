@@ -114,7 +114,13 @@ Update the index when a page is added, moved, renamed, removed, reordered, or gi
 
 ## Verification
 
-Set up the tools through [environment setup](05-development.md#environment-setup). From the repository root, run:
+Install the pinned documentation tools from the repository root:
+
+```sh
+task setup:docs
+```
+
+Then run:
 
 ```sh
 task docs:check

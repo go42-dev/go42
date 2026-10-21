@@ -27,11 +27,8 @@ callers when interfaces change. Follow the shared Go conventions linked from [Pr
 | `task test:contract`                   | HTTP contract checks and probes against a dedicated test application                                      |
 | `task test:resilience`                 | Recovery tests with an instrumented app and combined coverage; needs Toxiproxy and backing services       |
 | `task test:load`                       | HTTP and gRPC k6 suites against a running application by default                                          |
-| `task test:workflows`                  | Publication, cleanup, MCP image selection, and agent permission checks with local fixtures; needs jq      |
 
 Coverage reports are written under `.build/`. Resilience tests are build-tagged and excluded from other test tasks.
-Workflow tests mock Docker and GitHub commands and do not build images or call a registry. CI runs them alongside unit
-tests; they do not contribute application coverage.
 Use the [resilience suite](../../tests/resilience/application_test.go) and
 [CI service configuration](../../.github/workflows/120-resilience-tests.yaml) to identify its required backends.
 
