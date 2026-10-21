@@ -165,9 +165,11 @@ func decodeOAPI(response oapiResponse, err error) usersResult {
 func userFromOAPI(user *oapi.User) User {
 	GinkgoHelper()
 	Expect(user).ToNot(BeNil(), "expected a decoded User response")
-	Expect(user.Uuid).ToNot(BeNil())
-	Expect(user.Email).ToNot(BeNil())
-	return User{UUID: *user.Uuid, Email: *user.Email}
+	Expect(user.Email).ToNot(BeEmpty())
+	return User{
+		UUID:  user.Uuid.String(),
+		Email: string(user.Email),
+	}
 }
 
 type ogenUsers struct{ client *ogen.Client }
@@ -280,7 +282,9 @@ func decodeOgen(response any, err error, successStatus int) usersResult {
 
 func userFromOgen(user ogen.User) User {
 	GinkgoHelper()
-	Expect(user.UUID.Set).To(BeTrue())
-	Expect(user.Email.Set).To(BeTrue())
-	return User{UUID: user.UUID.Value, Email: user.Email.Value}
+	Expect(user.Email).ToNot(BeEmpty())
+	return User{
+		UUID:  user.UUID.String(),
+		Email: user.Email,
+	}
 }

@@ -24,7 +24,6 @@ callers when interfaces change. Follow the shared Go conventions linked from [Pr
 | `task test:unit -- ./internal/metrics` | Selected packages with race detection; no coverage report                                                 |
 | `task test:fuzz`                       | All fuzz targets; 30 seconds per target by default                                                        |
 | `task test:integration`                | Full integration suite with coverage; loads `.env` and needs configured services                          |
-| `task test:contract`                   | HTTP contract checks and probes against a dedicated test application                                      |
 | `task test:resilience`                 | Recovery tests with an instrumented app and combined coverage; needs Toxiproxy and backing services       |
 | `task test:load`                       | HTTP and gRPC k6 suites against a running application by default                                          |
 
@@ -80,70 +79,34 @@ The [integration CI workflow](../../.github/workflows/150-integration-tests.yaml
 backend, address, and test-credential setup. It disables the application's authentication rate limiter for its test load.
 Keep such overrides scoped to the test application.
 
-## HTTP contract testing
+## HTTP schemas and boundary checks
 
-Run `task test:contract` against a dedicated test application. Sources live in [tests/contract](../../tests/contract).
-The suite runs separately from `task test:integration` and does not load `.env`. It defaults to `http://localhost:8080`
-and the seeded development API key. Override `HTTP_SERVER_ADDRESS` and `HTTP_API_KEY` through the process environment;
-CI supplies both explicitly. An unset or empty key uses the development default, matching the gRPC integration and load
-helpers. Disable authentication rate limiting on this test application. The command creates, changes, and deletes
-disposable users and sessions. It does not start or stop the application.
+The Go integration suites cover authentication, authorization, credential changes, token boundaries, UUID handling, and
+pagination. The [authentication harness](../../tests/integration/auth/auth_test.go) uses the real service and repository
+with an isolated database. It checks that rejected and no-op updates preserve credentials and existing sessions, and that
+normalized duplicate emails return `409`. These tests run in the existing SQLite, MySQL, and PostgreSQL integration matrix.
 
-The fixture API key needs all five administrative user permissions and must lack `users:read_self` and
-`users:update_self`, matching the seeded development key. Preflight verifies its administrative access and both
-self-service denials with requests that cannot change credentials. Ordinary user JWTs exercise administrative denials.
+The harness validates HTTP responses against the generated OpenAPI document through its
+[shared HTTP helper](../../tests/integration/auth/helpers_test.go). Validation checks response bodies, required fields,
+content types, and declared status codes. Behavioral assertions still check the expected status, user identity, and
+session transitions. The [HTTP client suite](../../tests/integration/http/v1/users_test.go) exercises the running application
+with both generated SDKs, and the [probe checks](../../tests/integration/http/v1/auth_test.go) verify health, readiness,
+and application metrics.
 
-The pinned Schemathesis tool reads the generated [OpenAPI contract](../../api/openapi/v1/.combined.yaml).
-The [configuration](../../etc/schemathesis.toml) enables successful examples and generated positive and negative requests
-for all 11 business operations: signup, login, refresh, logout, current-user read/update, and administrative user
-list/create/read/update/delete. The unimplemented `/dummy` tooling placeholder is excluded explicitly.
+The [schema tests](../../api/openapi/v1/auth_test.go) reject incomplete or invalid user and token responses. They also check
+conditional current-password requirements and the distinction between missing and nonempty invalid refresh tokens.
+Run them without a running application:
 
-The [fixture hooks](../../tests/contract/hooks.py) supply live users, credentials, and owned mutation targets.
-Positive credential fields use valid fixture values because email validation, password strength, and session state have
-rules beyond the schema. Generated negative bodies and malformed UUIDs retain their invalid input. Every operation must
-also complete a successful example; authentication errors alone cannot satisfy coverage. Adding an operation requires
-adding its successful fixture scenario. Existing Go integration tests cover session behavior and all five gRPC user methods.
+```sh
+task test:unit -- ./api/openapi/v1
+```
 
-Deterministic examples cover authenticated `403` responses on all seven protected operations, duplicate-email `409`
-responses on signup and all three user mutations, conditional current-password validation, successful self-update
-no-ops, and refresh/logout token boundaries. Duplicate tests include uppercase and surrounding-whitespace variants;
-rejected updates verify that original credentials and existing access and refresh tokens remain usable. Explicit invalid
-bodies retain their input through the fixture hooks. The runner requires every planned example to complete, recording
-names in `planned.txt` and `scenarios.txt` alongside the reports.
+`User` responses require a UUID, email, creation time, roles, and permissions; empty role and permission arrays are valid.
+Creation time retains the existing `YYYY-MM-DD HH:MM:SS` format. Token responses require nonempty access and refresh tokens
+and a nonnegative integer lifetime in whole seconds. Subsecond lifetimes round down to zero.
 
-Schema tests check the conditional requirement and nullable no-op fields using Schemathesis's schema conversion.
-The [Go HTTP integration harness](../../tests/integration/auth/auth_test.go) verifies indistinguishable inactive-account,
-unknown-email, and incorrect-password login responses without creating sessions. It can set an inactive account directly
-in its isolated database; the public HTTP API has no account-deactivation operation.
-
-Checks validate response status, content type, headers, and schema; reject server errors; and check acceptance of valid
-inputs and rejection of invalid inputs. Fixed checks verify `/health`, `/ready`, and the application's `/metrics` output
-before and after the generated tests. These runtime checks complement `oasdiff`, which compares contract compatibility.
-
-The default generated-test budget is 180 seconds, with seed 42, one worker, a ten-request-per-second CLI limit, and
-three-second generated-request timeouts. Fixture requests allow ten seconds; cleanup has a sixty-second budget.
-Setup and cleanup add time. A fixed seed helps reproduce generated inputs, but fixture IDs,
-tokens, and the number of cases completed within the time budget vary. Change the shared configuration to adjust local
-and CI runs together.
-
-Internal Hypothesis caches live in `.build/hypothesis/` and can be deleted.
-
-Inspect `.build/contract/schemathesis.log`, native `report.json`, `junit.xml`, and `requests.har` after a run. Reports retain
-operation details, failures, and reproducing requests, with credentials redacted; replace fixture credentials when replaying.
-The runner clears previous reports before a new run. It attempts cleanup after failures and timeouts. Cleanup failures
-fail the task and leave remaining owned UUIDs in `.build/contract/fixtures.txt`; remove those test users before clearing
-the journal and retrying. A forcibly terminated runner may need the same recovery.
-Completed mutation cases delete their disposable targets immediately and remove verified deletions from the journal.
-Read fixtures and any targets left by interrupted cases remain for final cleanup. This bounds the cleanup backlog as
-Schemathesis repeats fuzzing within its time budget.
-Cleanup uses API deletion, which soft-deletes users. Recreate the disposable database to remove retained rows and history.
-
-The [contract CI workflow](../../.github/workflows/150-contract-tests.yaml) executes this exact Task command in a separate
-SQLite, MySQL, and PostgreSQL matrix. Each job has its own application and database, using the same built image as the
-integration suite. The matrices run independently after the image build; contract jobs do not install Go or collect Go
-coverage. Contract failures block the final CI gate, and image cleanup waits for the contract jobs. Reports are uploaded
-separately for each database even when checks fail. Contract jobs allow fifteen minutes; integration jobs allow ten.
-When the project selects one database, retain the commands and reduce both matrices to the selected backend.
+These checks complement `oasdiff`, which compares API compatibility between revisions. Schema validation applies to the
+responses exercised by the tests; it does not generate additional requests or establish business correctness by itself.
 
 ## Choosing checks before review
 
@@ -163,7 +126,7 @@ comparisons require `origin/master` by default.
 `task lint:openapi-breaking OPENAPI_BASE_REF=REVISION` checks another base. CI supplies the pull request base or the previous
 push commit and runs the same Task command. OpenAPI compatibility findings are reported for review without failing the
 command or CI; no ignore file is applied. Tool errors and invalid comparison inputs still fail the command. OpenAPI schema
-lint and runtime contract tests remain blocking.
+lint and integration tests remain blocking.
 
 `task lint:capabilities` reports capability additions and removals against `origin/master` for review. CI uses the same
 advisory task on non-master branches. Capability differences do not fail the task; setup and analysis errors still do.

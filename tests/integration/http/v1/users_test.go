@@ -217,9 +217,8 @@ func signUpUser(ctx context.Context, admin usersClient) (User, string) {
 	}
 	Expect(login.StatusCode()).To(Equal(http.StatusOK), "login setup failed: %s", login.Body)
 	Expect(login.JSON200).ToNot(BeNil())
-	Expect(login.JSON200.AccessToken).ToNot(BeNil())
-	Expect(*login.JSON200.AccessToken).ToNot(BeEmpty())
-	return user, *login.JSON200.AccessToken
+	Expect(login.JSON200.AccessToken).ToNot(BeEmpty())
+	return user, login.JSON200.AccessToken
 }
 
 func expectUnchangedUser(ctx context.Context, admin usersClient, target User) {

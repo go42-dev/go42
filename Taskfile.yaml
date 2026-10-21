@@ -251,20 +251,6 @@ tasks:
         go tool cover -html=.build/coverage-integration.out -o=.build/coverage-integration.html
         go tool cover -func=.build/coverage-integration.out | grep '^total:'
 
-  test:contract:
-    desc: "Check HTTP API contracts against a running test application"
-    summary: |-
-      Usage: task test:contract
-      Requires a dedicated test application. Accepts HTTP_SERVER_ADDRESS and HTTP_API_KEY from the environment; does not load .env.
-    silent: true
-    cmds:
-      - |
-        export HYPOTHESIS_STORAGE_DIRECTORY="{{.ROOT_DIR}}/.build/hypothesis"
-        contract_python="$(mise where pipx:schemathesis)/schemathesis/bin/python"
-        mise exec -- pyflakes tests/contract
-        "$contract_python" -m unittest discover -s tests/contract
-        "$contract_python" tests/contract/run.py
-
   # Resilience tests are build-tagged and excluded from all other test targets.
   # @note Requires `toxiproxy pgsql mysql redis memcached nats kafka rabbitmq`
   test:resilience:

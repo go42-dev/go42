@@ -4,6 +4,8 @@ package auth
 
 import (
 	"fmt"
+
+	"github.com/google/uuid"
 )
 
 func (s *UnexpectedResponseStatusCode) Error() string {
@@ -492,38 +494,39 @@ func (*SignupTooManyRequests) signupRes() {}
 
 // Ref: #/components/schemas/Tokens
 type Tokens struct {
-	AccessToken  OptString `json:"access_token"`
-	RefreshToken OptString `json:"refresh_token"`
-	ExpiresIn    OptInt    `json:"expires_in"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	// Access-token lifetime in whole seconds, rounded down.
+	ExpiresIn int `json:"expires_in"`
 }
 
 // GetAccessToken returns the value of AccessToken.
-func (s *Tokens) GetAccessToken() OptString {
+func (s *Tokens) GetAccessToken() string {
 	return s.AccessToken
 }
 
 // GetRefreshToken returns the value of RefreshToken.
-func (s *Tokens) GetRefreshToken() OptString {
+func (s *Tokens) GetRefreshToken() string {
 	return s.RefreshToken
 }
 
 // GetExpiresIn returns the value of ExpiresIn.
-func (s *Tokens) GetExpiresIn() OptInt {
+func (s *Tokens) GetExpiresIn() int {
 	return s.ExpiresIn
 }
 
 // SetAccessToken sets the value of AccessToken.
-func (s *Tokens) SetAccessToken(val OptString) {
+func (s *Tokens) SetAccessToken(val string) {
 	s.AccessToken = val
 }
 
 // SetRefreshToken sets the value of RefreshToken.
-func (s *Tokens) SetRefreshToken(val OptString) {
+func (s *Tokens) SetRefreshToken(val string) {
 	s.RefreshToken = val
 }
 
 // SetExpiresIn sets the value of ExpiresIn.
-func (s *Tokens) SetExpiresIn(val OptInt) {
+func (s *Tokens) SetExpiresIn(val int) {
 	s.ExpiresIn = val
 }
 
@@ -633,25 +636,26 @@ func (s *UpdateUserRequest) SetPassword(val OptString) {
 
 // Ref: #/components/schemas/User
 type User struct {
-	UUID        OptString `json:"uuid"`
-	Email       OptString `json:"email"`
-	CreatedAt   OptString `json:"created_at"`
-	Roles       []string  `json:"roles"`
-	Permissions []string  `json:"permissions"`
+	UUID  uuid.UUID `json:"uuid"`
+	Email string    `json:"email"`
+	// Creation time in YYYY-MM-DD HH:MM:SS format.
+	CreatedAt   string   `json:"created_at"`
+	Roles       []string `json:"roles"`
+	Permissions []string `json:"permissions"`
 }
 
 // GetUUID returns the value of UUID.
-func (s *User) GetUUID() OptString {
+func (s *User) GetUUID() uuid.UUID {
 	return s.UUID
 }
 
 // GetEmail returns the value of Email.
-func (s *User) GetEmail() OptString {
+func (s *User) GetEmail() string {
 	return s.Email
 }
 
 // GetCreatedAt returns the value of CreatedAt.
-func (s *User) GetCreatedAt() OptString {
+func (s *User) GetCreatedAt() string {
 	return s.CreatedAt
 }
 
@@ -666,17 +670,17 @@ func (s *User) GetPermissions() []string {
 }
 
 // SetUUID sets the value of UUID.
-func (s *User) SetUUID(val OptString) {
+func (s *User) SetUUID(val uuid.UUID) {
 	s.UUID = val
 }
 
 // SetEmail sets the value of Email.
-func (s *User) SetEmail(val OptString) {
+func (s *User) SetEmail(val string) {
 	s.Email = val
 }
 
 // SetCreatedAt sets the value of CreatedAt.
-func (s *User) SetCreatedAt(val OptString) {
+func (s *User) SetCreatedAt(val string) {
 	s.CreatedAt = val
 }
 

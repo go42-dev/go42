@@ -383,7 +383,7 @@ func TestCredentials_HTTPClientsAcceptLongPasswords(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ogen login: %v", err)
 			}
-			if tokens, ok := response.(*ogen.Tokens); !ok || tokens.AccessToken.Value == "" {
+			if tokens, ok := response.(*ogen.Tokens); !ok || len(tokens.AccessToken) == 0 {
 				t.Fatalf("ogen login response = %T, want tokens", response)
 			}
 			oapiResponse, err := oapiClient.LoginWithResponse(
@@ -463,6 +463,342 @@ func TestCredentials_HTTPClientsPreserveOmittedUpdateFields(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestUsers_HTTPAuthorizationDenialsPreserveCredentials(t *testing.T) {
+	h := newSessionHarness(t)
+	tokens := h.login(t)
+	e := newTestEcho()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+	const adminKey = "api_kXqdf2uQ7hmOARp-pZrhA6_IsZSeKCmSEM4YFKBGIzA"
+
+	for _, operation := range []struct {
+		method string
+		path   string
+		body   string
+		self   bool
+	}{
+		{
+			method: http.MethodGet,
+			path:   "/users",
+		},
+		{
+			method: http.MethodPost,
+			path:   "/users",
+			body:   `{"email":"new@example.com","password":"Correct!password123"}`,
+		},
+		{
+			method: http.MethodGet,
+			path:   "/users/" + h.user.UUID.String(),
+		},
+		{
+			method: http.MethodPut,
+			path:   "/users/" + h.user.UUID.String(),
+			body:   `{}`,
+		},
+		{
+			method: http.MethodDelete,
+			path:   "/users/" + h.user.UUID.String(),
+		},
+		{
+			method: http.MethodGet,
+			path:   "/users/me",
+			self:   true,
+		},
+		{
+			method: http.MethodPut,
+			path:   "/users/me",
+			body:   `{}`,
+			self:   true,
+		},
+	} {
+		t.Run(operation.method+operation.path, func(t *testing.T) {
+			for _, authenticated := range []bool{false, true} {
+				name := "unauthenticated"
+				want := http.StatusUnauthorized
+				if authenticated {
+					name, want = "forbidden", http.StatusForbidden
+				}
+
+				t.Run(name, func(t *testing.T) {
+					request := httptest.NewRequest(operation.method, "/api/v1"+operation.path,
+						strings.NewReader(operation.body))
+					request.Header.Set("Content-Type", "application/json")
+					if authenticated && operation.self {
+						request.Header.Set("X-API-Key", adminKey)
+					} else if authenticated {
+						request.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
+					}
+
+					response := httptest.NewRecorder()
+
+					e.ServeHTTP(response, request)
+
+					require.Equal(t, want, response.Code)
+					assertHTTPResponseSchema(t, request, response)
+				})
+			}
+		})
+	}
+
+	assertPreservedHTTPSession(t, h, e, tokens)
+}
+
+func TestCredentials_HTTPConflictsPreserveCredentialsAndSessions(t *testing.T) {
+	h := newSessionHarness(t)
+	require.NoError(t, h.repo.AssignRoleToUser(t.Context(), h.user.ID, "admin"))
+	existing := createRepositoryUser(t, h)
+	e := newTestEcho()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+
+	for _, email := range []string{existing.Email, strings.ToUpper(existing.Email), " \t" + strings.ToUpper(existing.Email) + " \n"} {
+		for _, operation := range []struct{ method, path string }{
+			{
+				method: http.MethodPost,
+				path:   "/api/v1/auth/signup",
+			},
+			{
+				method: http.MethodPost,
+				path:   "/api/v1/users",
+			},
+			{
+				method: http.MethodPut,
+				path:   "/api/v1/users/" + h.user.UUID.String(),
+			},
+			{
+				method: http.MethodPut,
+				path:   "/api/v1/users/me",
+			},
+		} {
+			t.Run(operation.method+operation.path+"/"+email, func(t *testing.T) {
+				tokens := h.login(t)
+				body := map[string]string{
+					"email":            email,
+					"password":         testPassword + "!changed",
+					"current_password": testPassword,
+				}
+
+				credentialHTTPRequest(
+					t,
+					e,
+					operation.method,
+					operation.path,
+					tokens.AccessToken,
+					body,
+					http.StatusConflict,
+				)
+
+				assertPreservedHTTPSession(t, h, e, tokens)
+
+				stored, err := h.repo.GetUserByUUID(t.Context(), existing.UUID.String())
+				require.NoError(t, err)
+				assert.Equal(t, existing.Email, stored.Email)
+				assert.Equal(t, existing.Password, stored.Password)
+			})
+		}
+	}
+}
+
+func TestCredentials_HTTPRejectedAndNoopSelfUpdatesPreserveSessions(t *testing.T) {
+	h := newSessionHarness(t)
+	e := newTestEcho()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+
+	type testCase struct {
+		name string
+		body map[string]any
+		want int
+	}
+	tests := []testCase{
+		{
+			name: "empty",
+			body: map[string]any{},
+			want: http.StatusOK,
+		},
+		{
+			name: "null email",
+			body: map[string]any{"email": nil},
+			want: http.StatusOK,
+		},
+		{
+			name: "null password",
+			body: map[string]any{"password": nil},
+			want: http.StatusOK,
+		},
+		{
+			name: "null credentials",
+			body: map[string]any{
+				"email":    nil,
+				"password": nil,
+			},
+			want: http.StatusOK,
+		},
+		{
+			name: "empty proof",
+			body: map[string]any{"current_password": ""},
+			want: http.StatusOK,
+		},
+		{
+			name: "null proof",
+			body: map[string]any{"current_password": nil},
+			want: http.StatusOK,
+		},
+		{
+			name: "ignored proof",
+			body: map[string]any{"current_password": "wrong"},
+			want: http.StatusOK,
+		},
+		{
+			name: "same email without proof",
+			body: map[string]any{"email": h.user.Email},
+			want: http.StatusBadRequest,
+		},
+		{
+			name: "same email with proof",
+			body: map[string]any{
+				"email":            h.user.Email,
+				"current_password": testPassword,
+			},
+			want: http.StatusOK,
+		},
+	}
+	for name, fields := range map[string]map[string]any{
+		"email":    {"email": "updated@example.com"},
+		"password": {"password": testPassword + "!changed"},
+		"both": {
+			"email":    "updated@example.com",
+			"password": testPassword + "!changed",
+		},
+	} {
+		for _, proof := range []struct {
+			name  string
+			value any
+		}{
+			{name: "missing"},
+			{
+				name:  "empty",
+				value: "",
+			},
+			{
+				name:  "null",
+				value: nil,
+			},
+			{
+				name:  "wrong",
+				value: testPassword + "!wrong",
+			},
+		} {
+			body := maps.Clone(fields)
+			if proof.name != "missing" {
+				body["current_password"] = proof.value
+			}
+
+			tests = append(tests, testCase{
+				name: name + "/" + proof.name,
+				body: body,
+				want: http.StatusBadRequest,
+			})
+		}
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tokens := h.login(t)
+
+			credentialHTTPRequest(t, e, http.MethodPut, "/api/v1/users/me", tokens.AccessToken, test.body, test.want)
+
+			assertPreservedHTTPSession(t, h, e, tokens)
+		})
+	}
+}
+
+func TestSessions_HTTPTokenInputBoundaries(t *testing.T) {
+	h := newSessionHarness(t)
+	e := newTestEcho()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+	tokens := h.login(t)
+
+	for _, endpoint := range []struct{ path, field string }{
+		{
+			path:  "/api/v1/auth/refresh",
+			field: "token",
+		},
+		{
+			path:  "/api/v1/auth/logout",
+			field: "refresh_token",
+		},
+	} {
+		t.Run(endpoint.path, func(t *testing.T) {
+			credentialHTTPRequest(t, e, http.MethodPost, endpoint.path, "", map[string]any{}, http.StatusBadRequest)
+
+			for _, value := range []any{nil, "", 42, "x", " \t\n", "not-a-token"} {
+				want := http.StatusUnauthorized
+				if value == nil || value == "" || value == 42 {
+					want = http.StatusBadRequest
+				}
+
+				credentialHTTPRequest(
+					t,
+					e,
+					http.MethodPost,
+					endpoint.path,
+					"",
+					map[string]any{endpoint.field: value},
+					want,
+				)
+			}
+		})
+	}
+
+	assertPreservedHTTPSession(t, h, e, tokens)
+}
+
+func TestUsers_HTTPInvalidAndMissingUUIDs(t *testing.T) {
+	h := newSessionHarness(t)
+	require.NoError(t, h.repo.AssignRoleToUser(t.Context(), h.user.ID, "admin"))
+	tokens := h.login(t)
+	e := newTestEcho()
+	httpAdapter.New(h.service).Register(e.Group("/api/v1"))
+
+	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+		for _, test := range []struct {
+			uuid string
+			want int
+		}{
+			{
+				uuid: "not-a-uuid",
+				want: http.StatusBadRequest,
+			},
+			{
+				uuid: uuid.NewString(),
+				want: http.StatusNotFound,
+			},
+		} {
+			t.Run(method+"/"+test.uuid, func(t *testing.T) {
+				credentialHTTPRequest(t, e, method, "/api/v1/users/"+test.uuid, tokens.AccessToken,
+					map[string]string{"email": "updated@example.com"}, test.want)
+			})
+		}
+	}
+}
+
+func assertPreservedHTTPSession(t *testing.T, h *sessionHarness, e *echo.Echo, tokens *domain.Tokens) {
+	t.Helper()
+	stored, err := h.repo.GetUserByUUID(t.Context(), h.user.UUID.String())
+	require.NoError(t, err)
+	assert.Equal(t, h.user.Email, stored.Email)
+	assert.Equal(t, h.user.Password, stored.Password)
+	assert.Equal(t, h.user.CredentialVersion, stored.CredentialVersion)
+
+	response := credentialHTTPRequest(t, e, http.MethodGet, "/api/v1/users/me", tokens.AccessToken, nil, http.StatusOK)
+	var current httpAdapter.UserResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &current))
+	assert.Equal(t, h.user.UUID.String(), current.UUID)
+	assert.Equal(t, h.user.Email, current.Email)
+
+	h.login(t)
+	_, err = h.service.Refresh(t.Context(), tokens.RefreshToken)
+	require.NoError(t, err, "the original refresh token must remain usable")
 }
 
 type credentialSDKSecurity string
@@ -1391,15 +1727,28 @@ func TestSessions_RejectNoncanonicalTokensAtHTTPBoundary(t *testing.T) {
 }
 
 func TestSessions_HTTPLogoutAcceptsExpiredOrOmittedAccessToken(t *testing.T) {
-	for _, includeAccess := range []bool{false, true} {
-		t.Run(map[bool]string{false: "omitted", true: "expired"}[includeAccess], func(t *testing.T) {
+	for _, access := range []struct{ name, value string }{
+		{name: "omitted"},
+		{name: "expired"},
+		{
+			name:  "empty",
+			value: "",
+		},
+		{
+			name:  "invalid",
+			value: "not-an-access-token",
+		},
+	} {
+		t.Run(access.name, func(t *testing.T) {
 			h := newSessionHarness(t, auth.WithJWTAccessTokenTTL(time.Nanosecond))
 			tokens := h.login(t)
 			e := newTestEcho()
 			httpAdapter.New(h.service).Register(e.Group("/api/v1"))
 			body := map[string]string{"refresh_token": tokens.RefreshToken}
-			if includeAccess {
+			if access.name == "expired" {
 				body["access_token"] = tokens.AccessToken
+			} else if access.name != "omitted" {
+				body["access_token"] = access.value
 			}
 			for range 2 {
 				response := sessionHTTPRequest(t, e, http.MethodPost, "/api/v1/auth/logout", "", body)

@@ -11,9 +11,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/getkin/kin-openapi/openapi3filter"
+	"github.com/getkin/kin-openapi/routers"
+	"github.com/getkin/kin-openapi/routers/legacy"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -23,6 +28,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	oapi "github.com/go42-dev/go42/api/gen/sdk/http/v1/auth/oapi-codegen"
 	httpAPI "github.com/go42-dev/go42/internal/api/http"
 	"github.com/go42-dev/go42/internal/auth"
 	"github.com/go42-dev/go42/internal/auth/domain"
@@ -41,6 +47,17 @@ const (
 )
 
 var testJWTAudience = []string{"go42-test"}
+
+var httpResponseRouter = sync.OnceValues(func() (routers.Router, error) {
+	spec, err := oapi.GetSpec()
+	if err != nil {
+		return nil, err
+	}
+
+	// Test servers use arbitrary hosts; the API path remains the same.
+	spec.Servers = openapi3.Servers{{URL: "/api/v1"}}
+	return legacy.NewRouter(spec)
+})
 
 func newTestUser(t *testing.T, status string) *models.User {
 	t.Helper()
@@ -226,5 +243,46 @@ func sessionHTTPRequest(t *testing.T, e *echo.Echo, method, path, bearer string,
 	}
 	response := httptest.NewRecorder()
 	e.ServeHTTP(response, request)
+	assertHTTPResponseSchema(t, request, response)
 	return response
+}
+
+func assertHTTPResponseSchema(t *testing.T, request *http.Request, response *httptest.ResponseRecorder) {
+	t.Helper()
+	router, err := httpResponseRouter()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	route, params, err := router.FindRoute(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	input := &openapi3filter.ResponseValidationInput{
+		RequestValidationInput: &openapi3filter.RequestValidationInput{
+			Request:    request,
+			PathParams: params,
+			Route:      route,
+		},
+		Status: response.Code,
+		Header: response.Header(),
+		Options: &openapi3filter.Options{
+			IncludeResponseStatus: true,
+			SchemaValidationOptions: []openapi3.SchemaValidationOption{
+				openapi3.SetSchemaErrorMessageCustomizer(func(err *openapi3.SchemaError) string {
+					return err.Reason
+				}),
+				openapi3.EnableFormatValidation(),
+				openapi3.WithStringFormatValidators(map[string]openapi3.StringFormatValidator{
+					"uuid":  openapi3.NewRegexpFormatValidator(openapi3.FormatOfStringForUUIDOfRFC9562),
+					"email": openapi3.NewRegexpFormatValidator(openapi3.FormatOfStringForEmail),
+				}),
+			},
+		},
+	}
+	input.SetBodyBytes(response.Body.Bytes())
+	if err := openapi3filter.ValidateResponse(t.Context(), input); err != nil {
+		t.Fatalf("%s %s response violates OpenAPI: %v", request.Method, request.URL.Path, err)
+	}
 }

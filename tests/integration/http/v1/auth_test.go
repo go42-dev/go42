@@ -532,6 +532,23 @@ var _ = Describe("Auth API Integration Tests", func() {
 	})
 })
 
+var _ = Describe("Application probes", func() {
+	It("serves health, readiness, and application metrics", func() {
+		client := &http.Client{Timeout: 5 * time.Second}
+		for _, path := range []string{"/health", "/ready", "/metrics"} {
+			response, err := client.Get(integration.HTTPServerAddress() + path)
+			Expect(err).ToNot(HaveOccurred())
+			body, err := io.ReadAll(response.Body)
+			Expect(response.Body.Close()).To(Succeed())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.StatusCode).To(Equal(http.StatusOK), path)
+			if path == "/metrics" {
+				Expect(string(body)).To(ContainSubstring("application_build{"))
+			}
+		}
+	})
+})
+
 func TestAuthIntegration(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Auth API Integration Suite")

@@ -9,35 +9,3 @@ func (s *LogoutRequest) setDefaults() {
 		s.AccessToken.SetTo(val)
 	}
 }
-
-// setDefaults set default value of fields.
-func (s *Tokens) setDefaults() {
-	{
-		val := string("")
-		s.AccessToken.SetTo(val)
-	}
-	{
-		val := string("")
-		s.RefreshToken.SetTo(val)
-	}
-	{
-		val := int(0)
-		s.ExpiresIn.SetTo(val)
-	}
-}
-
-// setDefaults set default value of fields.
-func (s *User) setDefaults() {
-	{
-		val := string("")
-		s.UUID.SetTo(val)
-	}
-	{
-		val := string("")
-		s.Email.SetTo(val)
-	}
-	{
-		val := string("")
-		s.CreatedAt.SetTo(val)
-	}
-}

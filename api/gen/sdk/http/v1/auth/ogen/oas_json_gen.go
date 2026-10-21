@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/jx"
+	"github.com/ogen-go/ogen/json"
 	"github.com/ogen-go/ogen/validate"
 )
 
@@ -815,41 +816,6 @@ func (s *LogoutUnauthorized) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
-// Encode encodes int as json.
-func (o OptInt) Encode(e *jx.Encoder) {
-	if !o.Set {
-		return
-	}
-	e.Int(int(o.Value))
-}
-
-// Decode decodes int from json.
-func (o *OptInt) Decode(d *jx.Decoder) error {
-	if o == nil {
-		return errors.New("invalid: unable to decode OptInt to nil")
-	}
-	o.Set = true
-	v, err := d.Int()
-	if err != nil {
-		return err
-	}
-	o.Value = int(v)
-	return nil
-}
-
-// MarshalJSON implements stdjson.Marshaler.
-func (s OptInt) MarshalJSON() ([]byte, error) {
-	e := jx.Encoder{}
-	s.Encode(&e)
-	return e.Bytes(), nil
-}
-
-// UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *OptInt) UnmarshalJSON(data []byte) error {
-	d := jx.DecodeBytes(data)
-	return s.Decode(d)
-}
-
 // Encode encodes string as json.
 func (o OptNilString) Encode(e *jx.Encoder) {
 	if !o.Set {
@@ -1459,22 +1425,16 @@ func (s *Tokens) Encode(e *jx.Encoder) {
 // encodeFields encodes fields.
 func (s *Tokens) encodeFields(e *jx.Encoder) {
 	{
-		if s.AccessToken.Set {
-			e.FieldStart("access_token")
-			s.AccessToken.Encode(e)
-		}
+		e.FieldStart("access_token")
+		e.Str(s.AccessToken)
 	}
 	{
-		if s.RefreshToken.Set {
-			e.FieldStart("refresh_token")
-			s.RefreshToken.Encode(e)
-		}
+		e.FieldStart("refresh_token")
+		e.Str(s.RefreshToken)
 	}
 	{
-		if s.ExpiresIn.Set {
-			e.FieldStart("expires_in")
-			s.ExpiresIn.Encode(e)
-		}
+		e.FieldStart("expires_in")
+		e.Int(s.ExpiresIn)
 	}
 }
 
@@ -1489,14 +1449,16 @@ func (s *Tokens) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode Tokens to nil")
 	}
-	s.setDefaults()
+	var requiredBitSet [1]uint8
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
 		case "access_token":
+			requiredBitSet[0] |= 1 << 0
 			if err := func() error {
-				s.AccessToken.Reset()
-				if err := s.AccessToken.Decode(d); err != nil {
+				v, err := d.Str()
+				s.AccessToken = string(v)
+				if err != nil {
 					return err
 				}
 				return nil
@@ -1504,9 +1466,11 @@ func (s *Tokens) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"access_token\"")
 			}
 		case "refresh_token":
+			requiredBitSet[0] |= 1 << 1
 			if err := func() error {
-				s.RefreshToken.Reset()
-				if err := s.RefreshToken.Decode(d); err != nil {
+				v, err := d.Str()
+				s.RefreshToken = string(v)
+				if err != nil {
 					return err
 				}
 				return nil
@@ -1514,9 +1478,11 @@ func (s *Tokens) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"refresh_token\"")
 			}
 		case "expires_in":
+			requiredBitSet[0] |= 1 << 2
 			if err := func() error {
-				s.ExpiresIn.Reset()
-				if err := s.ExpiresIn.Decode(d); err != nil {
+				v, err := d.Int()
+				s.ExpiresIn = int(v)
+				if err != nil {
 					return err
 				}
 				return nil
@@ -1529,6 +1495,38 @@ func (s *Tokens) Decode(d *jx.Decoder) error {
 		return nil
 	}); err != nil {
 		return errors.Wrap(err, "decode Tokens")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000111,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfTokens) {
+					name = jsonFieldsNameOfTokens[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
 	}
 
 	return nil
@@ -1734,42 +1732,32 @@ func (s *User) Encode(e *jx.Encoder) {
 // encodeFields encodes fields.
 func (s *User) encodeFields(e *jx.Encoder) {
 	{
-		if s.UUID.Set {
-			e.FieldStart("uuid")
-			s.UUID.Encode(e)
-		}
+		e.FieldStart("uuid")
+		json.EncodeUUID(e, s.UUID)
 	}
 	{
-		if s.Email.Set {
-			e.FieldStart("email")
-			s.Email.Encode(e)
-		}
+		e.FieldStart("email")
+		e.Str(s.Email)
 	}
 	{
-		if s.CreatedAt.Set {
-			e.FieldStart("created_at")
-			s.CreatedAt.Encode(e)
-		}
+		e.FieldStart("created_at")
+		e.Str(s.CreatedAt)
 	}
 	{
-		if s.Roles != nil {
-			e.FieldStart("roles")
-			e.ArrStart()
-			for _, elem := range s.Roles {
-				e.Str(elem)
-			}
-			e.ArrEnd()
+		e.FieldStart("roles")
+		e.ArrStart()
+		for _, elem := range s.Roles {
+			e.Str(elem)
 		}
+		e.ArrEnd()
 	}
 	{
-		if s.Permissions != nil {
-			e.FieldStart("permissions")
-			e.ArrStart()
-			for _, elem := range s.Permissions {
-				e.Str(elem)
-			}
-			e.ArrEnd()
+		e.FieldStart("permissions")
+		e.ArrStart()
+		for _, elem := range s.Permissions {
+			e.Str(elem)
 		}
+		e.ArrEnd()
 	}
 }
 
@@ -1786,14 +1774,16 @@ func (s *User) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode User to nil")
 	}
-	s.setDefaults()
+	var requiredBitSet [1]uint8
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
 		case "uuid":
+			requiredBitSet[0] |= 1 << 0
 			if err := func() error {
-				s.UUID.Reset()
-				if err := s.UUID.Decode(d); err != nil {
+				v, err := json.DecodeUUID(d)
+				s.UUID = v
+				if err != nil {
 					return err
 				}
 				return nil
@@ -1801,9 +1791,11 @@ func (s *User) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"uuid\"")
 			}
 		case "email":
+			requiredBitSet[0] |= 1 << 1
 			if err := func() error {
-				s.Email.Reset()
-				if err := s.Email.Decode(d); err != nil {
+				v, err := d.Str()
+				s.Email = string(v)
+				if err != nil {
 					return err
 				}
 				return nil
@@ -1811,9 +1803,11 @@ func (s *User) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"email\"")
 			}
 		case "created_at":
+			requiredBitSet[0] |= 1 << 2
 			if err := func() error {
-				s.CreatedAt.Reset()
-				if err := s.CreatedAt.Decode(d); err != nil {
+				v, err := d.Str()
+				s.CreatedAt = string(v)
+				if err != nil {
 					return err
 				}
 				return nil
@@ -1821,6 +1815,7 @@ func (s *User) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"created_at\"")
 			}
 		case "roles":
+			requiredBitSet[0] |= 1 << 3
 			if err := func() error {
 				s.Roles = make([]string, 0)
 				if err := d.Arr(func(d *jx.Decoder) error {
@@ -1840,6 +1835,7 @@ func (s *User) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"roles\"")
 			}
 		case "permissions":
+			requiredBitSet[0] |= 1 << 4
 			if err := func() error {
 				s.Permissions = make([]string, 0)
 				if err := d.Arr(func(d *jx.Decoder) error {
@@ -1864,6 +1860,38 @@ func (s *User) Decode(d *jx.Decoder) error {
 		return nil
 	}); err != nil {
 		return errors.Wrap(err, "decode User")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00011111,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfUser) {
+					name = jsonFieldsNameOfUser[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
 	}
 
 	return nil
