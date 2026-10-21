@@ -75,6 +75,21 @@ Single-entry and single-field literals may remain compact, such as
   value. Follow the surrounding grouping when extending existing code.
 - Group struct fields by responsibility, such as dependencies, configuration,
   and runtime state. Separate those groups with blank lines.
+- Initialize struct values in named variables before calling their methods. Keep
+  construction and the related call together.
+
+  Prefer:
+
+  ```go
+  message := &Message{Body: body}
+  return message.Encode()
+  ```
+
+  Avoid calling methods directly on struct literals or pointers to them:
+
+  ```go
+  return (&Message{Body: body}).Encode()
+  ```
 
 Separate logical steps, keeping each call with its error check:
 

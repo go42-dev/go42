@@ -1,6 +1,6 @@
 ---
 
-# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/v0.38.0/assets/schemas/go42x.schema.yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/v0.41.0/assets/schemas/go42x.schema.yaml
 
 version: "1.0"
 
@@ -111,6 +111,11 @@ providers:
   # Generates .github/workflows/900-aw-mcp.md for import before gh-aw compilation.
   gh-aw:
     enabled: false
+    # Map $NAME and ${NAME} references to explicit workflow values; missing bindings fail generation.
+    # Native ${{ ... }} expressions are preserved. Bindings never read the local environment.
+    bindings:
+      CONTEXT7_API_KEY: '${{ secrets.CONTEXT7_API_KEY }}'
+      GITHUB_TOKEN: '${{ github.token }}'
 
 mcp:
   # All tools from enabled servers are available, including tools omitted from these lists.

@@ -124,6 +124,54 @@ and tool flags. Quote paths containing spaces. Go package arguments use local pa
 `./internal/auth/...`. A `lint:*` task without arguments checks its default project scope; `task lint` accepts no file or
 package arguments.
 
+### Updating go42x
+
+After publishing the go42x release and its matching MCP image, update to the latest available release from the
+repository root:
+
+```sh
+task x:update
+```
+
+To select a specific release:
+
+```sh
+task x:update VERSION=1.2.3
+```
+
+The task exports the installed binary's original assets before updating the mise pin and lockfile. Without `VERSION`,
+mise resolves the latest release to a concrete version. The new binary's `agentenv update --base` command uses Git to
+merge its embedded configuration, templates, and instruction chunks with project customizations and the old export.
+Upstream references and their vendoring manifest and lockfile come from the release together. Additional project files
+and local overrides remain in place. The old export must match the release from which the current assets originated;
+reconcile assets refreshed from source or another version first.
+
+The update command prepares every merge and validates configuration before applying assets. Export and installation
+failures leave assets unchanged. The task restores the previous mise pin and lockfile when installation fails or the
+update reports no applied files. The printed `.build/go42x-update.*` workspace holds the old export, mise files, and
+update report. Merge errors print candidates under `.build/agentenv-update-*/merged/`. Reconcile conflicting project
+customizations and rerun the task. Conflicts include modifying a file deleted upstream or deleting a file changed
+upstream. Unchanged files deleted locally stay deleted. The installed version must support `agentenv export`, and the
+target version must support `agentenv update --base`; the first upgrade from an older version requires manual
+reconciliation.
+
+After applying assets, the task generates agent configuration and the gh-aw MCP fragment with the installed release,
+compiles and lints workflows, and rebuilds the knowledge base. Partial application or an unrecognized failure retains
+the new pin. For an interrupted write, recover originals from the backup directory identified in the update report
+under `.go42x/backups/updates/`; its `files/` directory uses project-relative paths. For a generation or lint failure,
+fix the reported problem and rerun the task. Review all changed files together and restart
+MCP clients. The task neither commits changes nor pulls an image. Workflow sources, preparation actions, and Taskfile
+definitions remain separately maintained.
+
+To inspect the running binary's original bundle without updating the project:
+
+```sh
+task x -- agentenv export --output .build/original-go42x-bundle
+```
+
+The destination must not exist. Export works independently of project configuration and does not modify `.go42x` or
+`.gitignore`.
+
 ### Go navigation and diagnostics
 
 The generated agent instructions use the configured gopls tools for Go navigation and feedback during editing:

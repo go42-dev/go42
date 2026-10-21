@@ -10,6 +10,7 @@
 # ╰─────────────────────----------------─────────╯
 #
 # Before running any commands, ensure following tools are installed:
+# - git @see https://git-scm.com/
 # - go @see https://go.dev/
 # - docker @see https://www.docker.com/
 # - mise @see https://mise.jdx.dev/
@@ -50,6 +51,65 @@ tasks:
     interactive: true
     cmds:
       - 'mise exec -- go42x {{.CLI_ARGS}}'
+
+  x:update:
+    desc: "Update go42x and merge bundled assets with project customizations (writes)"
+    summary: |-
+      Usage: task x:update [VERSION=<version>]
+      Defaults to the latest available release. Exports the old bundle, updates mise, merges assets, generates agent files, compiles and lints workflows, and refreshes the knowledge base.
+    preconditions:
+      - sh: 'test -z {{.CLI_ARGS | shellQuote}}'
+        msg: "Pass VERSION=... without arguments after --."
+    cmds:
+      - |
+        version={{.VERSION | default "" | shellQuote}}
+        if [ -z "$version" ]; then
+          version=$(mise latest go:github.com/go42-dev/go42x)
+        fi
+        if [ -z "$version" ]; then
+          printf 'mise did not resolve a go42x release.\n' >&2
+          exit 1
+        fi
+
+        mkdir -p .build
+        workspace=$(mktemp -d "$PWD/.build/go42x-update.XXXXXX")
+        printf 'Updating go42x to %s; workspace: %s\n' "$version" "$workspace"
+        cp -p etc/mise.toml "$workspace/mise.toml"
+        cp -p etc/mise.lock "$workspace/mise.lock"
+        restore_pins() {
+          cp -p "$workspace/mise.toml" etc/mise.toml
+          cp -p "$workspace/mise.lock" etc/mise.lock
+          printf 'Restored the previous mise pin and lockfile.\n' >&2
+        }
+
+        task x -- agentenv export --output "$workspace/base"
+        if ! task bump TOOL=go:github.com/go42-dev/go42x "VERSION=$version"; then
+          restore_pins
+          exit 1
+        fi
+        if ! task --silent x -- agentenv update --base "$workspace/base" --json > "$workspace/update.json"; then
+          cat "$workspace/update.json"
+          # Restore only when the command reports that no replacements were applied.
+          if grep -Eq '"result":null|"applied":0[,}]' "$workspace/update.json"; then
+            restore_pins
+          fi
+          exit 1
+        fi
+        cat "$workspace/update.json"
+      - task: x
+        vars:
+          CLI_ARGS: 'agentenv generate'
+      - task: x
+        vars:
+          CLI_ARGS: 'agentenv generate --providers=gh-aw'
+      - 'mise exec -- gh-aw compile --no-check-update --strict --purge --approve'
+      - task: agentic:lint
+      - task: lint:actions
+        vars:
+          CLI_ARGS: ''
+      - task: x
+        vars:
+          CLI_ARGS: 'kwb build'
 
   tool:
     desc: "Run a command with the project tools"
