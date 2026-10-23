@@ -184,12 +184,7 @@ jobs:
           go-version-file: 'go.mod'
           # Save Go build outputs and NilAway facts in the dedicated cache below.
           cache: false
-      - name: 'Install pinned NilAway'
-        uses: ./.github/actions/setup-tools
-        with:
-          install-args: --locked go:go.uber.org/nilaway/cmd/nilaway
-          # Rebuild the cached binary when the project's Go version changes.
-          cache-key-prefix: mise-nilaway-v1-${{ hashFiles('go.mod') }}
+      # Restore before source installation populates read-only module files.
       - name: 'Get NilAway cache metadata'
         id: nilaway-cache
         shell: bash
@@ -197,13 +192,13 @@ jobs:
           {
             echo "go-build=$(go env GOCACHE)"
             echo "go-mod=$(go env GOMODCACHE)"
-            echo "nilaway-version=$(mise current go:go.uber.org/nilaway/cmd/nilaway)"
           } >> "$GITHUB_OUTPUT"
       - name: 'Restore and save Go and NilAway caches'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         env:
+          # Identify the pinned tool without installing it before cache restore.
           NILAWAY_CACHE_PREFIX: nilaway-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup-go.outputs.go-version }}-${{
-            steps.nilaway-cache.outputs.nilaway-version }}
+            hashFiles('etc/mise.toml', 'etc/mise.lock') }}
         with:
           # go vet stores both compiled packages and analysis facts in GOCACHE.
           path: |-
@@ -214,6 +209,12 @@ jobs:
           restore-keys: |-
             ${{ env.NILAWAY_CACHE_PREFIX }}-${{ hashFiles('Taskfile.yaml', 'go.mod', 'go.sum') }}-
             ${{ env.NILAWAY_CACHE_PREFIX }}-
+      - name: 'Install pinned NilAway'
+        uses: ./.github/actions/setup-tools
+        with:
+          install-args: --locked go:go.uber.org/nilaway/cmd/nilaway
+          # Rebuild the cached binary when the project's Go version changes.
+          cache-key-prefix: mise-nilaway-v1-${{ hashFiles('go.mod') }}
       - name: 'Run NilAway'
         shell: bash
         run: |-

@@ -1,82 +1,156 @@
-# Go Code Style
+### Go code style
 
-## Project defaults
+#### Project defaults
 
-Follow explicit user instructions and project conventions before these defaults
-or upstream recommendations. Use the project's prescribed formatters and checks.
-These defaults apply to handwritten Go. Generated code follows its generator's
-conventions.
+- Follow explicit user instructions and project conventions before these defaults or
+  upstream recommendations.
 
-### Comments
+- Use the project's prescribed formatters and checks.
 
-- Start declaration documentation comments with the declared identifier and a
-  complete descriptive sentence. Put supplementary tags such as `@see`, `@note`,
-  `@todo`, and `@fixme` directly on following lines, without a blank comment line.
+- These defaults apply to handwritten Go. Generated code follows its generator's
+  conventions.
+
+#### Comments
+
+- Start declaration documentation comments with the declared identifier and a complete
+  descriptive sentence. Put supplementary tags such as `@see`, `@note`, `@todo`, and
+  `@fixme` directly on following lines, without a blank comment line.
+
+  Example: Declaration comments describe the symbol before adding supplementary tags.
+
+  ```go
+  // MCPServer describes an MCP server in Claude's configuration.
+  // @see https://docs.anthropic.com/en/docs/claude-code/mcp
+  type MCPServer struct {
+      Command string `json:"command,omitempty"`
+  }
+  ```
+
 - Use comment tags such as `@see`, `@todo`, `@fixme`, and `@note` where useful.
+
+  Example: Tags explain constraints, link supporting documentation, or record
+  outstanding work.
+
+  ```go
+  // @note Reconnect attempts must observe cancellation.
+  // @see https://go.dev/wiki/CodeReviewComments#contexts
+
+  // @todo Add a cancellation test for reconnect attempts.
+  // @fixme Ensure reconnect attempts respect the shutdown deadline.
+  ```
+
 - Use `@see` for links to related documentation, articles, or blog posts.
-- Use `// ---` comments to separate sections in code files.
 
-Declaration comments describe the symbol before adding supplementary tags:
+#### Formatting
 
-```go
-// MCPServer describes an MCP server in Claude's configuration.
-// @see https://docs.anthropic.com/en/docs/claude-code/mcp
-type MCPServer struct {
-    Command string `json:"command,omitempty"`
-}
-```
+- Write function bodies and control flow on multiple lines, including functions that
+  only return a value. Avoid one-line functions.
 
-Tags explain constraints, link supporting documentation, or record outstanding
-work. For example:
+- Write nonempty struct type declarations across multiple lines, with each field on its
+  own line, even for a single field. Empty structs may remain `struct{}`.
 
-```go
-// @note Reconnect attempts must observe cancellation.
-// @see https://go.dev/wiki/CodeReviewComments#contexts
+  Example:
 
-// @todo Add a cancellation test for reconnect attempts.
-// @fixme Ensure reconnect attempts respect the shutdown deadline.
-```
+  ```go
+  type Adapter struct {
+      service *kwb.Service
+  }
+  ```
 
-### Formatting
+- Write map literals with multiple entries and struct literals with multiple fields
+  across multiple lines, including in loop headers, arguments, and return statements.
+  Put each entry or field on its own line, use a trailing comma, and put the closing
+  brace on a separate line. Empty and single-entry or single-field literals may stay on
+  one line.
 
-- Write function bodies and control flow on multiple lines, including functions
-  that only return a value. Avoid one-line functions.
-- Write map literals with multiple entries and struct literals with multiple
-  fields across multiple lines, including in loop headers, arguments, and return
-  statements. Put each entry or field on its own line, use a trailing comma, and
-  put the closing brace on a separate line. Empty and single-entry or single-field
-  literals may stay on one line.
+  Example: Keep map entries and struct fields on separate lines, including a struct
+  literal passed directly to a function. This example assumes a named `Settings` type
+  with `Timeout` and `Attempts` fields.
+
+  ```go
+  delays := map[int]time.Duration{
+      1: time.Second,
+      2: 2 * time.Second,
+  }
+
+  configure(Settings{
+      Timeout:  5 * time.Second,
+      Attempts: len(delays),
+  })
+  ```
+
+  Single-entry and single-field literals may remain compact, such as
+  `map[int]time.Duration{1: time.Second}` and `Settings{Timeout: time.Second}`.
+
 - End text files with a newline.
 
-Keep map entries and struct fields on separate lines, including a struct literal
-passed directly to a function. This example assumes a named `Settings` type with
-`Timeout` and `Attempts` fields:
+#### Readability
 
-```go
-delays := map[int]time.Duration{
-    1: time.Second,
-    2: 2 * time.Second,
-}
+- Use blank lines to separate distinct logical steps, such as loading, validation, and
+  execution. Keep related statements together, including each call and its error check.
+  Choose grouping by purpose; a short block can still contain distinct steps.
 
-configure(Settings{
-    Timeout:  5 * time.Second,
-    Attempts: len(delays),
-})
-```
+  Example: Separate distinct logical steps, keeping each call with its error check.
 
-Single-entry and single-field literals may remain compact, such as
-`map[int]time.Duration{1: time.Second}` and `Settings{Timeout: time.Second}`.
+  ```go
+  settings, err := loadSettings(path)
+  if err != nil {
+      return err
+  }
 
-### Readability
+  if err := settings.Validate(); err != nil {
+      return err
+  }
 
-- Use blank lines to separate logical steps, such as loading, validation, and
-  execution. Keep related statements together: a call with its error check,
-  resource acquisition with cleanup registration, and assignments that build one
-  value. Follow the surrounding grouping when extending existing code.
-- Group struct fields by responsibility, such as dependencies, configuration,
-  and runtime state. Separate those groups with blank lines.
+  return run(ctx, settings)
+  ```
+
+  Example: Keep a lookup with its failure check, then separate the successful result.
+
+  ```go
+  value, exists := os.LookupEnv(name)
+  if !exists || len(value) == 0 {
+      expansionErr = fmt.Errorf("environment variable %q is unset or empty", name)
+      return ""
+  }
+
+  return value
+  ```
+
+  Example: Keep one logical step together.
+
+  ```go
+  func writeMessage(w io.Writer, message string) error {
+      if len(message) == 0 {
+          return nil
+      }
+      _, err := io.WriteString(w, message)
+      return err
+  }
+  ```
+
+- Group struct fields by responsibility, such as dependencies, configuration, and
+  runtime state. Keep related fields adjacent without blank lines between groups. Keep
+  constructor parameters and field initializers in the same order as the corresponding
+  struct fields.
+
+  Example: Keep dependencies, configuration, and runtime state grouped without blank
+  lines.
+
+  ```go
+  type Service struct {
+      logger     *slog.Logger
+      repository repository
+      timeout    time.Duration
+      batchSize  int
+      mu         sync.Mutex
+      running    bool
+  }
+  ```
+
 - Initialize struct values in named variables before calling their methods. Keep
-  construction and the related call together.
+  construction and the related call together. Avoid calling methods directly on struct
+  literals or pointers to them.
 
   Prefer:
 
@@ -85,579 +159,690 @@ Single-entry and single-field literals may remain compact, such as
   return message.Encode()
   ```
 
-  Avoid calling methods directly on struct literals or pointers to them:
+  Avoid:
 
   ```go
   return (&Message{Body: body}).Encode()
   ```
 
-Separate logical steps, keeping each call with its error check:
+- For a small fixed set of fields, use direct checks and assignments. Avoid initializing
+  temporary maps or other collections solely to drive those operations.
 
-```go
-settings, err := loadSettings(path)
-if err != nil {
-    return err
-}
+  Prefer:
 
-if err := settings.Validate(); err != nil {
-    return err
-}
+  ```go
+  fields := make(map[string]string)
+  if len(name) > 0 {
+      fields[nameKey] = name
+  }
+  if len(description) > 0 {
+      fields[descriptionKey] = description
+  }
+  ```
 
-return run(ctx, settings)
-```
+  Avoid:
 
-Keep resource acquisition and cleanup registration together:
+  ```go
+  fields := make(map[string]string)
+  for key, value := range map[string]string{
+      nameKey:        name,
+      descriptionKey: description,
+  } {
+      if len(value) > 0 {
+          fields[key] = value
+      }
+  }
+  ```
 
-```go
-ctx, cancel := context.WithTimeout(ctx, timeout)
-defer cancel()
+- Keep resource acquisition and cleanup registration together.
 
-return client.Fetch(ctx)
-```
+  Example:
 
-Within loops, separate filtering from processing:
+  ```go
+  ctx, cancel := context.WithTimeout(ctx, timeout)
+  defer cancel()
 
-```go
-for _, entry := range entries {
-    if entry.IsDir() {
-        continue
-    }
+  return client.Fetch(ctx)
+  ```
 
-    names = append(names, entry.Name())
-}
-```
+- Within loops, separate filtering from processing.
 
-In tests, separate setup, execution, and assertions:
+  Example:
 
-```go
-input := []int{3, 1, 2}
-want := []int{1, 2, 3}
+  ```go
+  for _, entry := range entries {
+      if entry.IsDir() {
+          continue
+      }
 
-slices.Sort(input)
+      names = append(names, entry.Name())
+  }
+  ```
 
-if !slices.Equal(input, want) {
-    t.Fatalf("got %v, want %v", input, want)
-}
-```
+- In tests, separate setup, execution, and assertions.
 
-Group dependencies, configuration, and runtime state:
+  Example:
 
-```go
-type Service struct {
-    logger     *slog.Logger
-    repository repository
+  ```go
+  input := []int{3, 1, 2}
+  want := []int{1, 2, 3}
 
-    timeout   time.Duration
-    batchSize int
+  slices.Sort(input)
 
-    mu      sync.Mutex
-    running bool
-}
-```
+  if !slices.Equal(input, want) {
+      t.Fatalf("got %v, want %v", input, want)
+  }
+  ```
 
-### Naming and declarations
+#### Naming and declarations
 
-| Convention          | Guidance                                               |
-| ------------------- | ------------------------------------------------------ |
-| Generic values      | Prefer `any` over `interface{}`.                       |
-| Context variables   | Name `context.Context` variables `ctx`.                |
-| Empty string checks | Prefer `len(s) == 0` over `s == ""` for empty strings. |
-| YAML filenames      | Prefer `.yaml` over `.yml`.                            |
+- Prefer `any` over `interface{}`.
 
-- Use named structs and interfaces. Anonymous structs and interfaces, including
-  type assertions to anonymous interfaces, are allowed only in tests.
+- Name `context.Context` variables `ctx`.
+
+- Prefer `len(s) == 0` over `s == ""` for empty strings.
+
+- Prefer `.yaml` over `.yml`.
+
+- Prefer concise, descriptive names that read clearly with the package name. Omit words
+  that repeat that context.
+
+  Example:
+
+  ```go
+  // Prefer:
+  claude.Name
+  cache.Lookup
+
+  // Avoid redundant qualifiers:
+  claude.ClaudeProviderName
+  cache.LookupCacheEntry
+  ```
+
+- Use named structs and interfaces. Anonymous structs and interfaces, including type
+  assertions to anonymous interfaces, are allowed only in tests.
+
 - Define types and constants at package scope. Function-local type and constant
   declarations are allowed only in tests.
-- Name intentionally unused parameters `_` in function and method
-  implementations, including parameters retained for a common constructor
-  signature. Keep descriptive parameter names in interface declarations.
 
-Keep common constructor signatures explicit even when some parameters are unused:
+  The table-driven example under [Testing](#testing) demonstrates a function-local
+  constant and an anonymous struct, both permitted in tests.
 
-```go
-func New(
-    _ *slog.Logger,
-    settings Settings,
-    _ provider.TemplateEngineAccessor,
-    _ string,
-) *Provider {
-    return &Provider{settings: settings}
-}
-```
+- Name intentionally unused parameters `_` in function and method implementations,
+  including parameters retained for a common constructor signature. Keep descriptive
+  parameter names in interface declarations. Keep common constructor signatures explicit
+  even when some parameters are unused.
 
-Reuse standard interfaces such as `io.Closer` when they describe the capability.
-For a custom capability, declare the interface once and use its name in type
-assertions:
+  Example:
 
-```go
-type cacheAccessor interface {
-    Invalidate(ctx context.Context, key string) error
-}
+  ```go
+  func New(
+      _ *slog.Logger,
+      _ provider.TemplateEngineAccessor,
+      settings Settings,
+      _ string,
+  ) *Provider {
+      return &Provider{settings: settings}
+  }
+  ```
 
-func Invalidate(ctx context.Context, value any, key string) error {
-    cache, ok := value.(cacheAccessor)
-    if !ok {
-        return errors.New("value does not support cache invalidation")
-    }
+- Reuse standard interfaces such as `io.Closer` when they describe the capability. For a
+  custom capability, declare the interface once and use its name in type assertions.
 
-    return cache.Invalidate(ctx, key)
-}
-```
+  Example:
 
-The table-driven example under [Testing](#testing) demonstrates a function-local
-constant and an anonymous struct, both permitted in tests.
+  ```go
+  type cacheAccessor interface {
+      Invalidate(ctx context.Context, key string) error
+  }
 
-### String constants
+  func Invalidate(ctx context.Context, value any, key string) error {
+      cache, ok := value.(cacheAccessor)
+      if !ok {
+          return errors.New("value does not support cache invalidation")
+      }
 
-- Use named string constants for values with shared or stable meaning, such as
-  protocol values, configuration keys, or values reused across operations.
+      return cache.Invalidate(ctx, key)
+  }
+  ```
+
+#### Constants
+
+- Use `MixedCaps` for exported constants and `mixedCaps` for unexported constants.
+  Preserve initialisms, such as `JSON` and `URL`, within names.
+
+- Give related constants a shared prefix that identifies their role or domain. Avoid
+  repeating the package name in that prefix.
+
+  Example: CLI flag constants share the `flag` prefix. The independent environment
+  prefix uses a standalone declaration.
+
+  ```go
+  const envPrefix = "GO42X"
+
+  const (
+      flagContextDoc = "context-doc"
+      flagJSON       = "json"
+      flagRoot       = "root"
+  )
+  ```
+
+  Here, `flag` identifies the family. In package `cmd`, `cmdFlagJSON` would repeat
+  package context.
+
+- Keep constants for the same concern in one `const` block, including defaults, limits,
+  and related values. Do not split a coherent group merely because its constants have
+  different prefixes.
+
+  Example: Keep a default and its limits together as one response budget, even though
+  their names use different prefixes.
+
+  ```go
+  const (
+      DefaultContentBytes = 16 * 1024
+      MaxContentBytes     = 48 * 1024
+      MaxItems            = 40
+  )
+  ```
+
+- Use separate declarations for distinct concerns instead of blank lines within a block.
+  Declare an independent constant without a block.
+
+  Example: Directory names and file suffixes describe distinct concerns. Give each
+  family its own block.
+
+  ```go
+  const (
+      dirChunks   = "chunks"
+      dirUpstream = "upstream"
+  )
+
+  const (
+      suffixMarkdown = ".md"
+      suffixTemplate = ".tpl.md"
+  )
+  ```
+
+- Reuse constants from the package that owns the value. Place constants after imports
+  and before other declarations. Apply the same judgment in tests.
+
+#### String constants
+
+- Use named string constants for values with shared or stable meaning, such as protocol
+  values, configuration keys, or values reused across operations.
+
+  Example: Name protocol values even when they appear in only one operation. Keep
+  ordinary error messages inline.
+
+  ```go
+  const (
+      headerContentType = "Content-Type"
+      contentTypeJSON   = "application/json"
+  )
+
+  func WriteJSON(w http.ResponseWriter, value any) error {
+      w.Header().Set(headerContentType, contentTypeJSON)
+
+      if err := json.NewEncoder(w).Encode(value); err != nil {
+          return fmt.Errorf("encode response: %w", err)
+      }
+
+      return nil
+  }
+  ```
+
 - A single-use value can warrant a constant when its name explains that meaning;
   ordinary messages and disposable test data can remain literals.
-- Reuse constants from the package that owns the value. Group constants after
-  imports and before other declarations. Apply the same judgment in tests.
 
-Name protocol values even when they appear in only one operation. Keep ordinary
-error messages inline:
+- For values already defined by another package, use its constant, such as
+  `http.MethodGet`, instead of defining a second constant for `"GET"`.
 
-```go
-const (
-    headerContentType = "Content-Type"
-    contentTypeJSON   = "application/json"
-)
-
-func WriteJSON(w http.ResponseWriter, value any) error {
-    w.Header().Set(headerContentType, contentTypeJSON)
-
-    if err := json.NewEncoder(w).Encode(value); err != nil {
-        return fmt.Errorf("encode response: %w", err)
-    }
-
-    return nil
-}
-```
-
-For values already defined by another package, use its constant, such as
-`http.MethodGet`, instead of defining a second constant for `"GET"`.
-
-### Context values
+#### Context values
 
 - Use private, named key types for context values rather than plain string keys.
-- Keep keys and access functions in the package that owns the value. Callers use
-  those functions instead of repeating `ctx.Value` or `context.WithValue`.
+
+- Keep keys and access functions in the package that owns the value. Callers use those
+  functions instead of repeating `ctx.Value` or `context.WithValue`.
+
 - Make the accessor's behavior for a missing value clear.
 
-For request identity, the accessor returns an empty string when no ID is present:
+  Example: For request identity, the accessor returns an empty string when no ID is
+  present.
 
-```go
-const requestIDContextKey contextKey = "request_id"
+  ```go
+  const requestIDContextKey contextKey = "request_id"
 
-type contextKey string
+  type contextKey string
 
-func WithRequestID(ctx context.Context, requestID string) context.Context {
-    return context.WithValue(ctx, requestIDContextKey, requestID)
-}
+  func WithRequestID(ctx context.Context, requestID string) context.Context {
+      return context.WithValue(ctx, requestIDContextKey, requestID)
+  }
 
-func RequestIDFromContext(ctx context.Context) string {
-    requestID, _ := ctx.Value(requestIDContextKey).(string)
-    return requestID
-}
-```
+  func RequestIDFromContext(ctx context.Context) string {
+      requestID, _ := ctx.Value(requestIDContextKey).(string)
+      return requestID
+  }
+  ```
 
-### Errors
+#### Errors
 
 - Wrap errors with `fmt.Errorf` and `%w` when callers need the underlying error.
-- Inspect errors with `errors.Is` and `errors.As`, matching identity or type
-  rather than message text.
-- Return errors from services and libraries. Command entry points decide the
-  process exit status.
-- Start ordinary error messages with lowercase text and omit trailing
-  punctuation. Preserve capitalization for proper names and acronyms.
 
-Add operation context while keeping the error suitable for wrapping:
+  Example: Add operation context while keeping the error suitable for wrapping.
 
-```go
-return fmt.Errorf("load configuration %q: %w", path, err)
-```
+  ```go
+  return fmt.Errorf("load configuration %q: %w", path, err)
+  ```
 
-Inspect a wrapped cause with `errors.Is`. Use `errors.As` when the error's type
-provides details, such as the path of a failed file operation:
+- Inspect errors with `errors.Is` and `errors.As`, matching identity or type rather than
+  message text.
 
-```go
-if errors.Is(err, fs.ErrNotExist) {
-    return fmt.Errorf("configuration is missing: %w", err)
-}
+  Example: Inspect a wrapped cause with `errors.Is`. Use `errors.As` when the error's
+  type provides details, such as the path of a failed file operation.
 
-var pathErr *fs.PathError
-if errors.As(err, &pathErr) {
-    return fmt.Errorf("load configuration %q: %w", pathErr.Path, err)
-}
+  ```go
+  if errors.Is(err, fs.ErrNotExist) {
+      return fmt.Errorf("configuration is missing: %w", err)
+  }
 
-return err
-```
+  var pathErr *fs.PathError
+  if errors.As(err, &pathErr) {
+      return fmt.Errorf("load configuration %q: %w", pathErr.Path, err)
+  }
 
-### Dependency interfaces and boundaries
+  return err
+  ```
 
-- Define dependency interfaces in the consuming package with only the methods
-  that consumer needs. Keep them beside the consumer or group them in `accessors.go`.
-- Prefer names such as `xxxAccessor`, or a simple subsystem name such as `cache`
-  or `events`.
-- Keep mock-generation directives with the interface declarations and generate
-  mocks into the package's `mocks/` directory.
-- Entry points compose dependencies and own process lifecycle. Services own
-  business operations. Adapters own protocol parsing, conversion, and error
-  mapping. Follow the project's existing package layout.
+- Return errors from services and libraries. Command entry points decide the process
+  exit status.
+
+- Start ordinary error messages with lowercase text and omit trailing punctuation.
+  Preserve capitalization for proper names and acronyms.
+
+#### Dependency interfaces and boundaries
+
+- Define dependency interfaces in the consuming package with only the methods that
+  consumer needs. Keep them beside the consumer or group them in `accessors.go`.
+
+  Example: In the consuming package's `accessors.go`, declare only the operation the
+  service needs and keep the mock-generation directive beside it.
+
+  ```go
+  //go:generate mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
+
+  type repository interface {
+      Lookup(ctx context.Context, key string) (string, error)
+  }
+  ```
+
+  The constructor under [Functional options](#functional-options) accepts this interface
+  as a required dependency. A concrete repository can implement many other operations
+  without adding them to this interface.
+
+- Prefer names such as `xxxAccessor`, or a simple subsystem name such as `cache` or
+  `events`.
+
+- Keep mock-generation directives with the interface declarations and generate mocks
+  into the package's `mocks/` directory.
+
+- Entry points compose dependencies and own process lifecycle. Services own business
+  operations. Adapters own protocol parsing, conversion, and error mapping. Follow the
+  project's existing package layout.
+
 - Parse and validate settings before initializing dependencies.
 
-In the consuming package's `accessors.go`, declare only the operation the
-service needs and keep the mock-generation directive beside it:
+#### Resource ownership
 
-```go
-//go:generate mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
+- Give background goroutines and resources explicit owners and shutdown paths. Use
+  request contexts for request work and component contexts for workers.
 
-type repository interface {
-    Lookup(ctx context.Context, key string) (string, error)
-}
-```
+  Example: Give an owned worker a cancellation function and a completion channel. The
+  callback observes its component context; shutdown cancels it and waits for it to
+  finish. The caller supplies a separate, deadline-bound shutdown context.
 
-The constructor under [Functional options](#functional-options) accepts this
-interface as a required dependency. A concrete repository can implement many
-other operations without adding them to this interface.
+  ```go
+  type Signal struct{}
 
-### Resource ownership
+  type Worker struct {
+      cancel context.CancelFunc
+      done   chan Signal
+  }
 
-- Give background goroutines and resources explicit owners and shutdown paths.
-  Use request contexts for request work and component contexts for workers.
-- Bound external calls and retry waits. Keep concurrency limits in force until
-  the underlying work finishes, including after a caller times out.
-- Shutdown must wait for owned work and release resources within its deadline.
-  Report incomplete cleanup. Release acquired resources when initialization
-  fails partway through.
-- Expose receive-only channels to consumers. Keep sending and closing with the
-  owner, and document when the channel closes.
+  func NewWorker(ctx context.Context, run func(context.Context)) *Worker {
+      ctx, cancel := context.WithCancel(ctx)
+      w := &Worker{
+          cancel: cancel,
+          done:   make(chan Signal),
+      }
 
-The producer owns this buffered result channel. Consumers can receive the result
-without being able to send or close it. The callback must observe cancellation
-through the supplied context:
+      go func() {
+          defer close(w.done)
+          run(ctx)
+      }()
 
-```go
-// Start runs work and closes the channel after sending its result.
-func Start(ctx context.Context, run func(context.Context) error) <-chan error {
-    result := make(chan error, 1)
+      return w
+  }
 
-    go func() {
-        defer close(result)
-        result <- run(ctx)
-    }()
+  func (w *Worker) Shutdown(ctx context.Context) error {
+      w.cancel()
 
-    return result
-}
-```
+      select {
+      case <-w.done:
+          return nil
+      case <-ctx.Done():
+          return fmt.Errorf("wait for worker shutdown: %w", ctx.Err())
+      }
+  }
+  ```
 
-Give an owned worker a cancellation function and a completion channel. The
-callback observes its component context; shutdown cancels it and waits for it
-to finish. The caller supplies a separate, deadline-bound shutdown context:
+- Bound external calls and retry waits. Keep concurrency limits in force until the
+  underlying work finishes, including after a caller times out.
 
-```go
-type Signal struct{}
+  Example: For a concurrency limit, use a buffered slot channel owned by the component,
+  such as `make(chan Signal, 4)`. With a deadline-bound request context, waiting can end
+  before the underlying callback returns. Release the slot in the goroutine that
+  performs the work, rather than when the caller stops waiting.
 
-type Worker struct {
-    cancel context.CancelFunc
-    done   chan Signal
-}
+  ```go
+  func runBounded(ctx context.Context, slots chan Signal, run func(context.Context) error) error {
+      select {
+      case slots <- Signal{}:
+      case <-ctx.Done():
+          return ctx.Err()
+      }
 
-func NewWorker(ctx context.Context, run func(context.Context)) *Worker {
-    ctx, cancel := context.WithCancel(ctx)
-    w := &Worker{
-        cancel: cancel,
-        done:   make(chan Signal),
-    }
+      result := make(chan error, 1)
 
-    go func() {
-        defer close(w.done)
-        run(ctx)
-    }()
+      go func() {
+          defer func() {
+              <-slots
+          }()
 
-    return w
-}
+          if err := ctx.Err(); err != nil {
+              result <- err
+              return
+          }
 
-func (w *Worker) Shutdown(ctx context.Context) error {
-    w.cancel()
+          result <- run(ctx)
+      }()
 
-    select {
-    case <-w.done:
-        return nil
-    case <-ctx.Done():
-        return fmt.Errorf("wait for worker shutdown: %w", ctx.Err())
-    }
-}
-```
+      select {
+      case err := <-result:
+          return err
+      case <-ctx.Done():
+          return ctx.Err()
+      }
+  }
+  ```
 
-When initialization fails after acquiring a connection, close it before
-returning. Here, `dial` and `initialize` are project operations, and `logger` is
-the component's injected logger. Report a cleanup failure as well:
+- Shutdown must wait for owned work and release resources within its deadline. Report
+  incomplete cleanup. Release acquired resources when initialization fails partway
+  through.
 
-```go
-conn, err := dial(ctx)
-if err != nil {
-    return nil, fmt.Errorf("connect: %w", err)
-}
+  Example: When initialization fails after acquiring a connection, close it before
+  returning. Here, `dial` and `initialize` are project operations, and `logger` is the
+  component's injected logger. Report a cleanup failure as well.
 
-if err := initialize(ctx, conn); err != nil {
-    if closeErr := conn.Close(); closeErr != nil {
-        logger.ErrorContext(ctx, "close connection after failed initialization",
-            slog.Any("error", closeErr),
-        )
-    }
+  ```go
+  conn, err := dial(ctx)
+  if err != nil {
+      return nil, fmt.Errorf("connect: %w", err)
+  }
 
-    return nil, fmt.Errorf("initialize connection: %w", err)
-}
+  if err := initialize(ctx, conn); err != nil {
+      if closeErr := conn.Close(); closeErr != nil {
+          logger.ErrorContext(ctx, "close connection after failed initialization",
+              slog.Any("error", closeErr),
+          )
+      }
 
-return conn, nil
-```
+      return nil, fmt.Errorf("initialize connection: %w", err)
+  }
 
-For a concurrency limit, use a buffered slot channel owned by the component,
-such as `make(chan Signal, 4)`. With a deadline-bound request context, waiting
-can end before the underlying callback returns. Release the slot in the
-goroutine that performs the work, rather than when the caller stops waiting:
+  return conn, nil
+  ```
 
-```go
-func runBounded(ctx context.Context, slots chan Signal, run func(context.Context) error) error {
-    select {
-    case slots <- Signal{}:
-    case <-ctx.Done():
-        return ctx.Err()
-    }
+- Expose receive-only channels to consumers. Keep sending and closing with the owner,
+  and document when the channel closes.
 
-    result := make(chan error, 1)
+  Example: The producer owns this buffered result channel. Consumers can receive the
+  result without being able to send or close it. The callback must observe cancellation
+  through the supplied context.
 
-    go func() {
-        defer func() {
-            <-slots
-        }()
+  ```go
+  // Start runs work and closes the channel after sending its result.
+  func Start(ctx context.Context, run func(context.Context) error) <-chan error {
+      result := make(chan error, 1)
 
-        if err := ctx.Err(); err != nil {
-            result <- err
-            return
-        }
+      go func() {
+          defer close(result)
+          result <- run(ctx)
+      }()
 
-        result <- run(ctx)
-    }()
+      return result
+  }
+  ```
 
-    select {
-    case err := <-result:
-        return err
-    case <-ctx.Done():
-        return ctx.Err()
-    }
-}
-```
+#### Logging
 
-### Logging
+- Inject component loggers through options and default to a discard logger when none is
+  supplied. Use a `component` field to identify the owner of a log.
 
-- Inject component loggers through options and default to a discard logger when
-  none is supplied. Use a `component` field to identify the owner of a log.
+  The [functional-options example](#functional-options) supplies `WithLogger`, defaults
+  to a discard logger, and attaches the service's `component` field.
+
 - Prefer context-aware logging when a context is available.
-- Use typed `slog.Attr` arguments and `snake_case` field names. Follow the
-  project's lint rules for formatting attribute lists.
+
+- Use typed `slog.Attr` arguments and `snake_case` field names. Follow the project's
+  lint rules for formatting attribute lists.
+
+  Example: Keep field names consistent and preserve each value's type.
+
+  ```go
+  logger.ErrorContext(ctx, "request failed",
+      slog.String("request_id", requestID),
+      slog.Duration("elapsed", elapsed),
+      slog.Any("error", err),
+  )
+  ```
+
 - With `slog`, use `slog.Any("error", err)` for logged errors.
 
-The [functional-options example](#functional-options) supplies `WithLogger`,
-defaults to a discard logger, and attaches the service's `component` field.
+#### Testing
 
-Keep field names consistent and preserve each value's type:
-
-```go
-logger.ErrorContext(ctx, "request failed",
-    slog.String("request_id", requestID),
-    slog.Duration("elapsed", elapsed),
-    slog.Any("error", err),
-)
-```
-
-### Testing
+- Keep helpers and supporting declarations used only by tests in `_test.go` files.
+  When refactoring removes a helper's last production caller, remove it from
+  production code and move any logic still needed by tests into test files.
 
 - Test observable behavior and failure paths.
-- Keep unit tests for `foo.go` together in `foo_test.go` in the same directory,
-  even when the suite grows. Use descriptive names for package-wide, integration,
-  and fuzz tests.
-- Put integration and end-to-end tests in `tests/integration/` and `tests/e2e/`.
-  Keep other suites in their matching directories under `tests/` when used.
+
+  Example: Exercise a failure path and assert the observable result. Here,
+  `newTestRepository` supplies an isolated fixture implementing `repository`, and
+  `NewService` is the constructor shown under [Functional options](#functional-options).
+
+  ```go
+  func TestNewServiceRejectsInvalidTimeout(t *testing.T) {
+      const negativeTimeout = -time.Second
+
+      repo := newTestRepository()
+      tests := []struct {
+          name    string
+          timeout time.Duration
+      }{
+          {
+              name:    "zero",
+              timeout: 0,
+          },
+          {
+              name:    "negative",
+              timeout: negativeTimeout,
+          },
+      }
+
+      for _, tt := range tests {
+          t.Run(tt.name, func(t *testing.T) {
+              service, err := NewService(repo, WithTimeout(tt.timeout))
+              if err == nil || service != nil {
+                  t.Fatalf("NewService = (%v, %v), want nil service and an error", service, err)
+              }
+          })
+      }
+  }
+  ```
+
+- Keep unit tests for `foo.go` together in `foo_test.go` in the same directory, even
+  when the suite grows. Use descriptive names for package-wide, integration, and fuzz
+  tests.
+
+- Put integration and end-to-end tests in `tests/integration/` and `tests/e2e/`. Keep
+  other suites in their matching directories under `tests/` when used.
+
 - Isolate resources, clean them up, and bound waits. Prefer synchronization or
   `testing/synctest` over fixed sleeps for in-process concurrency.
-- Run the checks appropriate to the changed behavior and affected callers.
-  Report checks actually performed, their results, and material gaps in
-  verification.
 
-Exercise a failure path and assert the observable result. Here,
-`newTestRepository` supplies an isolated fixture implementing `repository`,
-and `NewService` is the constructor shown under [Functional options](#functional-options):
+  Example: For concurrent work, synchronize on observable events. This test uses the
+  worker above and `testing/synctest` to establish that shutdown is still waiting while
+  the callback is blocked, then releases it without a fixed sleep.
 
-```go
-func TestNewServiceRejectsInvalidTimeout(t *testing.T) {
-    const negativeTimeout = -time.Second
+  ```go
+  func TestWorkerShutdownWaitsForWork(t *testing.T) {
+      synctest.Test(t, func(t *testing.T) {
+          release := make(chan Signal)
+          worker := NewWorker(t.Context(), func(ctx context.Context) {
+              <-ctx.Done()
+              <-release
+          })
 
-    repo := newTestRepository()
-    tests := []struct {
-        name    string
-        timeout time.Duration
-    }{
-        {
-            name:    "zero",
-            timeout: 0,
-        },
-        {
-            name:    "negative",
-            timeout: negativeTimeout,
-        },
-    }
+          result := make(chan error, 1)
+          go func() {
+              ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+              defer cancel()
 
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            service, err := NewService(repo, WithTimeout(tt.timeout))
-            if err == nil || service != nil {
-                t.Fatalf("NewService = (%v, %v), want nil service and an error", service, err)
-            }
-        })
-    }
-}
-```
+              result <- worker.Shutdown(ctx)
+          }()
 
-For concurrent work, synchronize on observable events. This test uses the
-worker above and `testing/synctest` to establish that shutdown is still waiting
-while the callback is blocked, then releases it without a fixed sleep:
+          synctest.Wait()
+          select {
+          case err := <-result:
+              close(release)
+              t.Fatalf("shutdown returned before work finished: %v", err)
+          default:
+          }
 
-```go
-func TestWorkerShutdownWaitsForWork(t *testing.T) {
-    synctest.Test(t, func(t *testing.T) {
-        release := make(chan Signal)
-        worker := NewWorker(t.Context(), func(ctx context.Context) {
-            <-ctx.Done()
-            <-release
-        })
+          close(release)
+          if err := <-result; err != nil {
+              t.Fatalf("shutdown: %v", err)
+          }
+      })
+  }
+  ```
 
-        result := make(chan error, 1)
-        go func() {
-            ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-            defer cancel()
+- Run the checks appropriate to the changed behavior and affected callers. Report checks
+  actually performed, their results, and material gaps in verification.
 
-            result <- worker.Shutdown(ctx)
-        }()
+#### Generated and vendored files
 
-        synctest.Wait()
-        select {
-        case err := <-result:
-            close(release)
-            t.Fatalf("shutdown returned before work finished: %v", err)
-        default:
-        }
+- Edit source definitions and generator configuration, then regenerate outputs through
+  the project's workflow.
 
-        close(release)
-        if err := <-result; err != nil {
-            t.Fatalf("shutdown: %v", err)
-        }
-    })
-}
-```
+- Update vendored files through their dependency update process, preserving recorded
+  versions and sources.
 
-### Generated and vendored files
+#### Patterns
 
-- Edit source definitions and generator configuration, then regenerate outputs
-  through the project's workflow.
-- Update vendored files through their dependency update process, preserving
-  recorded versions and sources.
+##### Functional options
 
-## Patterns
+- When a component has optional settings, use named functional options such as `Option`
+  and `WithTimeout`. Keep required dependencies explicit in the constructor's
+  parameters, with `opts ...Option` last.
 
-### Functional options
+  This example uses the consumer-owned `repository` interface declared above. Logger
+  injection is another optional setting.
 
-- When a component has optional settings, use named functional options such as
-  `Option` and `WithTimeout`. Keep required dependencies explicit in the
-  constructor's parameters, with `opts ...Option` last.
-- Keep option declarations and functions together in `options.go` when following
-  the project's package layout. Options configure values; constructors own
-  validation and fallible initialization.
+  Example:
+
+  ```go
+  const defaultTimeout = 5 * time.Second
+
+  type Service struct {
+      logger     *slog.Logger
+      repository repository
+      timeout    time.Duration
+  }
+
+  type Option func(*Service)
+
+  func WithLogger(logger *slog.Logger) Option {
+      return func(s *Service) {
+          s.logger = logger
+      }
+  }
+
+  func WithTimeout(timeout time.Duration) Option {
+      return func(s *Service) {
+          s.timeout = timeout
+      }
+  }
+
+  func NewService(repository repository, opts ...Option) (*Service, error) {
+      s := &Service{
+          repository: repository,
+          timeout:    defaultTimeout,
+      }
+
+      for _, opt := range opts {
+          opt(s)
+      }
+
+      if s.timeout <= 0 {
+          return nil, errors.New("timeout must be positive")
+      }
+
+      if s.logger == nil {
+          s.logger = slog.New(slog.DiscardHandler)
+      }
+      s.logger = s.logger.With(slog.String("component", "service"))
+
+      return s, nil
+  }
+  ```
+
+  Example: Callers supply required dependencies directly and override optional settings.
+
+  ```go
+  service, err := NewService(repo,
+      WithTimeout(10*time.Second),
+      WithLogger(logger),
+  )
+  if err != nil {
+      return err
+  }
+  ```
+
+  Calling `NewService(repo)` uses the default timeout.
+
+- Keep option declarations and functions together in `options.go` when following the
+  project's package layout. Options configure values; constructors own validation and
+  fallible initialization.
+
 - Set defaults, apply options in the supplied order, and validate the resulting
   configuration before opening connections or starting owned work.
+
 - Keep constructors without optional settings simple; they do not need options.
 
-This example uses the consumer-owned `repository` interface declared above.
-Logger injection is another optional setting:
+#### Read detailed conventions on demand
 
-```go
-const defaultTimeout = 5 * time.Second
+- Before editing or reviewing Go code, consult the sections relevant to the task using
+  the table below. Paths are relative to the project root. These Markdown snapshots are
+  installed locally by go42x; no network access is needed.
 
-type Service struct {
-    logger     *slog.Logger
-    repository repository
-
-    timeout time.Duration
-}
-
-type Option func(*Service)
-
-func WithLogger(logger *slog.Logger) Option {
-    return func(s *Service) {
-        s.logger = logger
-    }
-}
-
-func WithTimeout(timeout time.Duration) Option {
-    return func(s *Service) {
-        s.timeout = timeout
-    }
-}
-
-func NewService(repository repository, opts ...Option) (*Service, error) {
-    s := &Service{
-        repository: repository,
-        timeout:    defaultTimeout,
-    }
-
-    for _, opt := range opts {
-        opt(s)
-    }
-
-    if s.timeout <= 0 {
-        return nil, errors.New("timeout must be positive")
-    }
-
-    if s.logger == nil {
-        s.logger = slog.New(slog.DiscardHandler)
-    }
-    s.logger = s.logger.With(slog.String("component", "service"))
-
-    return s, nil
-}
-```
-
-Callers supply required dependencies directly and override optional settings:
-
-```go
-service, err := NewService(repo,
-    WithTimeout(10*time.Second),
-    WithLogger(logger),
-)
-if err != nil {
-    return err
-}
-```
-
-Calling `NewService(repo)` uses the default timeout.
-
-## Read detailed conventions on demand
-
-Before editing or reviewing Go code, consult the sections relevant to the task
-using the table below. Paths are relative to the project root. These Markdown
-snapshots are installed locally by go42x; no network access is needed.
-
-When available, use the knowledge-base tools from the `go42x` MCP server. Search
-with `kwb_search`, setting `kind="documentation"`, `language="md"`, and `path_prefix`
-to the selected reference. Read matching sections with `kwb_get_file` using their
-source line ranges. If the tools are unavailable or the reference is not indexed,
-use `rg` (ripgrep) to find headings or symbols and read the relevant source lines
-with a file-reading tool. Follow cross-references when more detail is needed.
-Read only the necessary sections; do not load every reference into the initial
-context.
+- When available, use the knowledge-base tools from the `go42x` MCP server. Search with
+  `kwb_search`, setting `kind="documentation"`, `language="md"`, and `path_prefix` to
+  the selected reference. Read matching sections with `kwb_get_file` using their source
+  line ranges. If the tools are unavailable or the reference is not indexed, use `rg`
+  (ripgrep) to find headings or symbols and read the relevant source lines with a
+  file-reading tool. Follow cross-references when more detail is needed. Read only the
+  necessary sections; do not load every reference into the initial context.
 
 | Task or question                                 | Local reference                               | Sections to find                                                          |
 | ------------------------------------------------ | --------------------------------------------- | ------------------------------------------------------------------------- |

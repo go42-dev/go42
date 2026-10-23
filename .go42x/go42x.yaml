@@ -1,8 +1,14 @@
 ---
 
-# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/v0.41.0/assets/schemas/go42x.schema.yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/v0.45.0/assets/schemas/go42x.schema.yaml
 
 version: "1.0"
+
+# Variable substitution is supported in configuration string values.
+# Example: temp-dir: '${GO42X_PROJECT_ROOT}/.build'
+#
+# Supported substitutions:
+# - ${GO42X_PROJECT_ROOT}: absolute path to the project directory.
 
 project:
   name: go42
@@ -38,6 +44,7 @@ context:
 # Set enabled: false to skip a provider; omitted enabled defaults to true.
 # Keep shared defaults disabled; enable your providers in ignored go42x.local.yaml.
 # --providers or GO42X_PROVIDERS selects an exact list for generate and doctor.
+# --no-local skips go42x.local.yaml; use it when generating shared workflows.
 # Disabling preserves existing settings, including with --clean.
 # Shared AGENTS.md is still generated when all providers are disabled.
 providers:
@@ -111,11 +118,14 @@ providers:
   # Generates .github/workflows/900-aw-mcp.md for import before gh-aw compilation.
   gh-aw:
     enabled: false
-    # Map $NAME and ${NAME} references to explicit workflow values; missing bindings fail generation.
-    # Native ${{ ... }} expressions are preserved. Bindings never read the local environment.
+    # Map ${NAME} references to explicit workflow values; missing bindings fail generation.
+    # Keep GitHub ${{ ... }} expressions here. Bindings never read the local environment.
     bindings:
       CONTEXT7_API_KEY: '${{ secrets.CONTEXT7_API_KEY }}'
       GITHUB_TOKEN: '${{ github.token }}'
+      GITLAB_PERSONAL_ACCESS_TOKEN: '${{ secrets.GITLAB_PERSONAL_ACCESS_TOKEN }}'
+      MCP_IMAGE_VERSION: '${{ env.GO42X_MCP_IMAGE_VERSION }}'
+      PROJECT_DIR: '${{ github.workspace }}'
 
 mcp:
   # All tools from enabled servers are available, including tools omitted from these lists.
@@ -137,13 +147,13 @@ mcp:
       - mcp
     container:
       image: ghcr.io/go42-dev/go42x
-      version: '${{ env.GO42X_MCP_IMAGE_VERSION }}'
+      version: '${MCP_IMAGE_VERSION}'
       command: gopls
       args:
         - mcp
-      workdir: '${{ github.workspace }}'
+      workdir: '${PROJECT_DIR}'
       mounts:
-        - '${{ github.workspace }}:${{ github.workspace }}:rw'
+        - '${PROJECT_DIR}:${PROJECT_DIR}:rw'
     tools:
       - go_diagnostics
       - go_file_context
@@ -166,13 +176,13 @@ mcp:
       - mcp
     container:
       image: ghcr.io/go42-dev/go42x
-      version: '${{ env.GO42X_MCP_IMAGE_VERSION }}'
+      version: '${MCP_IMAGE_VERSION}'
       command: go42x
       args:
         - mcp
-      workdir: '${{ github.workspace }}'
+      workdir: '${PROJECT_DIR}'
       mounts:
-        - '${{ github.workspace }}:${{ github.workspace }}:rw'
+        - '${PROJECT_DIR}:${PROJECT_DIR}:rw'
     tools:
       - project_context
       - docs_get
@@ -194,16 +204,16 @@ mcp:
       - mcp
     container:
       image: ghcr.io/go42-dev/go42x
-      version: '${{ env.GO42X_MCP_IMAGE_VERSION }}'
+      version: '${MCP_IMAGE_VERSION}'
       command: mise
       args:
         - mcp
-      workdir: '${{ github.workspace }}'
+      workdir: '${PROJECT_DIR}'
       mounts:
-        - '${{ github.workspace }}:${{ github.workspace }}:rw'
+        - '${PROJECT_DIR}:${PROJECT_DIR}:rw'
       env:
         MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
-        MISE_TRUSTED_CONFIG_PATHS: '${{ github.workspace }}/etc/mise.toml'
+        MISE_TRUSTED_CONFIG_PATHS: '${PROJECT_DIR}/etc/mise.toml'
     tools:
       - list_commands
       - run_task
@@ -458,3 +468,18 @@ mcp:
       - transitionJiraIssue
       - addOrEditJiraIssueComment
       - searchJiraIssuesUsingJql
+
+  # Requires a running JetBrains IDE with this project open.
+  # Set the URL from Settings > Tools > MCP Server; the project path resolves automatically.
+  # Override the URL in ignored go42x.local.yaml before enabling locally.
+  # Keep disabled for CI; see https://www.jetbrains.com/help/go/mcp-server.html.
+  jetbrains:
+    enabled: false
+    type: http
+    name: jetbrains
+    url: http://127.0.0.1:64422/stream
+    headers:
+      IJ_MCP_SERVER_PROJECT_PATH: '${GO42X_PROJECT_ROOT}'
+    tools:
+      - get_file_problems
+      - lint_files

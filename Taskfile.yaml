@@ -64,7 +64,8 @@ tasks:
       - |
         version={{.VERSION | default "" | shellQuote}}
         if [ -z "$version" ]; then
-          version=$(mise latest go:github.com/go42-dev/go42x)
+          # Resolve new releases without the release-age delay or proxy metadata lag.
+          version=$(GOPROXY=direct mise latest --minimum-release-age 0s go:github.com/go42-dev/go42x)
         fi
         if [ -z "$version" ]; then
           printf 'mise did not resolve a go42x release.\n' >&2
@@ -99,9 +100,7 @@ tasks:
       - task: x
         vars:
           CLI_ARGS: 'agentenv generate'
-      - task: x
-        vars:
-          CLI_ARGS: 'agentenv generate --providers=gh-aw'
+      - task: agentic:generate
       - 'mise exec -- gh-aw compile --no-check-update --strict --purge --approve'
       - task: agentic:lint
       - task: lint:actions
@@ -992,11 +991,11 @@ tasks:
     desc: "Generate agent instructions and gh-aw MCP declarations"
     summary: |-
       Usage: task agentic:generate
-      Generates shared agent instructions and the gh-aw MCP fragment from project configuration.
+      Uses the mise-pinned go42x binary to generate shared agent instructions and the gh-aw MCP fragment from shared configuration, ignoring local overrides.
     cmds:
       - task: x
         vars:
-          CLI_ARGS: 'agentenv generate --providers=gh-aw'
+          CLI_ARGS: 'agentenv generate --providers=gh-aw --no-local'
 
   agentic:compile:
     desc: "Generate agent instructions and compile agentic workflows"

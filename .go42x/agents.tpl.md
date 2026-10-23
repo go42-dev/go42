@@ -1,4 +1,6 @@
-# Project context
+# Agent instructions
+
+## Project context
 
 {{/*
 The context block owns field selection, names, nesting, and order.
@@ -6,6 +8,9 @@ Use yamlValue for dynamic values and keys; it handles quoting and escaping.
 The omit-empty option removes nulls, empty strings, and empty collections recursively.
 False, zero, and whitespace-only strings are preserved. Omit the option to keep all values.
 Instruction chunks below remain Markdown.
+Rendered instructions must have one H1 title and must not skip heading levels.
+Each chunk's first heading must be one level below the section containing the
+chunks placeholder. Chunk headings must remain inside that section.
 */ -}}
 {{ define "context" -}}
 project:

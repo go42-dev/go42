@@ -91,12 +91,12 @@ backend = "github:github/gh-aw"
 specifiers = ["0.91.12"]
 
 [tools."github:github/gh-aw".options]
-asset_pattern = "linux-arm64"
+asset_pattern = "darwin-amd64"
 
-[tools."github:github/gh-aw"."platforms.linux-arm64"]
-checksum = "sha256:c8fc25e43fba0e0eed9b98db0d052954f96b8591b1bcffa74f39b572ad48019c"
-url = "https://github.com/github/gh-aw/releases/download/v0.91.12/linux-arm64"
-url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/639256034"
+[tools."github:github/gh-aw"."platforms.macos-x64"]
+checksum = "sha256:cbe352d16276d153470372df8c591b349e66c4844d481beb4e0bbec8dde1592e"
+url = "https://github.com/github/gh-aw/releases/download/v0.91.12/darwin-amd64"
+url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/639255925"
 provenance = "github-attestations"
 
 [[tools."github:github/gh-aw"]]
@@ -133,12 +133,12 @@ backend = "github:github/gh-aw"
 specifiers = ["0.91.12"]
 
 [tools."github:github/gh-aw".options]
-asset_pattern = "darwin-amd64"
+asset_pattern = "linux-arm64"
 
-[tools."github:github/gh-aw"."platforms.macos-x64"]
-checksum = "sha256:cbe352d16276d153470372df8c591b349e66c4844d481beb4e0bbec8dde1592e"
-url = "https://github.com/github/gh-aw/releases/download/v0.91.12/darwin-amd64"
-url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/639255925"
+[tools."github:github/gh-aw"."platforms.linux-arm64"]
+checksum = "sha256:c8fc25e43fba0e0eed9b98db0d052954f96b8591b1bcffa74f39b572ad48019c"
+url = "https://github.com/github/gh-aw/releases/download/v0.91.12/linux-arm64"
+url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/639256034"
 provenance = "github-attestations"
 
 [[tools."github:oasdiff/oasdiff"]]
@@ -207,9 +207,9 @@ backend = "go:github.com/go-delve/delve/cmd/dlv"
 specifiers = ["1.27.1"]
 
 [[tools."go:github.com/go42-dev/go42x"]]
-version = "0.41.0"
+version = "0.45.0"
 backend = "go:github.com/go42-dev/go42x"
-specifiers = ["0.41.0"]
+specifiers = ["0.45.0"]
 
 [[tools."go:github.com/google/capslock/cmd/..."]]
 version = "0.3.3"
