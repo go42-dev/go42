@@ -7,8 +7,8 @@ sidebar_position: 7
 
 # Architecture
 
-This guide describes the implementation in this checkout. The [application profile](03-project.md) records its purpose
-and ownership gaps; [conventions](02-conventions.md#architecture-and-data) define the rules for changing the design.
+This guide describes the implementation in this checkout. The [application profile](project.md) records its purpose
+and ownership gaps; [conventions](conventions.md#architecture-and-data) define the rules for changing the design.
 
 ## Components and boundaries
 
@@ -54,7 +54,7 @@ service, and repository; follow asynchronous effects through the outbox and subs
 | Operational signals        | [internal/metrics](../../internal/metrics) and [infra](../../infra)                   | Metric helpers, database observers, dashboard, and deployment configuration   |
 | Behavioral evidence        | Adjacent `*_test.go` files and [tests](../../tests)                                   | Unit cases, integration checks, resilience scenarios, and load scripts        |
 
-Edit source contracts and consumer interfaces before using the [generation workflow](05-development.md#generated-files-and-dependencies).
+Edit source contracts and consumer interfaces before using the [generation workflow](development.md#generated-files-and-dependencies).
 Generated clients, handlers, and mocks describe the generated interface; their source definitions own changes to it.
 
 ## Requests and persistence
@@ -65,7 +65,7 @@ repository calls so a business write and its required outbox message commit or r
 
 Repositories use the primary database for writes and reads requiring immediate consistency. `GetReadDB` can use the
 configured replica where lag is acceptable; within a transaction it uses that transaction. Backend selection and
-persistence defaults are documented in [configuration](04-configuration.md#storage-and-events).
+persistence defaults are documented in [configuration](configuration.md#storage-and-events).
 
 For signup and user creation, update, and deletion, the authentication service records the user change and its event in
 the same transaction. Login and logout record events on a best-effort basis after creating or revoking a session: an event
@@ -87,7 +87,7 @@ deduplicates inserts by event ID in its [repository](../../internal/auth/reposit
 The router applies consumer retries and dead-letter handling. Outbox publication retries and consumer retries are
 different stages: a processed outbox row establishes publication, while consumer completion must be observed separately.
 The default `gochan` backend runs in process and is not durable. The `none` backend accepts and discards publication.
-External broker options and provisioning settings are described in [configuration](04-configuration.md#storage-and-events).
+External broker options and provisioning settings are described in [configuration](configuration.md#storage-and-events).
 
 ## Background work
 
@@ -115,13 +115,13 @@ Broker connectivity and completion of individual messages are not readiness chec
 On a termination signal, the process cancels its application context, becomes unready, waits for probe propagation,
 and closes components within configured deadlines. A terminal server or router error fails liveness and readiness;
 the process relies on supervision for restart and still waits for a signal to enter shutdown.
-See [operations](11-operations.md) for probes, shutdown settings, and failure investigation.
+See [operations](operations.md) for probes, shutdown settings, and failure investigation.
 
 ## Evidence and open decisions
 
 These flows are described by the current source and exercised by [authentication unit tests](../../internal/auth/auth_test.go),
 [outbox publisher tests](../../internal/outbox/workers/publisher_test.go), and
-[integration tests](../../tests/integration). Follow the [development workflow](05-development.md) to run the relevant suites.
+[integration tests](../../tests/integration). Follow the [development workflow](development.md) to run the relevant suites.
 
 Application-specific business boundaries, capacity targets, availability objectives, and production topology are still
 undecided. Record required outcomes in requirements and significant choices in decisions; update this guide when they

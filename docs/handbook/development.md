@@ -9,7 +9,7 @@ sidebar_position: 5
 
 Use this guide to take a change from a fresh checkout to a verified pull request. Start at the
 [documentation index](../README.md) for the application's context and relevant requirements and decisions. Follow the
-[project conventions](02-conventions.md) for engineering rules and the [documentation workflow](01-documentation.md) when
+[project conventions](conventions.md) for engineering rules and the [documentation workflow](documentation.md) when
 updating application knowledge alongside the implementation.
 
 [Taskfile.yaml](../../Taskfile.yaml) defines the executable workflows. Task runs commands; mise manages the project tools
@@ -180,7 +180,7 @@ The generated agent instructions use the configured gopls tools for Go navigatio
     implementations, and tests. Request file context or a package's public API when needed to understand unfamiliar code.
 2. After a coherent batch of saved Go edits, request diagnostics for the changed files. Investigate relevant findings,
     fix errors introduced by the change, and check again after fixes.
-3. Run the applicable [lint and test commands](06-testing.md#choosing-checks-before-review) before completing the change.
+3. Run the applicable [lint and test commands](testing.md#choosing-checks-before-review) before completing the change.
     Include affected callers when selecting packages; diagnostics supplement those checks.
 
 The configured standalone gopls server reads saved files. Its results reflect the loaded workspace and build
@@ -220,7 +220,8 @@ The [PR description workflow](../../.github/workflows/910-aw-description.md) upd
 non-draft pull request changes. The [agent request workflow](../../.github/workflows/920-aw-agent.md) responds to
 `/agent` comments on issues and pull requests from contributors with write, maintain, or admin access. Questions receive
 a comment; implementation requests produce a draft pull request or update the triggering same-repository branch.
-Fork pull requests receive comments. Initial credentials and repository setup belong to the
+Fork pull requests receive comments. The [GitHub configuration reference](github-configuration.md) lists required and
+optional workflow variables and secrets. Initial repository setup belongs to the
 [blueprint adoption instructions](../../blueprint/blueprint.md#github-and-agentic-workflow-setup).
 
 Keep workflow Markdown in `.github/workflows/9XX-aw-*.md`. Edit workflow triggers, permissions, engine, and task prompts
@@ -248,8 +249,8 @@ version chosen by mise and resolves its immutable digest for the MCP containers.
 using another GHCR package. Upgrade the mise pin only after its matching image has been published. Local MCP commands
 continue to run through Task.
 
-The workflows compile with the Codex engine. `GH_AW_DEFAULT_MODEL_CODEX` supplies an optional model default at runtime;
-changing the engine requires editing and recompiling the workflow source.
+The workflows compile with the Codex engine. See the [model and budget controls](github-configuration.md#variables-and-secrets)
+for runtime configuration. Changing the engine requires editing and recompiling the workflow source.
 
 ## Running and debugging
 
@@ -316,7 +317,7 @@ running `task generate` from a clean checkout must produce no changes.
 
 Generated outputs include `api/gen/`, package `mocks/` directories, `.env.example`, and the combined OpenAPI document.
 Documentation assembly owns `pages/docs/`, and the website build owns `pages/build/`; regenerate those through the
-[documentation commands](01-documentation.md#verification). Dependency tools own lockfiles such as `etc/mise.lock` and
+[documentation commands](documentation.md#verification). Dependency tools own lockfiles such as `etc/mise.lock` and
 `pages/package-lock.json`.
 
 Vendored dependencies use a `.vendor.yaml` manifest and `.vendor.lock.yaml` beside their files:
@@ -342,11 +343,11 @@ vendor locks before code generation. Follow [tool maintenance](#maintaining-the-
 configuration.
 
 For a new database migration, run `task generate:migration-id` once to obtain its filename prefix. Use the same filename
-across database engines and follow the [migration conventions](02-conventions.md#architecture-and-data).
+across database engines and follow the [migration conventions](conventions.md#architecture-and-data).
 
 ## Implementing a feature
 
-Use the [source map](07-architecture.md#source-map) to trace an existing operation with similar behavior. Confirm the desired
+Use the [source map](architecture.md#source-map) to trace an existing operation with similar behavior. Confirm the desired
 outcome and failure cases in the relevant requirement; record a significant new choice in a decision when needed.
 
 1. Define the transport contract in [OpenAPI](../../api/openapi/v1/auth.yaml) or
@@ -370,7 +371,7 @@ outcome and failure cases in the relevant requirement; record a significant new 
     transports expose an operation, verify both mappings. Run applicable API compatibility checks before review.
 8. Update the owning handbook page, requirement evidence, and any affected operating instructions with the change.
 
-For persisted-data or message-format changes, include the [migration handoff](10-deployment.md#migrations-and-change-handoff).
+For persisted-data or message-format changes, include the [migration handoff](deployment.md#migrations-and-change-handoff).
 
 For the existing authentication feature, a focused unit check is:
 
@@ -380,7 +381,7 @@ task test:unit -- ./internal/auth/... ./internal/api/...
 
 The [HTTP integration clients](../../tests/integration/http/v1/users_clients_test.go) exercise both generated HTTP SDKs;
 [gRPC integration tests](../../tests/integration/grpc/v1/auth_test.go) exercise the generated gRPC client. Follow the
-[integration prerequisites](06-testing.md#integration-test-environment) before running `task test:integration`.
+[integration prerequisites](testing.md#integration-test-environment) before running `task test:integration`.
 
 ## Formatting and linting
 
@@ -447,16 +448,16 @@ file paths.
 
 ## Testing and verification
 
-Use the [testing guide](06-testing.md) to select suites, prepare dependencies, and check results.
+Use the [testing guide](testing.md) to select suites, prepare dependencies, and check results.
 
 ### Integration test environment
 
-Follow [integration setup](06-testing.md#integration-test-environment) for application settings, test credentials, and
+Follow [integration setup](testing.md#integration-test-environment) for application settings, test credentials, and
 backend requirements.
 
 ### Choosing checks before review
 
-Follow the [review checks](06-testing.md#choosing-checks-before-review) and report commands, results, backends, and skips.
+Follow the [review checks](testing.md#choosing-checks-before-review) and report commands, results, backends, and skips.
 
 ## Preparing a pull request
 
@@ -464,7 +465,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) with 
 [etc/commitlint.yaml](../../etc/commitlint.yaml). Branch names must match `^[A-Za-z0-9/_.-]+$`, be descriptive, and
 include a task identifier when applicable. Prefer merge commits over rebasing, and keep rebase disabled. Use `.gitkeep`
 to preserve empty directories in Git and the `gh` client to access GitHub resources. Use
-[Semantic Versioning](https://semver.org/) for releases; follow [Release](09-release.md) for publishing artifacts.
+[Semantic Versioning](https://semver.org/) for releases; follow [Release](release.md) for publishing artifacts.
 
 Destructive operations require user confirmation in interactive mode. In non-interactive mode, allow them only when
 explicitly requested by the user.
@@ -472,7 +473,7 @@ explicitly requested by the user.
 Before opening or updating a pull request:
 
 1. Review the final diff, including generated outputs. Update affected documentation through its
-    [change workflow](01-documentation.md#change-workflow-for-contributors).
+    [change workflow](documentation.md#change-workflow-for-contributors).
 2. Use the [pull request template](../../.github/pull_request_template.md) for PRs created through the web interface
     or tools.
     Describe the problem and resulting behavior, with a brief before/after example when useful. Keep the title and
@@ -484,7 +485,7 @@ Before opening or updating a pull request:
     explain material skips.
 5. Add a `Deployment` section when adopting the change requires action. Describe relevant migrations, configuration or
     compatibility changes, rollout requirements, and rollback limitations. Link the relevant
-    [deployment instructions](10-deployment.md).
+    [deployment instructions](deployment.md).
 
 ## Maintaining the workflow
 

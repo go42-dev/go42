@@ -23,11 +23,11 @@ does not load `.env` files itself.
 | Direct binary or runtime container | Uses its supplied environment and the configuration model's defaults                                  |
 | Helm deployment                    | Adds the chart's `env` values to the container environment                                            |
 
-Follow [environment setup](05-development.md#environment-setup) to create your local `.env`. Change that file for local
+Follow [environment setup](development.md#environment-setup) to create your local `.env`. Change that file for local
 overrides. Supply deployed values through the deployment environment; the runtime image's example file is only a reference.
 
 Keep `.env` for application configuration. Supply test-client addresses and API keys through the test process environment
-or CI job settings; see the [test environment](06-testing.md#integration-test-environment).
+or CI job settings; see the [test environment](testing.md#integration-test-environment).
 
 Local tasks set `DATABASE_MIGRATE_PATH`, `SERVER_HTTP_STATIC_ROOT`, and `SERVER_HTTP_SWAGGER_ROOT` after loading `.env`.
 The [runtime image](../../Dockerfile) instead installs these resources at the model's default paths: `/migrate`,
@@ -55,7 +55,7 @@ leave a default in effect. Compare the exact name with the configuration model a
 relevant non-secret settings in a diagnosis: `.env` and `Config.String()` can expose credentials.
 
 Use [configuration tests](../../internal/config/config_test.go) to find accepted and rejected cases. The
-[integration test environment](06-testing.md#integration-test-environment) has its own process settings and precedence.
+[integration test environment](testing.md#integration-test-environment) has its own process settings and precedence.
 
 ## Storage and events
 
@@ -90,7 +90,7 @@ An empty setting uses the adapter's default binding rules.
 
 `gochan` and the local cache are process-local. The `none` event backend discards outgoing messages while reporting
 publication success, so outbox rows can become processed without creating user history. Choose a backend whose durability
-and sharing behavior fits the application; see [event delivery](07-architecture.md#event-delivery).
+and sharing behavior fits the application; see [event delivery](architecture.md#event-delivery).
 
 ### NATS message format
 
@@ -138,7 +138,7 @@ PostgreSQL, MySQL, their migration runners, Redis, Memcached, NATS, Kafka, and R
 and retry logging. Timeout and backoff must be positive, with maximum backoff at least as large as initial backoff.
 Each connection initialization has its own retry budget, bounded by the caller's context. Migration execution uses
 the caller's context after connecting; the connection retry budget does not limit migration execution.
-See [operations](11-operations.md#startup-and-shutdown) for the sequence and expected checks.
+See [operations](operations.md#startup-and-shutdown) for the sequence and expected checks.
 
 ## Optional integrations
 
@@ -153,6 +153,6 @@ the mappings, validation, and any reload behavior for the components that consum
 
 Change field names, types, defaults, and validation in the configuration model. Run `task generate` to regenerate the
 example through the [configuration generator](../../cmd/cfg2env/main.go); follow the
-[generation workflow](05-development.md#generated-files-and-dependencies) for prerequisites and other generated output.
+[generation workflow](development.md#generated-files-and-dependencies) for prerequisites and other generated output.
 Update this guide and deployment values when their behavior changes. Verify invalid values and the affected startup path
 with the relevant application tests, then run `task docs:check` for documentation changes.

@@ -9,7 +9,7 @@ sidebar_position: 9
 
 Use this guide to publish a tested commit as a versioned container image and GitHub release. The
 [release workflow](../../.github/workflows/300-release.yaml) publishes artifacts; environment configuration, migrations,
-rollout, and rollback belong to [deployment](10-deployment.md).
+rollout, and rollback belong to [deployment](deployment.md).
 
 ## Trigger and prerequisites
 
@@ -25,10 +25,9 @@ Before dispatching:
 2. Choose an unused version such as `v1.2.3` or `v1.2.3-rc.1`: a `v` prefix and valid SemVer are required, build metadata
     such as `+build.7` is rejected, and the complete string must be at most 128 characters. Neither a Git tag nor a GitHub
     release may already exist for this version.
-3. Configure `RELEASE_APP_CLIENT_ID` as a repository or organization variable.
-    Add `RELEASE_APP_PRIVATE_KEY` as a secret in the `release` environment. The App installation must cover this repository
-    and permit Contents and Workflows write access. Workflows access allows tagging commits that change workflow files.
-    These credentials are used in the publication job, after the image is pushed.
+3. Check the [release credentials](github-configuration.md#variables-and-secrets).
+    Workflows write access allows tagging commits that change workflow files. Release credentials are used in the
+    publication job, after the image is pushed.
 4. Ensure the workflow's `GITHUB_TOKEN` can publish the `go42` package to GHCR. The build job declares Packages write,
     Contents read, Actions read, Attestations write, and ID token write permissions; repository and organization settings
     must allow those operations.
@@ -44,18 +43,11 @@ All release dispatches share a concurrency group and do not cancel an active run
 
 ## Release key isolation
 
-Status: environment policies, secret locations, and token creation from `master` verified; denied-access checks pending.
-This applies to `go42` and
-[`go42x`](https://github.com/go42-dev/go42x/blob/master/.github/workflows/300-release.yaml).
-
-On 2026-09-14, a `release` environment was created in each repository with exactly one deployment rule: the branch `master`.
-The environments have no tag rules, required reviewers, or wait timers. Both publication job definitions reference
-`environment: release`.
-The saved environment policies were verified through the GitHub API.
-
-The GitHub API review on 2026-09-14 confirmed `RELEASE_APP_PRIVATE_KEY` exists in each `release` environment. Neither
-repository has a repository-level copy or access to an organization-level copy. App client IDs are available
-through repository or organization variables. Secret values were not read by the verification.
+The [GitHub configuration reference](github-configuration.md) lists release credentials and their scope.
+The publication job binds to `release` so that
+the environment policy controls access to its key. Runtime denial checks for other branches and tags remain pending.
+The same isolation pattern applies to the
+[go42x release workflow](https://github.com/go42-dev/go42x/blob/master/.github/workflows/300-release.yaml).
 
 The [go42 release run](https://github.com/go42-dev/go42/actions/runs/34832061399) and
 [go42x release run](https://github.com/go42-dev/go42x/actions/runs/34832029483) on 2026-09-14 both generated App tokens
@@ -100,12 +92,12 @@ version, and run it. This writes a container image, attestations, a Git tag, and
 
 The workflow runs the following jobs in sequence; prereleases skip image promotion:
 
-| Job                | Behavior and expected result                                                                                                         |
-|--------------------|--------------------------------------------------------------------------------------------------------------------------------------|
-| `validate-release` | Validates the version, source commit, and completed CI run; records the source SHA and CI link in its summary                        |
-| `docker-build`     | Checks out that SHA, builds and pushes both Linux architectures, validates the digest, and produces provenance and SBOM attestations |
-| `publish-release`  | Creates the tag at the selected SHA and a non-draft release named `Release <version>`                                                |
-| `promote-docker`   | For stable releases, moves `latest` to the published image digest and verifies that both references identify the same image          |
+| Job                  | Behavior and expected result                                                                                                           |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `validate-release`   | Validates the version, source commit, and completed CI run; records the source SHA and CI link in its summary                          |
+| `docker-build`       | Checks out that SHA, builds and pushes both Linux architectures, validates the digest, and produces provenance and SBOM attestations   |
+| `publish-release`    | Creates the tag at the selected SHA and a non-draft release named `Release <version>`                                                  |
+| `promote-docker`     | For stable releases, moves `latest` to the published image digest and verifies that both references identify the same image            |
 
 The GitHub release includes generated release notes plus the source SHA, immutable image reference, successful CI link,
 and release workflow link. Versions containing a prerelease suffix produce GitHub prereleases and are not marked latest;
@@ -162,7 +154,7 @@ After the workflow completes:
     reference. Confirm the image contains both `linux/amd64` and `linux/arm64` manifests.
 3. Inspect the build's provenance and SBOM attestation summaries and download the named SBOM from the workflow artifacts.
     Confirm their subject digest matches the release image. These establish the published artifact's identity and
-    inventory; verify the deployed application separately using the [deployment guide](10-deployment.md).
+    inventory; verify the deployed application separately using the [deployment guide](deployment.md).
 
 The image is pushed before attestations, SBOM generation, and GitHub release creation. A later failure can therefore leave
 an image or attestations without a GitHub release; the workflow has no automatic rollback. Inspect the failed step and

@@ -8,10 +8,10 @@ related: []
 
 # Handbook template
 
-Copy this file to `docs/handbook/NN-topic.md`. Replace the `id` and `title`, set `collection: handbook`, and choose an unused
-positive `sidebar_position`. Replace `NN` with that position padded to two digits, and `topic` with a descriptive name.
+Copy this file to `docs/handbook/topic.md`. Replace the `id` and `title`, set `collection: handbook`, and choose an unused
+positive `sidebar_position`. Replace `topic` with a descriptive lowercase name without a number prefix.
 Add the page to the index in that order. See
-[creating a document](../handbook/01-documentation.md#creating-a-document).
+[creating a document](../handbook/documentation.md#creating-a-document).
 
 Use headings that fit the subject and remove prompts or sections you do not need.
 

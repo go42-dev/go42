@@ -9,8 +9,8 @@ related: []
 # Requirement template
 
 Copy this file to `docs/requirements/`. Set an unused `REQ-NNN` ID, write a clear title, and change the collection to
-`requirements`. Start as `draft`. See [creating a document](../handbook/01-documentation.md#creating-a-document) and
-[statuses](../handbook/01-documentation.md#status-and-implementation).
+`requirements`. Start as `draft`. See [creating a document](../handbook/documentation.md#creating-a-document) and
+[statuses](../handbook/documentation.md#status-and-implementation).
 
 ## Problem
 

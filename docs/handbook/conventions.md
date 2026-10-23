@@ -8,8 +8,8 @@ sidebar_position: 2
 # Project conventions
 
 These engineering rules and preferences guide changes to the application in this repository. Follow the
-[development workflow](05-development.md) for setup, tooling, generation, verification, and contribution procedures, and
-the [documentation policy](01-documentation.md) when updating application knowledge.
+[development workflow](development.md) for setup, tooling, generation, verification, and contribution procedures, and
+the [documentation policy](documentation.md) when updating application knowledge.
 Paths are relative to the repository root. Preferences and exceptions are stated explicitly.
 
 Shared Go conventions are maintained in [go42x's code-style guidance][go42x-codestyle].
@@ -28,7 +28,7 @@ The rules below cover application-specific choices and exceptions.
   `repository/` owns persistence operations; versioned HTTP and gRPC adapters own transport conversion and registration.
 * Adapters validate pagination before invoking services. Use `tools.NormalizePagination` and the shared `tools.Pagination*`
   constants for defaults and bounds across features. Align API contracts with the
-  [pagination rules](08-api.md#user-list-pagination).
+  [pagination rules](api.md#user-list-pagination).
 * Services and worker handlers own transaction boundaries. Call the shared `WithTransaction` helper there and propagate
   its `txCtx` to all participating database operations. Repository data-access methods use the supplied context and
   must not manage transactions themselves.

@@ -41,6 +41,6 @@ including inherited defaults.
 
 The application provides signup and session endpoints over HTTP, and user management over HTTP and gRPC. It includes
 database persistence, background event processing, health checks, metrics, and structured logs. The
-[architecture](07-architecture.md#components-and-boundaries) describes component responsibilities and flows.
+[architecture](architecture.md#components-and-boundaries) describes component responsibilities and flows.
 The local defaults use in-memory SQLite, a local cache, and in-process events; see
-[storage and event configuration](04-configuration.md#storage-and-events) for persistence and backend choices.
+[storage and event configuration](configuration.md#storage-and-events) for persistence and backend choices.

@@ -15,20 +15,9 @@ Keep preparation actions and workflow sources in the new repository. Update the 
 paths in `.go42x/go42x.yaml`, Taskfile, and the release workflows while preserving application-specific configuration.
 The agentic MCP containers use the published go42x tools image; they do not use the application's Docker image.
 
-Configure these values before enabling the supplied workflows. Organization variables and secrets can be shared with
-selected repositories. Keep the release private key in the `release` environment, restricted to `master`, and avoid a
-repository or organization copy of that key.
-
-| Name                        | Kind                                         | Purpose                                                                         |
-| --------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------- |
-| `AI_APP_CLIENT_ID`          | Repository or organization variable          | Client ID of the App installed for agentic safe outputs                         |
-| `AI_APP_PRIVATE_KEY`        | Repository or organization secret            | Private key for that App                                                        |
-| `CODEX_API_KEY`             | Repository or organization secret            | Codex credentials; `OPENAI_API_KEY` is the compiler's fallback                  |
-| `CONTEXT7_API_KEY`          | Repository or organization secret            | Authentication for the configured Context7 MCP server                           |
-| `RELEASE_APP_CLIENT_ID`     | Repository or organization variable          | Client ID of the release App                                                    |
-| `RELEASE_APP_PRIVATE_KEY`   | `release` environment secret                 | Release App private key                                                         |
-| `GH_AW_DEFAULT_MODEL_CODEX` | Optional repository or organization variable | Default Codex model name                                                        |
-| `GITHUB_TOKEN`              | Supplied automatically by GitHub Actions     | Read access, package pulls, and workflow operations within declared permissions |
+Configure the [required workflow variables and secrets](../docs/handbook/github-configuration.md) for the new repository.
+Organization variables and secrets can be shared with selected repositories. Keep the release private key in the
+`release` environment, restricted to `master`, and avoid a repository or organization copy of that key.
 
 Install the agentic App on the new repository with Contents, Issues, and Pull requests write access for its safe outputs.
 The runtime agent keeps read permissions; write operations use separate App-backed jobs. Install the release App with
@@ -41,7 +30,7 @@ available through the variables referenced in the compiled workflows; no project
 introduced.
 
 Install the pinned tools with `task setup`, then run `task agentic:compile`, `task agentic:lint`, and
-`task test:workflows`. Review and commit workflow Markdown, `900-aw-mcp.md`, compiled `.lock.yml` files, and
+`task lint:actions`. Review and commit workflow Markdown, `900-aw-mcp.md`, compiled `.lock.yml` files, and
 `.github/aw/actions-lock.json` together. Ensure the go42x version selected by mise has a published matching Docker image
 before activating these workflows. Use the application's development guide for ongoing workflow and vendor updates.
 

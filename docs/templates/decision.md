@@ -11,8 +11,8 @@ related: []
 
 Copy this file to `docs/decisions/`. Set an unused `ADR-NNN` ID, write a clear title, change the collection to `decisions`,
 and enter the date. Start as `proposed`. See
-[creating a document](../handbook/01-documentation.md#creating-a-document) and
-[statuses](../handbook/01-documentation.md#status-and-implementation).
+[creating a document](../handbook/documentation.md#creating-a-document) and
+[statuses](../handbook/documentation.md#status-and-implementation).
 
 ## Why a decision is needed
 

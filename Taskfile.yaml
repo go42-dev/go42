@@ -100,12 +100,9 @@ tasks:
       - task: x
         vars:
           CLI_ARGS: 'agentenv generate'
-      - task: agentic:generate
-      - 'mise exec -- gh-aw compile --no-check-update --strict --purge --approve'
+      - task: agentic:compile
       - task: agentic:lint
       - task: lint:actions
-        vars:
-          CLI_ARGS: ''
       - task: x
         vars:
           CLI_ARGS: 'kwb build'
@@ -256,7 +253,7 @@ tasks:
     desc: "Test dependency recovery with combined coverage"
     summary: |-
       Usage: task test:resilience
-      Requires Toxiproxy and the backing services described in docs/handbook/06-testing.md. Builds its own instrumented application and writes combined coverage under .build/.
+      Requires Toxiproxy and the backing services described in docs/handbook/testing.md. Builds its own instrumented application and writes combined coverage under .build/.
     cmds:
       - |
         set -eo pipefail

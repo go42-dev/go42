@@ -35,7 +35,7 @@ Update docs in the same change as the behavior they describe:
 - Update a requirement when the needed behavior changes.
 - Write a decision when an important choice needs an explanation.
 
-Read the [application profile](03-project.md), [conventions](02-conventions.md), and relevant pages before starting. Compare
+Read the [application profile](project.md), [conventions](conventions.md), and relevant pages before starting. Compare
 instructions with the code and tests. If they disagree, find out which needs fixing. Confirm changes to agreed
 requirements or decisions with the maintainers.
 
@@ -54,7 +54,7 @@ Use an existing page when it covers the topic. For a new page:
 
 | Template                                   | Use it for                                | Filename                              |
 | ------------------------------------------ | ----------------------------------------- | ------------------------------------- |
-| [Handbook](../templates/handbook.md)       | How things work and how to do a task      | `docs/handbook/NN-topic.md`           |
+| [Handbook](../templates/handbook.md)       | How things work and how to do a task      | `docs/handbook/topic.md`              |
 | [Requirement](../templates/requirement.md) | A result the application needs to deliver | `docs/requirements/NNN-capability.md` |
 | [Decision](../templates/decision.md)       | An important choice and why it was made   | `docs/decisions/NNN-choice.md`        |
 
@@ -64,8 +64,8 @@ The YAML header at the top of a page is called front matter. Every page needs `i
 Use a unique ID that starts with a letter and contains only letters, numbers, and hyphens. Keep it when a page is renamed
 or moved. Choose the next unused number for a requirement or decision, and never reuse an old ID.
 
-In this checkout, prefix handbook filenames with their `sidebar_position`, padded to two digits: `01-documentation.md`,
-`02-conventions.md`, and so on. Keep the prefix in sync when changing the position, and update links to the renamed page.
+Use descriptive lowercase handbook filenames without number prefixes, such as `documentation.md` or `development.md`.
+The `sidebar_position` controls reading order independently of the filename. Update links when renaming a page.
 
 The `collection` value matches the folder under `docs/`: `handbook`, `requirements`, `decisions`, or `templates`.
 The index uses `collection: overview`. An optional `related` list contains IDs of other documents that exist.
