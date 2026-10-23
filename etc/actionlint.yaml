@@ -10,6 +10,7 @@ config-variables:
   - GH_AW_DEFAULT_MODEL_CODEX
   - GH_AW_DEFAULT_OTLP_ENDPOINT
   - GH_AW_MODEL_AGENT_CODEX
+  - GH_AW_MODEL_DETECTION_CODEX
   - GH_AW_POLICY_ALLOW_CREATE_PULL_REQUEST
   - GH_AW_RUNTIME_FEATURES
   - RELEASE_APP_CLIENT_ID
@@ -19,6 +20,12 @@ paths:
     ignore:
       # The compiler emits concurrency queueing before actionlint supports it.
       - 'unexpected key "queue" for "concurrency" section.+'
+      # actionlint 1.7.12 does not recognize GitHub's job.workflow_ref context.
+      # @see https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#job-context
+      - '^property "workflow_ref" is not defined in object type \{check_run_id:'
+      # gh-aw 0.93.2 reads optional admission outputs even when admission is disabled.
+      # These missing properties evaluate to empty strings in GitHub Actions.
+      - '^property "admission-(result|max-ai-credits(-threat-detection|-evals)?)" is not defined in object type '
   .github/workflows/210-github-pages.yaml:
     ignore:
       # GitHub supports concurrency queueing, but actionlint 1.7.12 does not yet

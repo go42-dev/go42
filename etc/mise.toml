@@ -53,7 +53,7 @@ oapi-codegen = "2.8.0"
 "go:github.com/go42-dev/go42x" = "0.45.0"
 
 [tools."github:github/gh-aw"]
-version = "0.91.12"
+version = "0.93.2"
 bin = "gh-aw"
 
 [tools."github:github/gh-aw".platforms]

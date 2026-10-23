@@ -979,10 +979,11 @@ tasks:
     summary: |-
       Usage: task agentic:lint [-- FILE.lock.yml ...]
       Defaults to all workflow locks.
+      Runs all native rules; Actionlint runs separately in lint:actions.
     preconditions:
       - *file_paths
     cmds:
-      - 'mise exec -- gh-aw lint {{.CLI_ARGS}}'
+      - 'mise exec -- gh-aw lint --rules= {{.CLI_ARGS | default ".github/workflows/*.lock.yml"}}'
 
   agentic:generate:
     desc: "Generate agent instructions and gh-aw MCP declarations"
