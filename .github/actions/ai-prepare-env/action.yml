@@ -75,10 +75,4 @@ runs:
         image_tag="v$version"
         image_reference="$IMAGE_REPOSITORY:$image_tag"
         docker pull "$image_reference"
-        image=$(docker image inspect --format '{{index .RepoDigests 0}}' "$image_reference")
-        digest=${image#"$IMAGE_REPOSITORY@"}
-        if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
-          echo '::error::The MCP image has no immutable registry digest.'
-          exit 1
-        fi
-        echo "GO42X_MCP_IMAGE_VERSION=$image_tag@$digest" >> "$GITHUB_ENV"
+        echo "GO42X_MCP_IMAGE_VERSION=$image_tag" >> "$GITHUB_ENV"
