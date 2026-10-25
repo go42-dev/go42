@@ -21,6 +21,9 @@
 # @see https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry
 #
 # This file can be executed manually, from CI, by IDE and invoked by AI.
+#
+# Write all task summaries as multiline literal blocks (summary: |-).
+# Keep summary source lines at most 120 characters long, including indentation.
 
 version: '3'
 
@@ -47,7 +50,8 @@ tasks:
 
   x:
     desc: "Run go42x from the mise-pinned release"
-    summary: "Usage: task x [-- COMMAND ...]"
+    summary: |-
+      Usage: task x [-- COMMAND ...]
     interactive: true
     cmds:
       - 'mise exec -- go42x {{.CLI_ARGS}}'
@@ -56,7 +60,8 @@ tasks:
     desc: "Update go42x and merge bundled assets with project customizations (writes)"
     summary: |-
       Usage: task x:update [VERSION=<version>]
-      Defaults to the latest available release. Exports the old bundle, updates mise, merges assets, generates agent files, compiles and lints workflows, and refreshes the knowledge base.
+      Defaults to the latest available release. Exports the old bundle, updates mise, merges assets, generates agent
+      files, compiles and lints workflows, and refreshes the knowledge base.
     preconditions:
       - sh: 'test -z {{.CLI_ARGS | shellQuote}}'
         msg: "Pass VERSION=... without arguments after --."
@@ -109,7 +114,8 @@ tasks:
 
   tool:
     desc: "Run a command with the project tools"
-    summary: "Usage: task tool -- COMMAND [ARGS...]"
+    summary: |-
+      Usage: task tool -- COMMAND [ARGS...]
     interactive: true
     silent: true
     preconditions:
@@ -173,7 +179,8 @@ tasks:
     desc: "Run unit tests with race detection and optional coverage"
     summary: |-
       Usage: task test:unit [-- PACKAGE ...]
-      Defaults to the full unit suite with coverage. Explicit local packages skip coverage reports; Go test flags are not accepted.
+      Defaults to the full unit suite with coverage. Explicit local packages skip coverage reports; Go test flags are
+      not accepted.
     preconditions:
       - &package_paths
         sh: |
@@ -226,7 +233,8 @@ tasks:
     desc: "Run integration tests with race detection and coverage"
     summary: |-
       Usage: task test:integration
-      Requires a dedicated running application and configured backing services. Loads .env when present and writes coverage reports under .build/.
+      Requires a dedicated running application and configured backing services. Loads .env when present and writes
+      coverage reports under .build/.
     cmds:
       - |
         set -eo pipefail
@@ -253,7 +261,8 @@ tasks:
     desc: "Test dependency recovery with combined coverage"
     summary: |-
       Usage: task test:resilience
-      Requires Toxiproxy and the backing services described in docs/handbook/testing.md. Builds its own instrumented application and writes combined coverage under .build/.
+      Requires Toxiproxy and the backing services described in docs/handbook/testing.md. Builds its own instrumented
+      application and writes combined coverage under .build/.
     cmds:
       - |
         set -eo pipefail
@@ -287,7 +296,8 @@ tasks:
     desc: "Run HTTP and gRPC load tests, or one selected suite"
     summary: |-
       Usage: task test:load [K6_TEST_PATH=FILE.js K6_SUMMARY_PATH=FILE.json]
-      Requires a running test application. Defaults to both HTTP and gRPC suites; set both variables to select one suite. Both variables can also come from the environment.
+      Requires a running test application. Defaults to both HTTP and gRPC suites; set both variables to select one
+      suite. Both variables can also come from the environment.
     vars:
       K6_TEST_PATH: '{{.K6_TEST_PATH | default ""}}'
       K6_SUMMARY_PATH: '{{.K6_SUMMARY_PATH | default ""}}'
@@ -460,7 +470,8 @@ tasks:
 
   fmt:go:
     desc: "Format explicit Go source files (writes)"
-    summary: "Usage: task fmt:go -- FILE.go [FILE.go ...]"
+    summary: |-
+      Usage: task fmt:go -- FILE.go [FILE.go ...]
     preconditions: &files
       - sh: |
           set -- {{.CLI_ARGS}}
@@ -494,7 +505,8 @@ tasks:
 
   fmt:json:
     desc: "Format explicit JSON files (writes)"
-    summary: "Usage: task fmt:json -- FILE.json [FILE.json ...]"
+    summary: |-
+      Usage: task fmt:json -- FILE.json [FILE.json ...]
     preconditions: *files
     cmds:
       - |
@@ -503,7 +515,8 @@ tasks:
 
   fmt:toml:
     desc: "Format explicit TOML files (writes)"
-    summary: "Usage: task fmt:toml -- FILE.toml [FILE.toml ...]"
+    summary: |-
+      Usage: task fmt:toml -- FILE.toml [FILE.toml ...]
     preconditions: *files
     cmds:
       - |
@@ -519,7 +532,8 @@ tasks:
 
   fmt:markdown:
     desc: "Fix explicit Markdown files (writes; remaining diagnostics can fail)"
-    summary: "Usage: task fmt:markdown -- FILE.md [FILE.md ...]"
+    summary: |-
+      Usage: task fmt:markdown -- FILE.md [FILE.md ...]
     preconditions: *files
     cmds:
       - |
@@ -528,7 +542,8 @@ tasks:
 
   fmt:proto:
     desc: "Format explicit Protobuf source files (writes)"
-    summary: "Usage: task fmt:proto -- FILE.proto [FILE.proto ...]"
+    summary: |-
+      Usage: task fmt:proto -- FILE.proto [FILE.proto ...]
     preconditions: *files
     cmds:
       - |
@@ -539,7 +554,8 @@ tasks:
 
   fmt:sql:
     desc: "Fix explicit SQL files for one dialect (writes)"
-    summary: "Usage: task fmt:sql DIALECT=sqlite|mysql|postgres -- FILE.sql [FILE.sql ...]"
+    summary: |-
+      Usage: task fmt:sql DIALECT=sqlite|mysql|postgres -- FILE.sql [FILE.sql ...]
     requires:
       vars:
         - name: DIALECT
@@ -565,7 +581,8 @@ tasks:
     desc: "Run code and project linters"
     summary: |-
       Usage: task lint
-      Accepts no arguments; use a lint:* task to select files or packages. Run task docs:check separately for documentation.
+      Accepts no arguments; use a lint:* task to select files or packages. Run task docs:check separately for
+      documentation.
     preconditions:
       - sh: |
           set -- {{.CLI_ARGS}}
@@ -605,7 +622,8 @@ tasks:
 
   lint:go:
     desc: "Lint all Go packages, or explicit local packages and subtrees (read only)"
-    summary: "Usage: task lint:go [-- ./internal/metrics ./internal/auth/...]"
+    summary: |-
+      Usage: task lint:go [-- ./internal/metrics ./internal/auth/...]
     preconditions:
       - *package_paths
     cmds:
@@ -784,7 +802,8 @@ tasks:
 
   lint:editorconfig:
     desc: "Check EditorConfig rules for the project, or explicit files (read only)"
-    summary: "Usage: task lint:editorconfig [-- FILE ...]"
+    summary: |-
+      Usage: task lint:editorconfig [-- FILE ...]
     preconditions:
       - *file_paths
     cmds:
@@ -905,7 +924,8 @@ tasks:
     desc: "Check documentation and build the website"
     summary: |-
       Usage: task docs:check
-      Run task setup:docs first. Runs Markdown and prose checks, installs locked website dependencies, tests documentation tooling, validates metadata and links, builds the website, and checks TypeScript.
+      Run task setup:docs first. Runs Markdown and prose checks, installs locked website dependencies, tests
+      documentation tooling, validates metadata and links, builds the website, and checks TypeScript.
     cmds:
       - task: "lint:markdown"
         vars:
@@ -965,7 +985,8 @@ tasks:
     desc: "Run grpcui against localhost:50051"
     summary: |-
       Usage: task grpcui
-      Requires grpcui on PATH and a running local gRPC server with reflection enabled. Connects to localhost:50051 without TLS.
+      Requires grpcui on PATH and a running local gRPC server with reflection enabled. Connects to localhost:50051
+      without TLS.
     interactive: true
     cmds:
       - "grpcui -plaintext localhost:50051"
@@ -989,7 +1010,8 @@ tasks:
     desc: "Generate agent instructions and gh-aw MCP declarations"
     summary: |-
       Usage: task agentic:generate
-      Uses the mise-pinned go42x binary to generate shared agent instructions and the gh-aw MCP fragment from shared configuration, ignoring local overrides.
+      Uses the mise-pinned go42x binary to generate shared agent instructions and the gh-aw MCP fragment from shared
+      configuration, ignoring local overrides.
     cmds:
       - task: x
         vars:
@@ -999,7 +1021,8 @@ tasks:
     desc: "Generate agent instructions and compile agentic workflows"
     summary: |-
       Usage: task agentic:compile
-      Runs task agentic:generate, then compiles all workflows in strict mode, approves safe updates, and removes stale workflow locks.
+      Runs task agentic:generate, then compiles all workflows in strict mode, approves safe updates, and removes stale
+      workflow locks.
     cmds:
       - task: agentic:generate
       - 'mise exec -- gh-aw compile --no-check-update --strict --purge --approve'

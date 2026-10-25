@@ -520,8 +520,7 @@ jobs:
         uses: ./.github/actions/setup-tools
         with:
           install-task: 'true'
-          install-args: >-
-            --locked go:github.com/caarlos0/jsonfmt go:github.com/google/yamlfmt/cmd/yamlfmt tombi
+          install-args: --locked go:github.com/caarlos0/jsonfmt go:github.com/google/yamlfmt/cmd/yamlfmt tombi
       - name: 'Check JSON formatting'
         run: task --exit-code lint:json
       - name: 'Check YAML formatting'
