@@ -32,10 +32,12 @@ Before dispatching:
     Contents read, Actions read, Attestations write, and ID token write permissions; repository and organization settings
     must allow those operations.
 
-The validation job checks for successful CI immediately, then every 15 seconds for up to 100 checks, about 25 minutes.
-It continues as soon as a matching successful run is available and fails if none appears within that budget. Failed or
-cancelled CI runs do not satisfy the check; rerunning the matching push run can satisfy it before polling ends. The job
-timeout is 30 minutes to allow time for API requests.
+The validation job checks the newest matching push run immediately, then every 15 seconds for up to 100 checks,
+about 25 minutes. It waits while the run is missing, queued, or running, and continues only after that run completes
+successfully. A completed run with any other conclusion, including failure, cancellation, or timeout, fails validation
+on the next check and reports the CI run URL. If CI does not complete within the polling budget, validation fails.
+After a CI failure, rerun the matching push run and retry the release. The job timeout is 30 minutes to allow time for
+API requests.
 
 Validation requires the workflow definition and dispatch SHA to match the selected `master` commit. It checks the
 `master` head before and after waiting for CI. If the head has changed, validation fails; dispatch again for the new head.

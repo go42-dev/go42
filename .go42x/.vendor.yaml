@@ -1,6 +1,6 @@
 ---
 
-# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/v0.45.0/assets/schemas/vendor.schema.yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/v0.47.0/assets/schemas/vendor.schema.yaml
 
 version: "1.0"
 

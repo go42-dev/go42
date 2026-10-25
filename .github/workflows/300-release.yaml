@@ -112,21 +112,26 @@ jobs:
                   branch: 'master',
                   event: 'push',
                   head_sha: sourceSha,
-                  status: 'completed',
                   per_page: 100,
                 },
               );
-              ciRun = runs.find((run) =>
+              const matchingRuns = runs.filter((run) =>
                 run.event === 'push' &&
                 run.head_branch === 'master' &&
                 run.head_sha === sourceSha &&
-                run.head_repository?.full_name === repository &&
-                run.status === 'completed' &&
-                run.conclusion === 'success'
+                run.head_repository?.full_name === repository
               );
-              if (ciRun) {
+              const latestRun = matchingRuns.sort((a, b) => b.run_number - a.run_number)[0];
+              if (latestRun?.status === 'completed') {
+                if (latestRun.conclusion !== 'success') {
+                  throw new Error(`Unified CI for ${sourceSha} completed with ${latestRun.conclusion}: ` +
+                    latestRun.html_url);
+                }
+
+                ciRun = latestRun;
                 break;
               }
+
               if (attempt < maxAttempts) {
                 core.info(`Waiting for successful Unified CI for ${sourceSha} (${attempt}/${maxAttempts}); ` +
                   `retrying in ${pollIntervalMs / 1000} seconds`);

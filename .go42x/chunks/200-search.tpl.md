@@ -39,14 +39,14 @@ searches; if the index generation changes during pagination, restart the search.
 
 #### Index maintenance
 
-Run `go42x kwb build` from the project root after changing indexed files or
+Run `task x -- kwb build` from the project root after changing indexed files or
 exclusions, or when the index is missing or stale. After changing agent
-configuration or templates, run `go42x agentenv generate` before building the
+configuration or templates, run `task x -- agentenv generate` before building the
 index. Builds update changed files and remove deleted or newly excluded files.
 A running MCP server picks up the updated index on its next request. Use
-`go42x kwb build --rebuild` when a full rebuild is needed.
+`task x -- kwb build --rebuild` when a full rebuild is needed.
 
-Use `go42x kwb check --json` to check freshness without updating the index.
+Use `task x -- kwb check --json` to check freshness without updating the index.
 Exit status 0 confirms a complete, fresh scan. Status 1 means the index is stale,
 missing, unavailable, or the scan could not confirm freshness. Inspect reported
 completeness, truncation, and diagnostics before relying on the index; address
@@ -71,10 +71,10 @@ matter. Markdown references outside that directory remain searchable.
 The MCP server's `--context-doc` argument selects authored document IDs to include
 as project guidance; `--search-timeout` controls read deadlines. Set these
 arguments in the project's MCP definition. Regenerate agent configuration and
-restart the client after changing them. Use the same go42x release for generation
-and the MCP server.
+restart the client after changing them. Use `task x` for both generation and the
+local MCP server.
 
-Consult the installed `go42x kwb --help` and `go42x mcp --help` for supported
+Consult `task x -- kwb --help` and `task x -- mcp --help` for supported
 commands and options.
 {{- end }}
 {{- if .mcp.gopls }}

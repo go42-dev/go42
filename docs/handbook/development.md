@@ -39,7 +39,7 @@ Jobs select the mise tools they need; the [prepare-env action](../../.github/act
 before running `task setup` for a full development environment.
 
 The [MCP configuration](../../.go42x/go42x.yaml) runs the local servers through `task tool -- gopls mcp`,
-`task tool -- go42x mcp`, and `task tool -- mise mcp`. Start these commands from the repository root to use the project
+`task x -- mcp`, and `task tool -- mise mcp`. Start these commands from the repository root to use the project
 tool versions and environment configured by mise.
 
 Mise MCP exposes tool versions, installation status, environment values, and active configuration files. Its server
@@ -116,7 +116,13 @@ name and its arguments after `--`; the task preserves standard input and output:
 ```sh
 task tool -- gopls version
 task tool -- node --version
-task tool -- go42x kwb build
+```
+
+Use `task x -- COMMAND [ARGS...]` for go42x operations. This task selects the mise-pinned release for local commands,
+CI preparation, and MCP clients:
+
+```sh
+task x -- kwb build
 ```
 
 Formatters require existing individual files. Linters that accept file arguments also reject directories, literal globs,
@@ -245,7 +251,7 @@ At runtime, each workflow uses the local AI preparation action to install the fu
 instructions, and index the checkout. An empty `providers` input generates shared instructions only; gh-aw supplies its
 own runtime configuration from the committed workflow. `pull-mcp-image: true` pulls the tools image from
 `mcp-image-repository`, which defaults to `ghcr.io/go42-dev/go42x`. The action selects the release matching the go42x
-version chosen by mise and resolves its immutable digest for the MCP containers. Override the repository input when
+version chosen by mise and passes that version tag to the MCP containers. Override the repository input when
 using another GHCR package. Upgrade the mise pin only after its matching image has been published. Local MCP commands
 continue to run through Task.
 

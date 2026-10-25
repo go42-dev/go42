@@ -46,7 +46,7 @@ tasks:
       - "task --list --sort none"
 
   x:
-    desc: "Run the go42x binary installed by mise"
+    desc: "Run go42x from the mise-pinned release"
     summary: "Usage: task x [-- COMMAND ...]"
     interactive: true
     cmds:
@@ -109,7 +109,7 @@ tasks:
 
   tool:
     desc: "Run a command with the project tools"
-    summary: "Usage: § -- COMMAND [ARGS...]"
+    summary: "Usage: task tool -- COMMAND [ARGS...]"
     interactive: true
     silent: true
     preconditions:

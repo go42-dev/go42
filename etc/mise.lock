@@ -91,12 +91,12 @@ backend = "github:github/gh-aw"
 specifiers = ["0.93.2"]
 
 [tools."github:github/gh-aw".options]
-asset_pattern = "darwin-arm64"
+asset_pattern = "darwin-amd64"
 
-[tools."github:github/gh-aw"."platforms.macos-arm64"]
-checksum = "sha256:54ac5aef7e0211158129aa81dd1e5a55d30f62d241a0c0d074686db9cacd0616"
-url = "https://github.com/github/gh-aw/releases/download/v0.93.2/darwin-arm64"
-url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/668135042"
+[tools."github:github/gh-aw"."platforms.macos-x64"]
+checksum = "sha256:24af961d80eba6c8a65377f8f4ff4f877c00d9b08a179d706ddb7b768d1f0c9a"
+url = "https://github.com/github/gh-aw/releases/download/v0.93.2/darwin-amd64"
+url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/668135043"
 provenance = "github-attestations"
 
 [[tools."github:github/gh-aw"]]
@@ -105,12 +105,12 @@ backend = "github:github/gh-aw"
 specifiers = ["0.93.2"]
 
 [tools."github:github/gh-aw".options]
-asset_pattern = "linux-arm64"
+asset_pattern = "darwin-arm64"
 
-[tools."github:github/gh-aw"."platforms.linux-arm64"]
-checksum = "sha256:7232fa7a3bb65a2b94169c36ab58170cf8b92d97a909ca05b88bc1d88539bcd2"
-url = "https://github.com/github/gh-aw/releases/download/v0.93.2/linux-arm64"
-url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/668135160"
+[tools."github:github/gh-aw"."platforms.macos-arm64"]
+checksum = "sha256:54ac5aef7e0211158129aa81dd1e5a55d30f62d241a0c0d074686db9cacd0616"
+url = "https://github.com/github/gh-aw/releases/download/v0.93.2/darwin-arm64"
+url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/668135042"
 provenance = "github-attestations"
 
 [[tools."github:github/gh-aw"]]
@@ -133,12 +133,12 @@ backend = "github:github/gh-aw"
 specifiers = ["0.93.2"]
 
 [tools."github:github/gh-aw".options]
-asset_pattern = "darwin-amd64"
+asset_pattern = "linux-arm64"
 
-[tools."github:github/gh-aw"."platforms.macos-x64"]
-checksum = "sha256:24af961d80eba6c8a65377f8f4ff4f877c00d9b08a179d706ddb7b768d1f0c9a"
-url = "https://github.com/github/gh-aw/releases/download/v0.93.2/darwin-amd64"
-url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/668135043"
+[tools."github:github/gh-aw"."platforms.linux-arm64"]
+checksum = "sha256:7232fa7a3bb65a2b94169c36ab58170cf8b92d97a909ca05b88bc1d88539bcd2"
+url = "https://github.com/github/gh-aw/releases/download/v0.93.2/linux-arm64"
+url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/668135160"
 provenance = "github-attestations"
 
 [[tools."github:oasdiff/oasdiff"]]
@@ -207,9 +207,9 @@ backend = "go:github.com/go-delve/delve/cmd/dlv"
 specifiers = ["1.27.1"]
 
 [[tools."go:github.com/go42-dev/go42x"]]
-version = "0.45.0"
+version = "0.47.0"
 backend = "go:github.com/go42-dev/go42x"
-specifiers = ["0.45.0"]
+specifiers = ["0.47.0"]
 
 [[tools."go:github.com/google/capslock/cmd/..."]]
 version = "0.3.3"

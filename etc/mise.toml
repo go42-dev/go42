@@ -50,7 +50,7 @@ oapi-codegen = "2.8.0"
 "go:google.golang.org/grpc/cmd/protoc-gen-go-grpc" = "1.6.2"
 "go:github.com/go-delve/delve/cmd/dlv" = "1.27.1"
 "go:golang.org/x/tools/gopls" = "0.24.0"
-"go:github.com/go42-dev/go42x" = "0.45.0"
+"go:github.com/go42-dev/go42x" = "0.47.0"
 
 [tools."github:github/gh-aw"]
 version = "0.93.2"

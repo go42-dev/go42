@@ -1,6 +1,6 @@
 ---
 
-# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/v0.45.0/assets/schemas/go42x.schema.yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/v0.47.0/assets/schemas/go42x.schema.yaml
 
 version: "1.0"
 
@@ -170,9 +170,8 @@ mcp:
     name: go42x
     command: task
     args:
-      - tool
+      - x
       - --
-      - go42x
       - mcp
     container:
       image: ghcr.io/go42-dev/go42x
