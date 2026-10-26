@@ -34,13 +34,14 @@ pre-agent-steps:
     with:
       pull-mcp-image: true
 network:
-  allowed: [defaults, github, go, mcp.context7.com]
+  allowed: [defaults, github, go, node, mcp.context7.com]
 tools:
-  github:
-    toolsets: [repos, issues, pull_requests, actions]
+  github: false
   bash: ["*"]
   edit:
 safe-outputs:
+  threat-detection:
+    continue-on-error: false
   github-app:
     client-id: ${{ vars.AI_APP_CLIENT_ID }}
     private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
@@ -76,3 +77,8 @@ output. Never merge, release, or change repository settings.
 Use safe-output tools for every GitHub write. Answer questions or report the
 implementation result in one comment. Empty or unclear requests should receive
 a short clarification comment without code changes.
+
+For new pull requests, use safe-output pull request references and list file
+paths. For existing pull requests, link to the pull request's Files changed
+view. Publication can rename branches and recreate commits, so local branch
+names and commit hashes do not identify the published change.

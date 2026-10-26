@@ -83,12 +83,6 @@ replace the full lint run before review.
 | `task lint:proto`                    | While editing Protobuf definitions                                                        | Build, lint, and check formatting of the entire API module      |
 | `task lint:proto-breaking`           | While editing Protobuf definitions                                                        | Check compatibility against origin/master                       |
 
-Documentation checks include Markdown, prose, tooling tests, metadata and
-links, the website build, and TypeScript. Compatibility and history checks use
-`origin/master` unless their Taskfile declarations allow another base.
-Regenerate API outputs before comparing them. After local provider generation
-with `task x -- agentenv generate`, scan the resulting `AGENTS.md` explicitly too.
-
 ### Results and review
 
 An aggregate stops at the first failed command. A failed invocation does not
@@ -149,32 +143,3 @@ artifacts before running tests that consume them.
 | ------------ | -------------------------------------------------------------- | ------------------------------------ |
 | `task build` | Application entry points or Go build settings changed          | Verify the development binary builds |
 | `task image` | The Dockerfile, runtime tools, or image build settings changed | Verify the container image builds    |
-
-### Behavior covered
-
-The Go integration suites cover authentication, authorization, credential changes,
-token boundaries, UUID handling, and pagination. The
-[authentication harness](../../tests/integration/auth/auth_test.go) uses the real
-service and repository with an isolated database. It checks that rejected and
-no-op updates preserve credentials and existing sessions, and that normalized
-duplicate emails return `409`. These tests run in the existing SQLite, MySQL, and
-PostgreSQL integration matrix.
-
-The harness validates HTTP responses against the generated OpenAPI document through
-its [shared HTTP helper](../../tests/integration/auth/helpers_test.go). Validation
-checks response bodies, required fields, content types, and declared status codes.
-Behavioral assertions still check the expected status, user identity, and session
-transitions. The [HTTP client suite](../../tests/integration/http/v1/users_test.go)
-exercises the running application with both generated SDKs, and the
-[probe checks](../../tests/integration/http/v1/auth_test.go) verify health, readiness,
-and application metrics.
-
-`User` responses require a UUID, email, creation time, roles, and permissions; empty
-role and permission arrays are valid. Creation time retains the existing
-`YYYY-MM-DD HH:MM:SS` format. Token responses require nonempty access and refresh
-tokens and a nonnegative integer lifetime in whole seconds. Subsecond lifetimes
-round down to zero.
-
-These checks complement `oasdiff`, which compares API compatibility between
-revisions. Schema validation applies to the responses exercised by the tests; it
-does not generate additional requests or establish business correctness by itself.

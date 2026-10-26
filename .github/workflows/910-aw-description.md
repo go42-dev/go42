@@ -35,10 +35,11 @@ pre-agent-steps:
 network:
   allowed: [defaults, github, mcp.context7.com]
 tools:
-  github:
-    toolsets: [repos, issues, pull_requests]
+  github: false
   bash: ["*"]
 safe-outputs:
+  threat-detection:
+    continue-on-error: false
   github-app:
     client-id: ${{ vars.AI_APP_CLIENT_ID }}
     private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}

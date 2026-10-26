@@ -693,6 +693,10 @@ tasks:
   lint:capabilities:
     desc: "Report Go package capability changes against origin/master (advisory)"
     silent: true
+    # Keep both analyses within the agent sandbox's memory budget.
+    env:
+      GOMEMLIMIT: 4GiB
+      GOMAXPROCS: "2"
     cmds:
       - |
         capabilities_base=$(git rev-parse origin/master)

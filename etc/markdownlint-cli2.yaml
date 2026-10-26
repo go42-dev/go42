@@ -25,6 +25,19 @@ config:
     code_block_line_length: 120
     tables: false # Allow aligned tables to exceed line length limit.
 
+overrides:
+  - filter:
+      - '.go42x/chunks/**/*.tpl.md'
+    config:
+      MD041:
+        level: 3
+    combine: merge
+  - filter:
+      - '.github/workflows/*.md'
+    config:
+      MD041: false
+    combine: merge
+
 globs:
   - docs/**/*.md
 
