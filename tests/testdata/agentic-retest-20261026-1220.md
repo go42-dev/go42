@@ -1,5 +1,5 @@
 # Agentic workflow test
 
-Status: initial.
+Status: updated.
 
 This temporary fixture verifies the workflow lifecycle for go42.
