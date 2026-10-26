@@ -1,6 +1,23 @@
 # go42x knowledgebase will ignore the following files and directories
 
 # go42x -- START
+# Local configuration and generated state.
+.go42x/go42x.local.yaml
+.go42x/kwb/**
+.go42x/backups/**
+.vendor.lock.yaml
+
+# Generated agent instructions and provider configuration.
+AGENTS.md
+.mcp.json
+.claude/**
+.codex/**
+.agents/plugins/project-tools/**
+.crush/**
+.crush.json
+
+# Generated agentic workflow configuration and compiled workflows.
+.github/workflows/900-aw-mcp.md
 .github/workflows/*.lock.yml
 # go42x -- END
 

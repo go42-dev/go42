@@ -52,14 +52,15 @@ missing, unavailable, or the scan could not confirm freshness. Inspect reported
 completeness, truncation, and diagnostics before relying on the index; address
 diagnostics for incomplete or unavailable scans.
 
-Indexing respects project `.gitignore` files and built-in filters for generated
-state, binary files, and tool or build directories. Authored `.go42x`
-configuration, instruction templates, vendored Markdown, and `.env.example` can
-be indexed. Generated agent files and local overrides are excluded.
+Indexing applies the same file-type rules throughout the project, including
+`.go42x`. Project `.gitignore` files and built-in filters exclude binary files,
+generated Go code, and tool or build directories.
 
-Keep custom root-relative Git ignore patterns in `.go42x/kwb.ignore`, after the
-managed block. `!` exceptions can override bundled rules, but cannot include
-files excluded by `.gitignore` or built-in filters.
+`.go42x/kwb.ignore` contains bundled exclusions for generated agent files, local
+configuration, and generated state. `task x -- kwb build` refreshes its managed
+block. Keep custom root-relative Git ignore patterns after that block. `!`
+exceptions can override bundled rules, but cannot include files excluded by
+`.gitignore` or built-in filters.
 
 #### Knowledge-base configuration
 

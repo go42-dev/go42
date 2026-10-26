@@ -6,6 +6,7 @@ on:
     types: [opened, ready_for_review, synchronize]
     acknowledge-risk: true
   roles: [admin, maintainer, write]
+  bots: ["go42-ai[bot]"]
 if: github.event.pull_request.draft == false
 checkout:
   pull-request: false

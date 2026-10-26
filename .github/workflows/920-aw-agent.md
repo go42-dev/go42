@@ -6,6 +6,9 @@ on:
     name: agent
     events: [issue_comment, pull_request_comment]
   roles: [admin, maintainer, write]
+  github-app:
+    client-id: ${{ vars.AI_APP_CLIENT_ID }}
+    private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
 checkout:
   pull-request: false
   repository: ${{ github.repository }}
