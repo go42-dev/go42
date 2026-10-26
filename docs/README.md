@@ -32,18 +32,18 @@ The complete index follows the published sidebar's reading order.
 | Document                                                    | Purpose                                                                        |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | [Writing documentation](handbook/documentation.md)          | Writing rules, document templates, checks, and publishing                      |
-| [Verification](handbook/verification.md)                    | Formatting, linting, test suites, and checks required before review            |
-| [GitHub configuration](handbook/github-configuration.md)    | Required and optional workflow variables and secrets                           |
 | [Project conventions](handbook/conventions.md)              | Application-specific rules and a reference to shared Go conventions            |
 | [Application profile](handbook/project.md)                  | Purpose, ownership, current capabilities, and documentation gaps               |
 | [Configuration](handbook/configuration.md)                  | Configuration sources, backend choices, defaults, and deployment settings      |
 | [Development workflow](handbook/development.md)             | Setup, implementation, generation, tooling, and contributions                  |
+| [Verification](handbook/verification.md)                    | Formatting, linting, test suites, and checks required before review            |
 | [Architecture](handbook/architecture.md)                    | Source map, component boundaries, request and event flows, and lifecycle       |
 | [Using the API](handbook/api.md)                            | Credentials, session flow, local verification, and request failure diagnosis   |
 | [Release](handbook/release.md)                              | Version selection, release validation, published artifacts, and image identity |
 | [Deployment](handbook/deployment.md)                        | Container and Helm configuration, migration handoff, and rollout verification  |
 | [Operations](handbook/operations.md)                        | Probe checks, process lifecycle, outbox diagnosis, and failure recovery        |
 | [Monitoring](handbook/monitoring.md)                        | Collect metrics, interpret signals, and configure the supplied dashboard       |
+| [GitHub configuration](handbook/github-configuration.md)    | Required and optional workflow variables and secrets                           |
 
 ### Requirements
 
