@@ -7,6 +7,24 @@
   across them, and address every requested item. Preserve literal uses inside
   code blocks and quoted content.
 
+### Task validation
+
+- Before changing project files, read the project documentation for formatting,
+  linting, testing, and generation requirements. Identify the required checks
+  for the affected files, behavior, callers, interfaces, and platforms.
+
+- Before handing back changes, format the affected files and complete the
+  validation required by the project documentation. Use focused checks while
+  editing, then run the documented checks required before finishing.
+
+- After fixes, rerun checks whose results the fixes can affect. Fix failures
+  introduced by the changes. Treat failed, skipped, or crashing checks as
+  unresolved verification gaps; do not suppress failures to report success.
+
+- Review the final diff against the request, including generated outputs.
+  Report the commands run, their results, warnings, existing failures, and
+  required checks that could not run, with the reasons.
+
 ### Communication
 
 - Clarity: Be concise and direct in explanations.
@@ -26,8 +44,10 @@
   the change. Explain what changed and why, how the affected parts connect,
   and where to start reviewing. Link to relevant files or symbols in a suggested
   reading order, explaining each one's role. Include a concrete example when
-  useful. Report checks actually performed, their results, and any remaining
-  limitations or required next steps.
+  useful. In the review report, list the linters that passed, formatters
+  applied, and tests executed, including their commands and results. State
+  when a category does not apply. Report warnings, failed or skipped checks,
+  and any remaining limitations or required next steps.
 
   Use a terminal-readable text diagram when it helps explain execution or data
   flow. Use nested boxes to show component boundaries and arrows to show flow.
@@ -84,8 +104,10 @@
 
   Verification:
 
-  - <check performed> — <actual result>.
-  - <material check not performed> — <reason, if relevant>.
+  - Linters passed: <commands and results>.
+  - Formatters applied: <commands and affected files>.
+  - Tests executed: <commands or suites and results>.
+  - <Failed or skipped checks, their reasons, and remaining verification gaps>.
 
   Remaining:
 
@@ -159,3 +181,21 @@
 
   Examples requesting changes: "Can you fix this?", "Update these instructions",
   or "Review this code and fix the bugs you find."
+
+### Task validation
+
+- Before changing project files, read the project documentation for formatting,
+  linting, testing, and generation requirements. Identify the required checks
+  for the affected files, behavior, callers, interfaces, and platforms.
+
+- Before handing back changes, format the affected files and complete the
+  validation required by the project documentation. Use focused checks while
+  editing, then run the documented checks required before finishing.
+
+- After fixes, rerun checks whose results the fixes can affect. Fix failures
+  introduced by the changes. Treat failed, skipped, or crashing checks as
+  unresolved verification gaps; do not suppress failures to report success.
+
+- Review the final diff against the request, including generated outputs.
+  Report the commands run, their results, warnings, existing failures, and
+  required checks that could not run, with the reasons.

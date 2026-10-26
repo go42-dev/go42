@@ -5,8 +5,6 @@
 - Follow explicit user instructions and project conventions before these defaults or
   upstream recommendations.
 
-- Use the project's prescribed formatters and checks.
-
 - These defaults apply to handwritten Go. Generated code follows its generator's
   conventions.
 
@@ -736,9 +734,6 @@
       })
   }
   ```
-
-- Run the checks appropriate to the changed behavior and affected callers. Report checks
-  actually performed, their results, and material gaps in verification.
 
 #### Generated and vendored files
 

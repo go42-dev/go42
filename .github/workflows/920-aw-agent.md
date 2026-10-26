@@ -18,7 +18,10 @@ permissions:
   packages: read
   issues: read
   pull-requests: read
-engine: codex
+engine:
+  id: codex
+  config: |
+    project_doc_max_bytes = 65536
 timeout-minutes: 45
 imports:
   - 900-aw-mcp.md

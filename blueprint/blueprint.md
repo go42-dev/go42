@@ -29,7 +29,7 @@ and `/agent` comments start agent requests for trusted contributors. Native gh-a
 available through the variables referenced in the compiled workflows; no project-specific reasoning-effort mapping is
 introduced.
 
-Install the pinned tools with `task setup`, then run `task agentic:compile`, `task agentic:lint`, and
+Install the pinned tools with `task setup`, then run `task generate:agentic`, `task lint:agentic`, and
 `task lint:actions`. Review and commit workflow Markdown, `900-aw-mcp.md`, compiled `.lock.yml` files, and
 `.github/aw/actions-lock.json` together. Ensure the go42x version selected by mise has a published matching Docker image
 before activating these workflows. Use the application's development guide for ongoing workflow and vendor updates.

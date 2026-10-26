@@ -434,26 +434,28 @@ jobs:
         uses: ./.github/actions/setup-tools
         with:
           install-task: 'true'
-          install-args: --locked node actionlint go:github.com/go42-dev/go42x github:github/gh-aw
+          install-args: --locked node actionlint gitleaks go:github.com/go42-dev/go42x github:github/gh-aw
       - name: 'Generate and compile agentic workflows'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: task --exit-code agentic:compile
+        run: task --exit-code generate:agentic
+      - name: 'Scan generated agent instructions for secrets'
+        run: task --exit-code lint:secrets -- AGENTS.md
       - name: 'Check for uncommitted changes'
         shell: bash
         run: |-
           if [[ -n $(git status --porcelain) ]]; then
-            echo "Uncommitted changes detected after running 'task agentic:compile'"
+            echo "Uncommitted changes detected after running 'task generate:agentic'"
             echo "The following files have changes:"
             git status --porcelain
             echo ""
-            echo "Please run 'task setup && task agentic:compile' locally and commit the changes."
+            echo "Please run 'task setup && task generate:agentic' locally and commit the changes."
             exit 1
           else
             echo "No uncommitted changes detected"
           fi
       - name: 'Check compiled GitHub Agentic Workflows'
-        run: task --exit-code agentic:lint
+        run: task --exit-code lint:agentic
 
   # Linter for sql migrations.
   # @see https://github.com/sqlfluff/sqlfluff
@@ -529,7 +531,7 @@ jobs:
         run: task --exit-code lint:toml
 
   # Linter specific to current project.
-  # This workflow checks for uncommitted changes after running 'task generate'.
+  # This workflow checks for uncommitted changes after running 'task generate:code'.
   # It is used to ensure that the relevant generated files are committed to the repository.
   project-lint:
     name: project-lint
@@ -551,15 +553,15 @@ jobs:
           setup-task: setup:generators
       # -----
       - name: 'Generate code'
-        run: task generate
+        run: task generate:code
       - name: 'Check for uncommitted changes'
         run: |-
           if [[ -n $(git status --porcelain) ]]; then
-            echo "Uncommitted changes detected after running 'task generate'"
+            echo "Uncommitted changes detected after running 'task generate:code'"
             echo "The following files have changes:"
             git status --porcelain
             echo ""
-            echo "Please run 'task setup:generators && task generate' locally and commit the changes."
+            echo "Please run 'task setup:generators && task generate:code' locally and commit the changes."
             exit 1
           else
             echo "No uncommitted changes detected"

@@ -51,7 +51,8 @@ at `https://api.githubcopilot.com/mcp/`. Export `GITHUB_TOKEN` with your PAT in 
 configuration uses it for bearer authentication and sets `X-MCP-Toolsets: all`. After changing the MCP configuration,
 run `task x -- agentenv generate` and restart the client.
 
-For code generation, `task setup:generators` installs the generators and their supporting tools from the same lockfile.
+For generation, `task setup:generators` installs code generators, the agentic workflow compiler, and their supporting
+tools from the same lockfile.
 Run it before `task generate` to prepare only the tools needed for generation.
 
 For documentation, `task setup:docs` installs Node.js, Markdownlint, and Vale from the lockfile, then syncs the pinned
@@ -161,8 +162,9 @@ upstream. Unchanged files deleted locally stay deleted. The installed version mu
 target version must support `agentenv update --base`; the first upgrade from an older version requires manual
 reconciliation.
 
-After applying assets, the task generates agent configuration and the gh-aw MCP fragment with the installed release,
-compiles and lints workflows, and rebuilds the knowledge base. Partial application or an unrecognized failure retains
+After applying assets, the task runs `generate:agentic` to refresh shared instructions, the gh-aw MCP fragment, and
+workflow locks with the installed release. It checks workflows and Actions, regenerates local agent configuration,
+then rebuilds the knowledge base. Partial application or an unrecognized failure retains
 the new pin. For an interrupted write, recover originals from the backup directory identified in the update report
 under `.go42x/backups/updates/`; its `files/` directory uses project-relative paths. For a generation or lint failure,
 fix the reported problem and rerun the task. Review all changed files together and restart
@@ -186,7 +188,7 @@ The generated agent instructions use the configured gopls tools for Go navigatio
     implementations, and tests. Request file context or a package's public API when needed to understand unfamiliar code.
 2. After a coherent batch of saved Go edits, request diagnostics for the changed files. Investigate relevant findings,
     fix errors introduced by the change, and check again after fixes.
-3. Run the applicable [lint and test commands](testing.md#choosing-checks-before-review) before completing the change.
+3. Run the applicable [lint and test commands](verification.md) before completing the change.
     Include affected callers when selecting packages; diagnostics supplement those checks.
 
 The configured standalone gopls server reads saved files. Its results reflect the loaded workspace and build
@@ -235,21 +237,30 @@ there. The shared MCP definitions come from [go42x configuration](../../.go42x/g
 command and an optional container definition for gh-aw. Refresh and verify from the repository root:
 
 ```sh
-task agentic:compile
-task agentic:lint
+task generate:agentic
+task lint:secrets -- AGENTS.md
+task lint:agentic
 task lint:actions
 ```
 
-`agentic:generate` runs the mise-installed go42x to generate shared instructions and `900-aw-mcp.md` with the exact
-provider list `gh-aw`. `agentic:compile` runs generation and the pinned gh-aw compiler. `agentic:lint` checks the compiled
-workflows. Review and commit the Markdown sources, generated MCP fragment, `.lock.yml` files, and
+`generate:agentic` runs the mise-installed go42x with the exact provider list `gh-aw` and `--no-local` to generate shared
+instructions and `900-aw-mcp.md`, then compiles the workflows with the pinned gh-aw compiler. `lint:agentic` checks the
+compiled workflows. Generation checks instruction sizes and reports warnings without failing or shortening instructions.
+Invalid settings, missing imports, and unresolved consumers fail generation. `task lint:secrets -- AGENTS.md` scans the
+generated instructions for secrets, including when Git ignores the file. Explicit file arguments scan those files
+directly; without arguments, `lint:secrets` scans Git history. Secret findings and scanner errors fail the task.
+The Codex workflow sources set `project_doc_max_bytes = 65536`. Other enabled consumers use their runtime limits or an
+explicit project budget where no native limit is verified. Run tool queries through `task tool -- COMMAND` so they use
+the project's mise configuration. Review and commit the Markdown sources, generated MCP fragment, `.lock.yml` files, and
 [action resolution lock](../../.github/aw/actions-lock.json) together. The separate `agentic-lint` CI job repeats generation,
-compilation, and linting and fails if they leave changes. Plain YAML formatting excludes compiler-owned workflow locks;
-Actionlint and Zizmor still check them. The `.gitattributes` entry marks these files as generated in GitHub's diff view.
+compilation, secret scanning, and linting and fails if they leave changes. Plain YAML formatting excludes compiler-owned
+workflow locks; Actionlint and Zizmor still check them. The `.gitattributes` entry marks these files as generated in
+GitHub's diff view.
 
 At runtime, each workflow uses the local AI preparation action to install the full development toolset, generate
-instructions, and index the checkout. An empty `providers` input generates shared instructions only; gh-aw supplies its
-own runtime configuration from the committed workflow. `pull-mcp-image: true` pulls the tools image from
+instructions, scan them for secrets before the agent starts, and index the checkout. An empty `providers` input generates
+shared instructions only; gh-aw supplies its own runtime configuration from the committed workflow.
+`pull-mcp-image: true` pulls the tools image from
 `mcp-image-repository`, which defaults to `ghcr.io/go42-dev/go42x`. The action selects the release matching the go42x
 version chosen by mise and passes that version tag to the MCP containers. Override the repository input when
 using another GHCR package. Upgrade the mise pin only after its matching image has been published. Local MCP commands
@@ -316,12 +327,19 @@ Its endpoint availability does not establish main-server readiness.
 
 ## Generated files and dependencies
 
-Edit source definitions or generator configuration, then run `task generate` when the change affects generated content.
-It tidies Go modules, regenerates APIs and mocks, generates `.env.example` through `cmd/cfg2env`, and combines the OpenAPI
-definitions. Review the resulting diff and commit source changes and corresponding tracked outputs together. After setup,
-running `task generate` from a clean checkout must produce no changes.
+Edit source definitions or generator configuration, then run `task generate` to refresh all routine generated project
+files. It runs `generate:code`, then `generate:agentic`.
 
-Generated outputs include `api/gen/`, package `mocks/` directories, `.env.example`, and the combined OpenAPI document.
+`task generate:code` tidies Go modules, regenerates APIs and mocks, generates `.env.example` through `cmd/cfg2env`, and
+combines the OpenAPI definitions. `task generate:agentic` generates shared instructions and MCP definitions, then compiles
+workflow locks. Use either task directly for a focused refresh. CI checks the code and agentic outputs in separate jobs.
+Local provider configuration is generated separately with `task x -- agentenv generate`.
+
+Review the resulting diff and commit source changes and corresponding tracked outputs together. After setup, running
+`task generate` from a clean checkout must produce no changes.
+
+Generated outputs include `api/gen/`, package `mocks/` directories, `.env.example`, the combined OpenAPI document,
+`AGENTS.md`, `.github/workflows/900-aw-mcp.md`, and workflow lock files.
 Documentation assembly owns `pages/docs/`, and the website build owns `pages/build/`; regenerate those through the
 [documentation commands](documentation.md#verification). Dependency tools own lockfiles such as `etc/mise.lock` and
 `pages/package-lock.json`.
@@ -344,7 +362,7 @@ task vendor:check
 ```
 
 Review the changed manifest, lock, and files together. External Proto files and published npm archives use exact release
-URLs and SHA-256 checksums. Regenerate affected outputs with `task generate` after changing API definitions. CI checks
+URLs and SHA-256 checksums. Regenerate affected outputs with `task generate:code` after changing API definitions. CI checks
 vendor locks before code generation. Follow [tool maintenance](#maintaining-the-workflow) when changing tool pins or
 configuration.
 
@@ -387,7 +405,7 @@ task test:unit -- ./internal/auth/... ./internal/api/...
 
 The [HTTP integration clients](../../tests/integration/http/v1/users_clients_test.go) exercise both generated HTTP SDKs;
 [gRPC integration tests](../../tests/integration/grpc/v1/auth_test.go) exercise the generated gRPC client. Follow the
-[integration prerequisites](testing.md#integration-test-environment) before running `task test:integration`.
+[integration prerequisites](#integration-test-environment) before running `task test:integration`.
 
 ## Formatting and linting
 
@@ -454,16 +472,49 @@ file paths.
 
 ## Testing and verification
 
-Use the [testing guide](testing.md) to select suites, prepare dependencies, and check results.
+Use the [verification guide](verification.md) for formatting, linting, test selection, and review requirements.
 
 ### Integration test environment
 
-Follow [integration setup](testing.md#integration-test-environment) for application settings, test credentials, and
-backend requirements.
+`task test:integration` runs the full suite; it does not start the application. Use a dedicated test application because
+the [HTTP tests](../../tests/integration/http/v1/users_test.go) create, update, and delete user records.
+Repository tests create isolated databases through the [test helper](../../tests/integration/helpers.go).
+
+| Test process setting  | Required setup                                                                                                             |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `HTTP_SERVER_ADDRESS` | Application base URL, default `http://localhost:8080`; omit the `/api/v1` suffix                                           |
+| `GRPC_SERVER_ADDRESS` | Application address, default `localhost:50051`; the current client uses plaintext gRPC                                     |
+| `HTTP_API_KEY`        | HTTP integration requires a key with `users:list`, `users:read_others`, `users:create`, `users:update`, and `users:delete` |
+| `GRPC_API_KEY`        | Defaults to the seeded development key; override through the test process environment when needed                          |
+| `DATABASE_*`          | Select the engine and test database service; MySQL/PostgreSQL credentials need create/drop database privileges             |
+
+Start the application with its own configuration and verify [readiness](operations.md#run-and-verify-locally).
+Keep `SERVER_GRPC_AUTHORIZATION_ENABLED=true` on the test application: the suite tests denied requests too.
+The app and test runner are separate processes, so changing the runner's settings does not reconfigure the app.
+
+Keep `.env` for application configuration. The integration task loads it for settings such as `DATABASE_*`; file values
+override inherited application settings. It does not load `.env.example`. Pass test-client addresses and keys through the
+process environment or CI job settings.
+
+The gRPC integration helper defaults to the public development key from the
+[seed migration](../../migrate/sqlite/20250717175120_auth_data.sql). HTTP integration requires an explicit `HTTP_API_KEY`.
+The load suites use `GRPC_API_KEY` for both protocols and default to the same development key. CI supplies the keys
+explicitly. Override them through the environment when the application's test credentials differ.
+
+SQLite repository tests use temporary files and need no database service.
+
+The [integration CI workflow](../../.github/workflows/150-integration-tests.yaml) is a complete example of application,
+backend, address, and test-credential setup. It disables the application's authentication rate limiter for its test load.
+Keep such overrides scoped to the test application.
+
+Resilience tests also need Toxiproxy and their configured backing services.
+Use the [resilience suite](../../tests/resilience/application_test.go) and
+[CI service configuration](../../.github/workflows/120-resilience-tests.yaml)
+to identify the required backends.
 
 ### Choosing checks before review
 
-Follow the [review checks](testing.md#choosing-checks-before-review) and report commands, results, backends, and skips.
+Follow the [review checks](verification.md) and report commands, results, backends, and skips.
 
 ## Preparing a pull request
 

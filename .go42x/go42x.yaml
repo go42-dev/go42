@@ -1,6 +1,6 @@
 ---
 
-# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/v0.47.0/assets/schemas/go42x.schema.yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/v0.48.0/assets/schemas/go42x.schema.yaml
 
 version: "1.0"
 
@@ -77,6 +77,8 @@ providers:
   # -------------------------
   codex:
     enabled: false
+    # Maximum instruction bytes. Omit to preserve the existing Codex setting.
+    project-doc-max-bytes: 65536
     # Omit to preserve the existing approval policy. Sandbox settings are preserved.
     approval-policy: on-request
     # Approval mode for every enabled MCP server: auto, prompt, writes, or approve.

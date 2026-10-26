@@ -16,7 +16,10 @@ permissions:
   packages: read
   issues: read
   pull-requests: read
-engine: codex
+engine:
+  id: codex
+  config: |
+    project_doc_max_bytes = 65536
 timeout-minutes: 30
 concurrency:
   group: description-${{ github.event.pull_request.number }}

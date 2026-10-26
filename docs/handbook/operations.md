@@ -130,7 +130,7 @@ replay procedure before changing their state or retrying messages manually.
 First record the affected operation, expected and observed result, UTC time window, running revision or image digest,
 relevant non-secret settings, probe results, and request/event IDs. Reproduce with the smallest request that demonstrates
 the failure. Follow the owning component in the [source map](architecture.md#source-map) and select checks from the
-[testing guide](testing.md).
+[testing guide](verification.md).
 
 | Symptom                                   | Initial checks                                                                                                                                                              |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
