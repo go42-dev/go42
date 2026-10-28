@@ -1,8 +1,9 @@
-min_version = "2026.9.11"
+min_version = "2026.10.21"
 
 [settings]
 lockfile = true
 exec_auto_install = false
+disable_update_warning = true
 
 [env]
 GOTOOLCHAIN = "local"
@@ -33,8 +34,8 @@ oapi-codegen = "2.8.0"
 "npm:@commitlint/cli" = "19.2.1"
 "npm:@commitlint/config-conventional" = "19.1.0"
 "npm:@redocly/cli" = "2.51.2"
-"pipx:pyflakes" = { version = "3.4.0", uvx_args = "--python python" }
-"pipx:sqlfluff" = { version = "4.3.0", uvx_args = "--python python" }
+"pipx:pyflakes" = "3.4.0"
+"pipx:sqlfluff" = "4.3.0"
 "github:oasdiff/oasdiff" = "1.31.0"
 "go:github.com/caarlos0/jsonfmt" = "0.5.2"
 "go:golang.org/x/vuln/cmd/govulncheck" = "1.7.0"
@@ -50,10 +51,10 @@ oapi-codegen = "2.8.0"
 "go:google.golang.org/grpc/cmd/protoc-gen-go-grpc" = "1.6.2"
 "go:github.com/go-delve/delve/cmd/dlv" = "1.27.1"
 "go:golang.org/x/tools/gopls" = "0.24.0"
-"go:github.com/go42-dev/go42x" = "0.51.0"
+"go:github.com/go42-dev/go42x" = "0.52.0"
 
 [tools."github:github/gh-aw"]
-version = "0.93.2"
+version = "0.93.5"
 bin = "gh-aw"
 
 [tools."github:github/gh-aw".platforms]

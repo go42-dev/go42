@@ -92,6 +92,8 @@ func GenerateRandomString(prefix string) string {
 	return fmt.Sprintf("%s-%s", prefix, string(b))
 }
 
+const databaseDropTimeout = 30 * time.Second
+
 // NewDatabase creates an empty database and closes and removes it during test cleanup.
 // It uses the application's DATABASE_* settings. The configured MySQL/PostgreSQL
 // user must have permission to create and drop databases.
@@ -149,9 +151,10 @@ func NewDatabase(t *testing.T) (database.Database, string) {
 	require.NoError(t, admin.Master().WithContext(ctx).Exec("CREATE DATABASE "+identifier).Error,
 		"the configured database user must have permission to create test databases")
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), databaseDropTimeout)
 		defer cancel()
-		assert.NoError(t, admin.Master().WithContext(ctx).Exec("DROP DATABASE "+identifier).Error)
+		assert.NoError(t, admin.Master().WithContext(ctx).Exec("DROP DATABASE "+identifier).Error,
+			"drop test database %q", name)
 	})
 	return open(dsn), dsn
 }

@@ -1,0 +1,5 @@
+[project]
+name = "mise-pypi-tool-environment"
+version = "0.0.0"
+requires-python = ">=3.9"
+dependencies = ["pyflakes==3.4.0"]

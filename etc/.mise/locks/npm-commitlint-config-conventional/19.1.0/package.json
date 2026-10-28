@@ -1,0 +1,7 @@
+{
+  "name": "mise-npm-install",
+  "private": true,
+  "dependencies": {
+    "@commitlint/config-conventional": "19.1.0"
+  }
+}

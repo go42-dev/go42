@@ -67,8 +67,10 @@ Read the issue or pull request and relevant discussion with GitHub tools.
 
 For an implementation request on an issue, propose the change through one draft
 pull request. For a request on a same-repository pull request, use GitHub tools
-to identify its current head, use the already fetched pull request ref, and apply
-the requested change on that branch. Publish through the
+to identify its current head, then switch to that head using the already fetched
+pull request ref. Verify the checked-out commit before reading implementation
+files or requesting project context. Apply the requested change on that branch.
+Publish through the
 `push_to_pull_request_branch` safe output. For a fork pull request, explain the
 proposed change in a comment; do not push into the contributor's fork.
 The request authorizes the requested implementation and the corresponding safe

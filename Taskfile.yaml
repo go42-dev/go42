@@ -865,13 +865,14 @@ tasks:
     desc: "Check plain YAML source formatting, or explicit files (read only)"
     summary: |-
       Usage: task lint:yaml [-- FILE.yaml ...]
-      Defaults exclude Helm templates, combined OpenAPI output, and compiled workflows.
+      Defaults exclude Helm templates, combined OpenAPI output, compiled workflows, and mise dependency locks.
     vars:
       SOURCE_FILES:
         sh: |
           {{if not .CLI_ARGS}}
           git ls-files --cached --others --exclude-standard -z -- '*.yaml' '*.yml' \
-            ':!:infra/helm/app/templates/**' ':!:api/openapi/**/.combined.yaml' ':!:.github/workflows/*.lock.yml'
+            ':!:infra/helm/app/templates/**' ':!:api/openapi/**/.combined.yaml' ':!:.github/workflows/*.lock.yml' \
+            ':!:etc/.mise/locks/**'
           {{end}}
     preconditions:
       - *file_paths
