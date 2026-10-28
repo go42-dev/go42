@@ -79,8 +79,6 @@ jobs:
             fuzz-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.mod') }}-
       - name: Install pinned Task
         uses: ./.github/actions/setup-tools
-        with:
-          install-task: 'true'
       - name: Fuzz all targets
         run: task --exit-code test:fuzz
       - name: Upload failing corpus for reproduction

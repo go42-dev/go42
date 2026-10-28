@@ -48,6 +48,22 @@ tasks:
     cmds:
       - "task --list --sort none"
 
+  env:export:
+    desc: "Print the project tooling environment as KEY=value lines"
+    summary: |-
+      Usage: task env:export
+      Prints only the project tooling variables for CI setup and editor configuration.
+    silent: true
+    cmds:
+      - |
+        printf '%s\n' \
+          "GOTOOLCHAIN=$GOTOOLCHAIN" \
+          "MISE_DEFAULT_CONFIG_FILENAME=$MISE_DEFAULT_CONFIG_FILENAME" \
+          "MISE_DATA_DIR=$MISE_DATA_DIR" \
+          "MISE_CACHE_DIR=$MISE_CACHE_DIR" \
+          "MISE_STATE_DIR=$MISE_STATE_DIR" \
+          "TASK_TEMP_DIR=$TASK_TEMP_DIR"
+
   x:
     desc: "Run go42x from the mise-pinned release"
     summary: |-
@@ -123,6 +139,10 @@ tasks:
         msg: "Usage: task tool -- COMMAND [ARGS...]"
     cmds:
       - 'mise exec -- {{.CLI_ARGS}}'
+
+  # ╭────────────────────----------------──────────╮
+  # │                    Setup                     │
+  # ╰─────────────────────----------------─────────╯
 
   setup:
     desc: "Install pinned project tools and Go modules"

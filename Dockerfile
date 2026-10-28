@@ -76,6 +76,7 @@ FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec4
 #   * tini - proper signal handling for child processes
 #   * curl - required for docker health checks in ci/cd workflows
 #   * libcrypto3, libssl3 - patched OpenSSL runtime libraries
+#   * musl, musl-utils, zlib - patched runtime libraries
 #
 # Check for versions @ https://pkgs.alpinelinux.org/packages?branch=v3.24
 # When updating image version, make sure to re-check package availability and versions
@@ -85,8 +86,11 @@ RUN apk add --no-cache \
     curl=8.23.0-r0 \
     libcrypto3=3.5.9-r0 \
     libssl3=3.5.9-r0 \
+    musl=1.2.6-r3 \
+    musl-utils=1.2.6-r3 \
     tini=0.19.0-r3 \
-    tzdata=2026e-r0
+    tzdata=2026e-r0 \
+    zlib=1.3.2-r1
 
 # We are running service as non-root user.
 RUN addgroup -g 1000 appuser && \

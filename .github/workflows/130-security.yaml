@@ -122,8 +122,6 @@ jobs:
       actions: read
       contents: read
       security-events: read
-    env:
-      GOTOOLCHAIN: local
     # -----
     steps:
       - name: 'Checkout repository'
@@ -134,6 +132,11 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: 'Set up project tooling'
+        uses: ./.github/actions/setup-tools
+        with:
+          # CodeQL uses Go without installing mise-managed tools.
+          cache: false
       - name: 'Initialize CodeQL'
         uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
@@ -223,7 +226,6 @@ jobs:
       - name: 'Install pinned Capslock tools'
         uses: ./.github/actions/setup-tools
         with:
-          install-task: 'true'
           install-args: --locked go:github.com/google/capslock/cmd/...
           # Rebuild the cached binaries when the project's Go version changes.
           cache-key-prefix: mise-capslock-v1-${{ hashFiles('go.mod') }}

@@ -1,13 +1,9 @@
 ---
 
 name: setup-tools
-description: 'Configure mise, cache project tools, and optionally install Task and selected tools'
+description: 'Install Task and mise, configure project tooling, and cache selected tools'
 
 inputs:
-  install-task:
-    description: 'Install the pinned Task executable as a CI prerequisite'
-    required: false
-    default: 'false'
   install-args:
     description: 'Arguments for mise install; empty installs mise without project tools'
     required: false
@@ -28,13 +24,14 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: 'Install Task'
+      uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+      with:
+        version: '3.53.1'
+    # -----
     - name: 'Configure project tooling'
       shell: bash
-      run: |
-        echo "MISE_DEFAULT_CONFIG_FILENAME=etc/mise.toml" >> "$GITHUB_ENV"
-        echo "MISE_DATA_DIR=$GITHUB_WORKSPACE/.tools" >> "$GITHUB_ENV"
-        echo "MISE_CACHE_DIR=$GITHUB_WORKSPACE/.tools/cache" >> "$GITHUB_ENV"
-        echo "MISE_STATE_DIR=$GITHUB_WORKSPACE/.tools/state" >> "$GITHUB_ENV"
+      run: task env:export >> "$GITHUB_ENV"
     # -----
     - name: 'Read mise configuration'
       id: mise-config
@@ -70,9 +67,3 @@ runs:
         install: ${{ inputs.install-args != '' }}
         install_args: ${{ inputs.install-args }}
         cache: false
-    # -----
-    - name: 'Install Task'
-      if: inputs.install-task == 'true'
-      uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
-      with:
-        version: '3.53.1'

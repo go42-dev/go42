@@ -24,7 +24,6 @@ runs:
     - name: 'Install mise and pinned Task'
       uses: ./.github/actions/setup-tools
       with:
-        install-task: 'true'
         cache-scope: ${{ inputs.setup-task }}
     # -----
     - name: 'Setup project dependencies'

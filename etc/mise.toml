@@ -6,7 +6,6 @@ exec_auto_install = false
 disable_update_warning = true
 
 [env]
-GOTOOLCHAIN = "local"
 REDOCLY_SUPPRESS_UPDATE_NOTICE = "true"
 REDOCLY_TELEMETRY = "false"
 

@@ -31,9 +31,6 @@ runs:
     # -----
     - name: 'Generate ai agent environment'
       env:
-        CI: true
-        CI_MODE: auto
-        GITHUB_ACTIONS: true
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}

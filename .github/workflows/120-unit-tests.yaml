@@ -65,8 +65,6 @@ jobs:
             ${{ env.GO_CACHE_PREFIX }}-
       - name: 'Install pinned Task'
         uses: ./.github/actions/setup-tools
-        with:
-          install-task: 'true'
       - name: 'Download Go modules'
         run: go mod download
       - name: 'Run unit tests with coverage and race detector'

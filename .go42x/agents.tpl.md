@@ -28,7 +28,6 @@ environment:
   os: {{ yamlValue .environment.os }}
   arch: {{ yamlValue .environment.arch }}
   is_ci: {{ yamlValue .environment.is_ci }}
-  ci_mode: {{ yamlValue .environment.ci_mode }}
   working_dir: {{ yamlValue .environment.working_dir }}
   variables: {{ yamlValue .environment.variables }}
 golang:

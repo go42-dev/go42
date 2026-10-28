@@ -23,6 +23,14 @@ permissions:
   pull-requests: read
 engine:
   id: codex
+  env:
+    CI: "true"
+    GOTOOLCHAIN: ${{ env.GOTOOLCHAIN }}
+    MISE_DEFAULT_CONFIG_FILENAME: ${{ env.MISE_DEFAULT_CONFIG_FILENAME }}
+    MISE_DATA_DIR: ${{ env.MISE_DATA_DIR }}
+    MISE_CACHE_DIR: ${{ env.MISE_CACHE_DIR }}
+    MISE_STATE_DIR: ${{ env.MISE_STATE_DIR }}
+    TASK_TEMP_DIR: ${{ env.TASK_TEMP_DIR }}
   config: |
     project_doc_max_bytes = 65536
 timeout-minutes: 45

@@ -31,9 +31,9 @@ task setup
 This installs all tools locked in [etc/mise.lock](../../etc/mise.lock), including gopls. It also syncs Vale styles and
 downloads Go modules. Task is an external prerequisite.
 
-In CI, the local [setup-tools action](../../.github/actions/setup-tools/action.yaml) installs mise using `min_version`
-from [etc/mise.toml](../../etc/mise.toml). It also defines the pinned Task version and installs Task when requested.
-It configures mise's project paths and caches the project's tools at job completion, including tools installed by later
+In CI, the local [setup-tools action](../../.github/actions/setup-tools/action.yaml) installs pinned Task first, exports
+the Taskfile's tooling environment with `task env:export`, then installs mise using `min_version` from
+[etc/mise.toml](../../etc/mise.toml). It caches the project's tools at job completion, including tools installed by later
 Task steps. Cache entries distinguish selected tools, setup tasks, operating systems, and architectures.
 Jobs select the mise tools they need; the [prepare-env action](../../.github/actions/prepare-env/action.yaml) uses it
 before running `task setup` for a full development environment.
@@ -73,17 +73,16 @@ so it can find the pinned generators.
 
 ### Invoking tools directly
 
-For direct tool calls from a shell or editor, configure the project paths from the repository root:
+Use `task tool -- COMMAND [ARGS...]` for direct tool calls from a shell or editor. For editors that require an
+environment mapping, print the resolved Taskfile values from the repository root:
 
 ```sh
-export MISE_DEFAULT_CONFIG_FILENAME=etc/mise.toml
-export MISE_DATA_DIR="$PWD/.tools"
-export MISE_CACHE_DIR="$MISE_DATA_DIR/cache"
-export MISE_STATE_DIR="$MISE_DATA_DIR/state"
-export PATH="$MISE_DATA_DIR/shims:$PATH"
+task env:export
 ```
 
-The tool shims load applicable mise settings, including Redocly's update-notice and telemetry settings.
+Apply the printed values to the editor's environment. The command prints only the project tooling variables;
+it does not print credentials or other shell variables. Use `mise exec --` to load the applicable mise settings,
+including Redocly's update-notice and telemetry settings.
 
 ## Using Task
 
