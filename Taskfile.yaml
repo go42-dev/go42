@@ -86,7 +86,7 @@ tasks:
         version={{.VERSION | default "" | shellQuote}}
         if [ -z "$version" ]; then
           # Resolve new releases without the release-age delay or proxy metadata lag.
-          version=$(GOPROXY=direct mise latest --minimum-release-age 0s go:github.com/go42-dev/go42x)
+          version=$(mise latest --minimum-release-age 0s go42x)
         fi
         if [ -z "$version" ]; then
           printf 'mise did not resolve a go42x release.\n' >&2
@@ -105,7 +105,7 @@ tasks:
         }
 
         task x -- agentenv export --output "$workspace/base"
-        if ! task bump TOOL=go:github.com/go42-dev/go42x "VERSION=$version"; then
+        if ! task bump TOOL=go42x "VERSION=$version"; then
           restore_pins
           exit 1
         fi
@@ -154,17 +154,22 @@ tasks:
       - 'mise exec -- vale --config etc/vale.ini sync'
       - "go mod download"
 
+  setup:gh-aw-description:
+    desc: "Install tools for description workflow preparation"
+    summary: |-
+      Usage: task setup:gh-aw-description
+      Installs instruction-generation and secret-scanning tools without downloading application modules.
+    cmds:
+      - "mise install --locked go42x gitleaks"
+
   setup:generators:
     desc: "Install pinned code and agentic workflow generation tools"
     cmds:
       - |
         mise install --locked \
-          node actionlint yq buf oapi-codegen npm:@redocly/cli github:github/gh-aw \
-          go:github.com/go42-dev/go42x \
-          go:go.uber.org/mock/mockgen \
-          go:github.com/ogen-go/ogen/cmd/ogen \
-          go:google.golang.org/protobuf/cmd/protoc-gen-go \
-          go:google.golang.org/grpc/cmd/protoc-gen-go-grpc
+          node actionlint yq buf redocly gh-aw \
+          go42x \
+          protoc-gen-go-grpc
 
   setup:docs:
     desc: "Install pinned documentation tools and Vale styles"
@@ -281,7 +286,7 @@ tasks:
     desc: "Test dependency recovery with combined coverage"
     summary: |-
       Usage: task test:resilience
-      Requires Toxiproxy and the backing services described in docs/handbook/development.md.
+      Requires Toxiproxy, PostgreSQL, MySQL, Redis, Memcached, NATS, Kafka, and RabbitMQ.
       Builds its own instrumented application and writes combined coverage under .build/.
     cmds:
       - |
@@ -657,7 +662,7 @@ tasks:
     cmds:
       - |
         mise exec -- commitlint --config etc/commitlint.yaml \
-          --extends "$(mise where npm:@commitlint/config-conventional)/node_modules/@commitlint/config-conventional/lib/index.js" \
+          --extends "$(mise where commitlint-config-conventional)/node_modules/@commitlint/config-conventional/lib/index.js" \
           --from origin/master --to HEAD --verbose
 
   lint:go:
@@ -686,8 +691,13 @@ tasks:
 
   lint:gosec:
     desc: "Check Go code with gosec"
+    vars:
+      PACKAGE_DIRS:
+        sh: go list -f '{{"{{"}}.Dir{{"}}"}}' ./...
     cmds:
-      - 'mise exec -- gosec -terse -exclude-generated ./...'
+      - |
+        set -- {{range splitList "\n" .PACKAGE_DIRS}}{{if .}}{{. | shellQuote}} {{end}}{{end}}
+        mise exec -- gosec -terse -exclude-generated "$@"
 
   lint:vulnerabilities:
     desc: "Check application vulnerabilities for Linux amd64 and arm64"

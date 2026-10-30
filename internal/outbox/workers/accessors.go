@@ -8,7 +8,7 @@ import (
 	"github.com/go42-dev/go42/internal/outbox/models"
 )
 
-//go:generate mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
+//go:generate go tool mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
 
 type repository interface {
 	WithTransactionIsolation(

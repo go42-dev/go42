@@ -8,6 +8,10 @@ inputs:
     description: 'Task used to install project tools'
     required: false
     default: 'setup'
+  go-cache:
+    description: 'Restore Go caches when setup or callers compile application source'
+    required: false
+    default: 'true'
   providers:
     description: 'Exact provider list; empty generates shared instructions only'
     required: false
@@ -28,6 +32,7 @@ runs:
       uses: ./.github/actions/prepare-env
       with:
         setup-task: ${{ inputs.setup-task }}
+        go-cache: ${{ inputs.go-cache }}
     # -----
     - name: 'Generate ai agent environment'
       env:
@@ -67,7 +72,7 @@ runs:
         IMAGE_REPOSITORY: ${{ inputs.mcp-image-repository }}
       run: |-
         set -euo pipefail
-        version=$(mise current go:github.com/go42-dev/go42x)
+        version=$(mise current go42x)
         version=${version#v}
         if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
           echo '::error::mise must select one go42x release version for the MCP image.'

@@ -90,6 +90,7 @@ require (
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/dlclark/regexp2 v1.12.0 // indirect
 	github.com/dnwe/otelsarama v0.0.0-20240308230250-9388d9d40bc0 // indirect
+	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/eapache/go-resiliency v1.7.0 // indirect
 	github.com/fatih/color v1.19.0 // indirect
@@ -136,6 +137,7 @@ require (
 	github.com/nats-io/nkeys v0.4.15 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
+	github.com/oapi-codegen/oapi-codegen/v2 v2.8.0 // indirect
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
@@ -151,10 +153,14 @@ require (
 	github.com/sethvargo/go-retry v0.4.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sony/gobreaker v1.0.0 // indirect
+	github.com/speakeasy-api/jsonpath v0.6.3 // indirect
+	github.com/speakeasy-api/openapi v1.24.0 // indirect
 	github.com/valyala/fastrand v1.1.0 // indirect
 	github.com/valyala/histogram v1.2.0 // indirect
+	github.com/vmware-labs/yaml-jsonpath v0.3.2 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
+	github.com/yuin/goldmark v1.8.2 // indirect
 	go.etcd.io/etcd/api/v3 v3.7.1 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.7.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
@@ -172,8 +178,16 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260908043556-f8649ddbbfe6 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/clickhouse v0.7.0 // indirect
 	modernc.org/libc v1.75.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
+)
+
+tool (
+	github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
+	github.com/ogen-go/ogen/cmd/ogen
+	go.uber.org/mock/mockgen
+	google.golang.org/protobuf/cmd/protoc-gen-go
 )

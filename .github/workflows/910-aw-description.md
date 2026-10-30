@@ -39,6 +39,8 @@ pre-agent-steps:
   - name: Prepare agent environment
     uses: ./.github/actions/ai-prepare-env
     with:
+      setup-task: setup:gh-aw-description
+      go-cache: false
       pull-mcp-image: true
 network:
   allowed: [defaults, github, mcp.context7.com]

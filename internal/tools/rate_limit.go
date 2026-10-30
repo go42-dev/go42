@@ -11,7 +11,7 @@ import (
 
 const rateLimitCacheKeyPrefix = "rate_limit:"
 
-//go:generate mockgen -source $GOFILE -package mocks -destination mocks/rate_limit.go
+//go:generate go tool mockgen -source $GOFILE -package mocks -destination mocks/rate_limit.go
 
 type cacheAccessor interface {
 	AllowRateLimit(

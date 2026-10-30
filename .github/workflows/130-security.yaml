@@ -69,15 +69,11 @@ jobs:
         with:
           persist-credentials: false
       - name: 'Setup Go'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: 'go.mod'
+        uses: ./.github/actions/setup-go
       - name: 'Install pinned Gosec'
         uses: ./.github/actions/setup-tools
         with:
-          install-args: --locked go:github.com/securego/gosec/v2/cmd/gosec
-          # Rebuild the cached binary when the project's Go version changes.
-          cache-key-prefix: mise-gosec-v1-${{ hashFiles('go.mod') }}
+          install-args: --locked gosec
       - name: 'Run Gosec security scanner'
         shell: bash
         run: gosec -terse -exclude-generated ./...
@@ -96,15 +92,11 @@ jobs:
         with:
           persist-credentials: false
       - name: 'Setup Go'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: 'go.mod'
+        uses: ./.github/actions/setup-go
       - name: 'Install pinned govulncheck'
         uses: ./.github/actions/setup-tools
         with:
-          install-args: --locked go:golang.org/x/vuln/cmd/govulncheck
-          # Rebuild the cached binary when the project's Go version changes.
-          cache-key-prefix: mise-govulncheck-v1-${{ hashFiles('go.mod') }}
+          install-args: --locked govulncheck
       # Match the production entry point and image build settings.
       - name: 'Run Go vulnerability check (linux/amd64)'
         shell: bash
@@ -129,9 +121,7 @@ jobs:
         with:
           persist-credentials: false
       - name: 'Setup Go'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
+        uses: ./.github/actions/setup-go
       - name: 'Set up project tooling'
         uses: ./.github/actions/setup-tools
         with:
@@ -164,15 +154,11 @@ jobs:
         with:
           persist-credentials: false
       - name: 'Setup Go'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: 'go.mod'
+        uses: ./.github/actions/setup-go
       - name: 'Install pinned go-licenses'
         uses: ./.github/actions/setup-tools
         with:
-          install-args: --locked go:github.com/google/go-licenses
-          # Rebuild the cached binary when the project's Go version changes.
-          cache-key-prefix: mise-go-licenses-v1-${{ hashFiles('go.mod') }}
+          install-args: --locked go-licenses
       - name: 'Check Go licenses'
         # Some packages may miss license files or link to external libraries.
         # Add `unknown` to disallowed_types for stricter checks.
@@ -220,15 +206,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: 'Setup Go'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: 'go.mod'
+        uses: ./.github/actions/setup-go
       - name: 'Install pinned Capslock tools'
         uses: ./.github/actions/setup-tools
         with:
-          install-args: --locked go:github.com/google/capslock/cmd/...
+          install-args: --locked capslock
           # Rebuild the cached binaries when the project's Go version changes.
-          cache-key-prefix: mise-capslock-v1-${{ hashFiles('go.mod') }}
       - name: 'Report capability changes since master (advisory)'
         shell: bash
         run: task lint:capabilities

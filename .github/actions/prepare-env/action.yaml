@@ -8,26 +8,25 @@ inputs:
     description: 'Task used to install project dependencies'
     required: false
     default: 'setup'
+  go-cache:
+    description: 'Restore Go module and compilation caches when setup or callers build source'
+    required: false
+    default: 'true'
+  go-cache-scope:
+    description: 'Go compilation workload; module caches remain shared'
+    required: false
+    default: 'build'
 
 runs:
   using: composite
   steps:
     - name: 'Setup Go'
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      uses: ./.github/actions/setup-go
       with:
-        go-version-file: 'go.mod'
-        cache: true
-        cache-dependency-path: |
-          **/go.sum
-          **/go.mod
+        cache: ${{ inputs.go-cache }}
+        cache-scope: ${{ inputs.go-cache-scope }}
     # -----
-    - name: 'Install mise and pinned Task'
+    - name: 'Install mise and Task'
       uses: ./.github/actions/setup-tools
       with:
-        cache-scope: ${{ inputs.setup-task }}
-    # -----
-    - name: 'Setup project dependencies'
-      shell: bash
-      env:
-        PROJECT_SETUP_TASK: ${{ inputs.setup-task }}
-      run: task "$PROJECT_SETUP_TASK"
+        setup-task: ${{ inputs.setup-task }}

@@ -20,7 +20,7 @@ var adapterPermissionMapping = map[string]string{
 	"/auth.v1.AuthService/DeleteUser":    domain.RBACPermissionUsersDelete,
 }
 
-//go:generate mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
+//go:generate go tool mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
 
 type serviceAccessor interface {
 	CreateUser(ctx context.Context, data *domain.CreateUserData) (*models.User, error)

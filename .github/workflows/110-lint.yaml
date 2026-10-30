@@ -68,7 +68,7 @@ jobs:
         if: github.event_name == 'pull_request' || github.event_name == 'push'
         uses: ./.github/actions/setup-tools
         with:
-          install-args: --locked node jq npm:@commitlint/cli npm:@commitlint/config-conventional
+          install-args: --locked node jq commitlint commitlint-config-conventional
       - name: 'Validate commit messages'
         if: github.event_name == 'pull_request' || github.event_name == 'push'
         shell: bash
@@ -77,7 +77,7 @@ jobs:
           COMMITLINT_TO: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |-
           # Mise installs the preset separately from the CLI; use its resolved path.
-          preset_dir="$(mise where npm:@commitlint/config-conventional)"
+          preset_dir="$(mise where commitlint-config-conventional)"
           args=(--config etc/commitlint.yaml
             --extends "$preset_dir/node_modules/@commitlint/config-conventional/lib/index.js"
             --verbose)
@@ -123,11 +123,9 @@ jobs:
           persist-credentials: false
       - name: 'Setup Go'
         id: setup-go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: ./.github/actions/setup-go
         with:
-          go-version-file: 'go.mod'
-          # Save lint's build outputs in the dedicated cache below.
-          cache: false
+          cache-scope: golangci-lint
       - name: 'Install pinned golangci-lint'
         uses: ./.github/actions/setup-tools
         with:
@@ -137,20 +135,15 @@ jobs:
         shell: bash
         run: |-
           {
-            echo "go-build=$(go env GOCACHE)"
-            echo "go-mod=$(go env GOMODCACHE)"
             echo "lint-version=$(golangci-lint version --short)"
           } >> "$GITHUB_OUTPUT"
-      - name: 'Restore and save Go and golangci-lint caches'
+      - name: 'Restore and save golangci-lint results'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         env:
-          LINT_CACHE_PREFIX: golangci-lint-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup-go.outputs.go-version }}-${{
+          LINT_CACHE_PREFIX: golangci-lint-v3-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup-go.outputs.go-version }}-${{
             steps.lint-cache.outputs.lint-version }}
         with:
-          # Analysis also needs compiled Go packages, not just linter results.
           path: |-
-            ${{ steps.lint-cache.outputs.go-build }}
-            ${{ steps.lint-cache.outputs.go-mod }}
             ${{ env.GOLANGCI_LINT_CACHE }}
           # Refresh per commit; reuse compatible entries after dependency/config changes.
           key: ${{ env.LINT_CACHE_PREFIX }}-${{ hashFiles('etc/golangci.yaml', 'go.mod', 'go.sum') }}-${{ github.sha }}
@@ -179,42 +172,13 @@ jobs:
           persist-credentials: false
       - name: 'Setup Go'
         id: setup-go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: ./.github/actions/setup-go
         with:
-          go-version-file: 'go.mod'
-          # Save Go build outputs and NilAway facts in the dedicated cache below.
-          cache: false
-      # Restore before source installation populates read-only module files.
-      - name: 'Get NilAway cache metadata'
-        id: nilaway-cache
-        shell: bash
-        run: |-
-          {
-            echo "go-build=$(go env GOCACHE)"
-            echo "go-mod=$(go env GOMODCACHE)"
-          } >> "$GITHUB_OUTPUT"
-      - name: 'Restore and save Go and NilAway caches'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        env:
-          # Identify the pinned tool without installing it before cache restore.
-          NILAWAY_CACHE_PREFIX: nilaway-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup-go.outputs.go-version }}-${{
-            hashFiles('etc/mise.toml', 'etc/mise.lock') }}
-        with:
-          # go vet stores both compiled packages and analysis facts in GOCACHE.
-          path: |-
-            ${{ steps.nilaway-cache.outputs.go-build }}
-            ${{ steps.nilaway-cache.outputs.go-mod }}
-          # Refresh per commit; reuse compatible entries after dependency/config changes.
-          key: ${{ env.NILAWAY_CACHE_PREFIX }}-${{ hashFiles('Taskfile.yaml', 'go.mod', 'go.sum') }}-${{ github.sha }}
-          restore-keys: |-
-            ${{ env.NILAWAY_CACHE_PREFIX }}-${{ hashFiles('Taskfile.yaml', 'go.mod', 'go.sum') }}-
-            ${{ env.NILAWAY_CACHE_PREFIX }}-
+          cache-scope: nilaway
       - name: 'Install pinned NilAway'
         uses: ./.github/actions/setup-tools
         with:
-          install-args: --locked go:go.uber.org/nilaway/cmd/nilaway
-          # Rebuild the cached binary when the project's Go version changes.
-          cache-key-prefix: mise-nilaway-v1-${{ hashFiles('go.mod') }}
+          install-args: --locked nilaway
       - name: 'Run NilAway'
         shell: bash
         run: |-
@@ -355,7 +319,7 @@ jobs:
       - name: 'Install pinned OpenAPI tools'
         uses: ./.github/actions/setup-tools
         with:
-          install-args: --locked node npm:@redocly/cli github:oasdiff/oasdiff
+          install-args: --locked node redocly oasdiff
       - name: 'Run redocly OpenAPI linter'
         run: redocly lint --config etc/redocly.yaml --format github-actions api/openapi/**/*.yaml
       - name: Report breaking OpenAPI changes (advisory)
@@ -381,7 +345,7 @@ jobs:
       - name: 'Install pinned Actionlint and helpers'
         uses: ./.github/actions/setup-tools
         with:
-          install-args: --locked python uv actionlint shellcheck pipx:pyflakes
+          install-args: --locked python uv actionlint shellcheck pyflakes
       - name: 'Run actionlint'
         shell: bash
         run: actionlint -oneline --config-file etc/actionlint.yaml
@@ -425,14 +389,13 @@ jobs:
         with:
           persist-credentials: false
       - name: 'Setup Go'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: ./.github/actions/setup-go
         with:
-          go-version-file: 'go.mod'
           cache: true
       - name: 'Install pinned agentic workflow tools'
         uses: ./.github/actions/setup-tools
         with:
-          install-args: --locked node actionlint gitleaks go:github.com/go42-dev/go42x github:github/gh-aw
+          install-args: --locked node actionlint gitleaks go42x gh-aw
       - name: 'Generate and compile agentic workflows'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -489,7 +452,7 @@ jobs:
       - name: 'Install pinned SQLFluff'
         uses: ./.github/actions/setup-tools
         with:
-          install-args: --locked python uv pipx:sqlfluff
+          install-args: --locked python uv sqlfluff
       - name: 'Run SQLFluff linter'
         shell: bash
         run: >-
@@ -512,14 +475,13 @@ jobs:
         with:
           persist-credentials: false
       - name: 'Setup Go'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: ./.github/actions/setup-go
         with:
-          go-version-file: 'go.mod'
           cache: false
       - name: 'Install pinned Task, jsonfmt, yamlfmt, and Tombi'
         uses: ./.github/actions/setup-tools
         with:
-          install-args: --locked go:github.com/caarlos0/jsonfmt go:github.com/google/yamlfmt/cmd/yamlfmt tombi
+          install-args: --locked jsonfmt yamlfmt tombi
       - name: 'Check JSON formatting'
         run: task --exit-code lint:json
       - name: 'Check YAML formatting'
@@ -548,6 +510,7 @@ jobs:
         uses: ./.github/actions/prepare-env
         with:
           setup-task: setup:generators
+          go-cache-scope: generators
       # -----
       - name: 'Generate code'
         run: task generate:code
@@ -602,7 +565,7 @@ jobs:
           persist-credentials: false
       - name: 'Install mise and Task'
         uses: ./.github/actions/setup-tools
-      - name: 'Set up documentation tools'
-        run: task setup:docs
+        with:
+          setup-task: setup:docs
       - name: 'Check documentation'
         run: task docs:check

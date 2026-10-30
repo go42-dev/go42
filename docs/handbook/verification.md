@@ -4,7 +4,6 @@ title: Verification
 collection: handbook
 sidebar_position: 6
 related:
-  - development
   - conventions
 ---
 
@@ -131,8 +130,8 @@ its exit status.
 
 Coverage reports are written under `.build/`. Explicit unit packages skip
 coverage reports. Resilience tests are build-tagged and excluded from the other
-test tasks. Test application and backend configuration belongs in the
-[development guide](development.md#integration-test-environment).
+test tasks. The [integration CI workflow](../../.github/workflows/150-integration-tests.yaml) shows test application
+and backend configuration.
 
 ### Build and artifact checks
 

@@ -16,7 +16,7 @@ const (
 	cacheHeaderValueMISS = "MISS"
 )
 
-//go:generate mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
+//go:generate go tool mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
 
 type cacheAccessor interface {
 	Get(ctx context.Context, key string) (value string, found bool, err error)

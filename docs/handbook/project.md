@@ -40,7 +40,6 @@ including inherited defaults.
 ## System overview
 
 The application provides signup and session endpoints over HTTP, and user management over HTTP and gRPC. It includes
-database persistence, background event processing, health checks, metrics, and structured logs. The
-[architecture](architecture.md#components-and-boundaries) describes component responsibilities and flows.
+database persistence, background event processing, health checks, metrics, and structured logs.
 The local defaults use in-memory SQLite, a local cache, and in-process events; see
 [storage and event configuration](configuration.md#storage-and-events) for persistence and backend choices.

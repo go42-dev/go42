@@ -1,0 +1,100 @@
+---
+
+name: setup-go
+description: 'Install project Go and manage shared module and scoped compilation caches'
+
+inputs:
+  cache:
+    description: 'Restore and save Go caches; download project modules on a module-cache miss'
+    required: false
+    default: 'true'
+  cache-scope:
+    description: 'Compilation workload name; module caches are shared across scopes'
+    required: false
+    default: 'build'
+
+outputs:
+  go-version:
+    description: 'Installed Go version'
+    value: ${{ steps.toolchain.outputs.go-version }}
+  go-build:
+    description: 'Go compilation and analysis cache directory'
+    value: ${{ steps.metadata.outputs.go-build }}
+  go-mod:
+    description: 'Downloaded Go modules directory'
+    value: ${{ steps.metadata.outputs.go-mod }}
+
+runs:
+  using: composite
+  steps:
+    - name: 'Install Go'
+      id: toolchain
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.mod
+        # This action owns both caches, including fallback and refresh behavior.
+        cache: false
+    # -----
+    - name: 'Read Go cache paths and keys'
+      id: metadata
+      shell: bash
+      env:
+        PROJECT_CACHE_ENABLED: ${{ inputs.cache }}
+        PROJECT_CACHE_SCOPE: ${{ inputs.cache-scope }}
+        PROJECT_CACHE_OS: ${{ runner.os }}
+        PROJECT_CACHE_ARCH: ${{ runner.arch }}
+        PROJECT_GO_VERSION: ${{ steps.toolchain.outputs.go-version }}
+        PROJECT_DEPENDENCIES_HASH: ${{ hashFiles('**/go.mod', '**/go.sum') }}
+      run: |
+        set -euo pipefail
+        {
+          echo "go-build=$(go env GOCACHE)"
+          echo "go-mod=$(go env GOMODCACHE)"
+        } >> "$GITHUB_OUTPUT"
+        if [[ "$PROJECT_CACHE_ENABLED" != 'true' ]]; then
+          exit 0
+        fi
+        if [[ ! "$PROJECT_CACHE_SCOPE" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+          echo '::error::cache-scope must contain only letters, digits, dots, underscores, or hyphens.'
+          exit 1
+        fi
+        revision=$(git rev-parse HEAD)
+        platform="$PROJECT_CACHE_OS-${ImageOS:-unknown}-$PROJECT_CACHE_ARCH-go$PROJECT_GO_VERSION"
+        modules_base="go-modules-v1-$platform"
+        build_base="go-build-v1-$platform-$PROJECT_CACHE_SCOPE"
+        {
+          echo "modules-key=$modules_base-$PROJECT_DEPENDENCIES_HASH"
+          echo "modules-restore=$modules_base-"
+          echo "build-key=$build_base-$PROJECT_DEPENDENCIES_HASH-$revision"
+          echo 'build-restore<<GO_BUILD_CACHE_KEYS'
+          echo "$build_base-$PROJECT_DEPENDENCIES_HASH-"
+          echo "$build_base-"
+          echo 'GO_BUILD_CACHE_KEYS'
+        } >> "$GITHUB_OUTPUT"
+    # -----
+    - name: 'Restore and save Go modules'
+      id: modules-cache
+      if: inputs.cache == 'true'
+      continue-on-error: true
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.metadata.outputs.go-mod }}
+        key: ${{ steps.metadata.outputs.modules-key }}
+        restore-keys: ${{ steps.metadata.outputs.modules-restore }}
+    # -----
+    - name: 'Download project Go modules'
+      if: inputs.cache == 'true' && steps.modules-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: go mod download
+    # -----
+    - name: 'Restore and save Go compilation and analysis results'
+      if: inputs.cache == 'true'
+      continue-on-error: true
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        # The fuzz workflow manages its corpus separately.
+        path: |
+          ${{ steps.metadata.outputs.go-build }}/*
+          !${{ steps.metadata.outputs.go-build }}/fuzz
+        key: ${{ steps.metadata.outputs.build-key }}
+        restore-keys: ${{ steps.metadata.outputs.build-restore }}

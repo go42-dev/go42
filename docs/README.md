@@ -9,7 +9,7 @@ slug: /
 
 # Application documentation
 
-Use this handbook to run, change, and operate the application in this checkout. Read the
+Use this handbook for application configuration and contributor guidance. Read the
 [application profile](handbook/project.md) for purpose and ownership. Contributors follow the
 [project conventions](handbook/conventions.md) and [documentation rules](handbook/documentation.md).
 
@@ -17,11 +17,9 @@ Use this handbook to run, change, and operate the application in this checkout. 
 
 | Task                         | Guide                                                                                                                                                        |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Run locally                  | [Set up the environment](handbook/development.md#environment-setup), then [start and check readiness](handbook/operations.md#run-and-verify-locally)         |
-| Implement a feature          | [Follow the implementation workflow](handbook/development.md#implementing-a-feature)                                                                         |
+| Configure the application    | [Review configuration sources and settings](handbook/configuration.md)                                                                                       |
+| Change the application       | [Follow project conventions](handbook/conventions.md)                                                                                                        |
 | Test a change                | [Choose checks and test suites](handbook/verification.md)                                                                                                    |
-| Diagnose a failure           | [Follow symptoms and recovery checks](handbook/operations.md#failure-investigation-and-recovery)                                                             |
-| Investigate missing events   | [Inspect outbox delivery](handbook/operations.md#inspect-outbox-delivery)                                                                                    |
 
 ## Documentation index
 
@@ -35,14 +33,7 @@ The complete index follows the published sidebar's reading order.
 | [Project conventions](handbook/conventions.md)              | Application-specific rules and a reference to shared Go conventions            |
 | [Application profile](handbook/project.md)                  | Purpose, ownership, current capabilities, and documentation gaps               |
 | [Configuration](handbook/configuration.md)                  | Configuration sources, backend choices, defaults, and deployment settings      |
-| [Development workflow](handbook/development.md)             | Setup, implementation, generation, tooling, and contributions                  |
 | [Verification](handbook/verification.md)                    | Formatting, linting, test suites, and checks required before review            |
-| [Architecture](handbook/architecture.md)                    | Source map, component boundaries, request and event flows, and lifecycle       |
-| [Using the API](handbook/api.md)                            | Credentials, session flow, local verification, and request failure diagnosis   |
-| [Release](handbook/release.md)                              | Version selection, release validation, published artifacts, and image identity |
-| [Deployment](handbook/deployment.md)                        | Container and Helm configuration, migration handoff, and rollout verification  |
-| [Operations](handbook/operations.md)                        | Probe checks, process lifecycle, outbox diagnosis, and failure recovery        |
-| [Monitoring](handbook/monitoring.md)                        | Collect metrics, interpret signals, and configure the supplied dashboard       |
 | [GitHub configuration](handbook/github-configuration.md)    | Required and optional workflow variables and secrets                           |
 
 ### Requirements

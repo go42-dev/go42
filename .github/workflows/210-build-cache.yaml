@@ -1,0 +1,39 @@
+---
+
+name: build-cache
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: build-cache-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tools:
+    name: tools
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: 'Checkout trusted master'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 'Setup Go'
+        uses: ./.github/actions/setup-go
+        with:
+          cache: true
+          cache-scope: tools
+      - name: 'Prepare and cache project tools'
+        uses: ./.github/actions/setup-tools
+        with:
+          install-args: --locked
+          cache-save: 'true'

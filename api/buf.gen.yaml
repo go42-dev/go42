@@ -12,7 +12,10 @@ managed:
 
 # As rule of thumb, use only local plugins, to avoid issues with ci/cd.
 plugins:
-  - local: protoc-gen-go
+  - local:
+      - go
+      - tool
+      - protoc-gen-go
     out: api/gen/sdk/grpc
     opt: paths=source_relative
   - local: protoc-gen-go-grpc

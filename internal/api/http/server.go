@@ -31,7 +31,7 @@ const (
 	defaultBodyLimit             int64 = 1 << 20
 )
 
-//go:generate mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
+//go:generate go tool mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
 
 type adapterAccessor interface {
 	Register(*echo.Group)

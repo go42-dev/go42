@@ -8,7 +8,7 @@ import (
 	"github.com/go42-dev/go42/internal/auth/models"
 )
 
-//go:generate mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
+//go:generate go tool mockgen -source $GOFILE -package mocks -destination mocks/mocks.go
 
 type repository interface {
 	WithTransaction(ctx context.Context, fn func(txCtx context.Context) error) error
