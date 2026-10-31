@@ -13,9 +13,9 @@ inputs:
     required: false
     default: 'true'
   go-cache-scope:
-    description: 'Go compilation workload; module caches remain shared'
+    description: 'Go compilation workload override; defaults to the caller job ID'
     required: false
-    default: 'build'
+    default: ''
 
 runs:
   using: composite

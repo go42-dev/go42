@@ -9,9 +9,9 @@ inputs:
     required: false
     default: 'true'
   cache-scope:
-    description: 'Compilation workload name; module caches are shared across scopes'
+    description: 'Compilation workload override; defaults to the caller job ID; module caches remain shared'
     required: false
-    default: 'build'
+    default: ''
 
 outputs:
   go-version:
@@ -47,13 +47,25 @@ runs:
         PROJECT_DEPENDENCIES_HASH: ${{ hashFiles('**/go.mod', '**/go.sum') }}
       run: |
         set -euo pipefail
+        go_build=$(go env GOCACHE)
+        go_mod=$(go env GOMODCACHE)
+        if [[ -z "$go_build" || -z "$go_mod" ]]; then
+          echo '::error::Go cache paths must not be empty.'
+          exit 1
+        fi
         {
-          echo "go-build=$(go env GOCACHE)"
-          echo "go-mod=$(go env GOMODCACHE)"
+          echo "go-build=$go_build"
+          echo "go-mod=$go_mod"
         } >> "$GITHUB_OUTPUT"
+        # Nested composite post steps lose step outputs; the job environment persists.
+        {
+          echo "PROJECT_GO_BUILD_CACHE_PATH=$go_build"
+          echo "PROJECT_GO_MODULE_CACHE_PATH=$go_mod"
+        } >> "$GITHUB_ENV"
         if [[ "$PROJECT_CACHE_ENABLED" != 'true' ]]; then
           exit 0
         fi
+        PROJECT_CACHE_SCOPE=${PROJECT_CACHE_SCOPE:-${GITHUB_JOB:-}}
         if [[ ! "$PROJECT_CACHE_SCOPE" =~ ^[a-zA-Z0-9._-]+$ ]]; then
           echo '::error::cache-scope must contain only letters, digits, dots, underscores, or hyphens.'
           exit 1
@@ -78,7 +90,7 @@ runs:
       continue-on-error: true
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ${{ steps.metadata.outputs.go-mod }}
+        path: ${{ env.PROJECT_GO_MODULE_CACHE_PATH }}
         key: ${{ steps.metadata.outputs.modules-key }}
         restore-keys: ${{ steps.metadata.outputs.modules-restore }}
     # -----
@@ -92,9 +104,6 @@ runs:
       continue-on-error: true
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        # The fuzz workflow manages its corpus separately.
-        path: |
-          ${{ steps.metadata.outputs.go-build }}/*
-          !${{ steps.metadata.outputs.go-build }}/fuzz
+        path: ${{ env.PROJECT_GO_BUILD_CACHE_PATH }}
         key: ${{ steps.metadata.outputs.build-key }}
         restore-keys: ${{ steps.metadata.outputs.build-restore }}
