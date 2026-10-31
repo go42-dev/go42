@@ -196,32 +196,32 @@ backend = "go:github.com/google/go-licenses"
 specifiers = ["1.6.0"]
 
 [[tools.go42x]]
-version = "0.52.0"
+version = "0.53.0"
 backend = "github:go42-dev/go42x"
-specifiers = ["0.52.0"]
+specifiers = ["0.53.0"]
 
 [tools.go42x."platforms.linux-arm64"]
-checksum = "sha256:5921a8b034d472320e00f2c0f038d8ed291f2e75b39fd4acc43419e3b54110e6"
-url = "https://github.com/go42-dev/go42x/releases/download/v0.52.0/go42x_0.52.0_linux_arm64.tar.gz"
-url_api = "https://api.github.com/repos/go42-dev/go42x/releases/assets/682740917"
+checksum = "sha256:31635138f345c9e04d9bb59416bd6f0846d589c4ec5003e1050d0a25995a0d94"
+url = "https://github.com/go42-dev/go42x/releases/download/v0.53.0/go42x_0.53.0_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/go42-dev/go42x/releases/assets/694375298"
 provenance = "github-attestations"
 
 [tools.go42x."platforms.linux-x64"]
-checksum = "sha256:2a121b8238efc347e60cbf20352f76227e428fa2b502eb5d0b2f83eadbf1e131"
-url = "https://github.com/go42-dev/go42x/releases/download/v0.52.0/go42x_0.52.0_linux_x86_64.tar.gz"
-url_api = "https://api.github.com/repos/go42-dev/go42x/releases/assets/682740918"
+checksum = "sha256:7c1f19fc1663eacfa9fbdf7780bf5b4df7aa73357502ce8de720c1b1a59f830b"
+url = "https://github.com/go42-dev/go42x/releases/download/v0.53.0/go42x_0.53.0_linux_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/go42-dev/go42x/releases/assets/694375301"
 provenance = "github-attestations"
 
 [tools.go42x."platforms.macos-arm64"]
-checksum = "sha256:a41f325977562c66492b75fde3928ef54a9c87ff553b414891484c5359ffe0a3"
-url = "https://github.com/go42-dev/go42x/releases/download/v0.52.0/go42x_0.52.0_macOS_arm64.tar.gz"
-url_api = "https://api.github.com/repos/go42-dev/go42x/releases/assets/682740913"
+checksum = "sha256:51101e853400517c2b9dc54777ec23b3618ec0b7ef578d7c275e5fd5d5901885"
+url = "https://github.com/go42-dev/go42x/releases/download/v0.53.0/go42x_0.53.0_macOS_arm64.tar.gz"
+url_api = "https://api.github.com/repos/go42-dev/go42x/releases/assets/694375303"
 provenance = "github-attestations"
 
 [tools.go42x."platforms.macos-x64"]
-checksum = "sha256:99b6ae049b193c1d644c33a7d0d033e37082bec42584b8fa1a365634531d2196"
-url = "https://github.com/go42-dev/go42x/releases/download/v0.52.0/go42x_0.52.0_macOS_x86_64.tar.gz"
-url_api = "https://api.github.com/repos/go42-dev/go42x/releases/assets/682740919"
+checksum = "sha256:9f280cd3d55b2b9efcafce1e81f131b821348fdaeea8f600a691f2046f70696e"
+url = "https://github.com/go42-dev/go42x/releases/download/v0.53.0/go42x_0.53.0_macOS_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/go42-dev/go42x/releases/assets/694375300"
 provenance = "github-attestations"
 
 [[tools.golangci-lint]]

@@ -68,4 +68,4 @@ dlv = "1.27.2"
 gopls = "0.24.0"
 jsonfmt = "0.5.2"
 gh-aw = { version = "0.93.5", bin = "gh-aw" }
-go42x = "0.52.0"
+go42x = "0.53.0"
