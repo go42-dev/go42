@@ -108,6 +108,11 @@ runs:
         PROJECT_SETUP_TASK: ${{ inputs.setup-task }}
       run: task "$PROJECT_SETUP_TASK"
     # -----
+    - name: 'Prune unused tool versions before caching'
+      if: inputs.cache == 'true' && inputs.cache-save == 'true' && steps.tools-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: mise prune --tools --yes
+    # -----
     - name: 'Save prepared project tools'
       if: inputs.cache == 'true' && inputs.cache-save == 'true' && steps.tools-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
