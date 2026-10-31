@@ -47,16 +47,10 @@ jobs:
         include:
           - database: sqlite
             database_engine: sqlite
-            app_port: 44442
-            grpc_port: 55552
           - database: mysql
             database_engine: mysql
-            app_port: 44443
-            grpc_port: 55553
           - database: pgsql
             database_engine: pgsql
-            app_port: 44444
-            grpc_port: 55554
     # ----
     services:
       mysql:
@@ -90,8 +84,9 @@ jobs:
       app:
         image: ${{ inputs.image_reference }}
         ports:
-          - ${{ matrix.app_port }}:8080 # unique ports to avoid conflicts on self-hosted runners
-          - ${{ matrix.grpc_port }}:50051 # unique ports to avoid conflicts on self-hosted runners
+          # Let Docker select free host ports; fixed ports can collide with outgoing connections.
+          - 8080/tcp
+          - 50051/tcp
         # environment variables read by service against which integration tests are run
         env:
           LOG_LEVEL: warn
@@ -142,9 +137,9 @@ jobs:
         # environment variables read by integration tests
         env:
           CGO_ENABLED: 1 # needed for -race
-          HTTP_SERVER_ADDRESS: http://localhost:${{ matrix.app_port }}
+          HTTP_SERVER_ADDRESS: http://localhost:${{ job.services.app.ports['8080'] }}
           HTTP_API_KEY: api_kXqdf2uQ7hmOARp-pZrhA6_IsZSeKCmSEM4YFKBGIzA
-          GRPC_SERVER_ADDRESS: localhost:${{ matrix.grpc_port }}
+          GRPC_SERVER_ADDRESS: localhost:${{ job.services.app.ports['50051'] }}
           GRPC_API_KEY: api_kXqdf2uQ7hmOARp-pZrhA6_IsZSeKCmSEM4YFKBGIzA
           DATABASE_ENGINE: ${{ matrix.database }}
           DATABASE_MYSQL_MASTER_USER: root

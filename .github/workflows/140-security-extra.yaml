@@ -103,7 +103,8 @@ jobs:
       app:
         image: ${{ inputs.image_reference }}
         ports:
-          - 44441:8080 # should be unique to avoid conflicts on self-hosted runners
+          # Let Docker select a free host port.
+          - 8080/tcp
         env:
           LOG_LEVEL: warn
           ENVIRONMENT: ci-security-tests
@@ -121,6 +122,6 @@ jobs:
       - name: 'Run ZAP API scan'
         uses: zaproxy/action-api-scan@5158fe4d9d8fcc75ea204db81317cce7f9e5453d # v0.10.0
         with:
-          target: 'http://localhost:44441/api/v1/.combined.yaml'
+          target: "http://localhost:${{ job.services.app.ports['8080'] }}/api/v1/.combined.yaml"
           format: openapi
           allow_issue_writing: false

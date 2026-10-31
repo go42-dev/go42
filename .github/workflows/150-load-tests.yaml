@@ -48,24 +48,18 @@ jobs:
           # HTTP configurations
           - protocol: http
             database: sqlite
-            app_port: 44441
-            grpc_port: 55551
             test_path: ./tests/load/http/v1/auth_test.js
             env_name: ci-load-tests-http
             server_address_env: HTTP_SERVER_ADDRESS
             grpc_auth_enabled: true
           - protocol: http
             database: mysql
-            app_port: 44442
-            grpc_port: 55552
             test_path: ./tests/load/http/v1/auth_test.js
             env_name: ci-load-tests-http
             server_address_env: HTTP_SERVER_ADDRESS
             grpc_auth_enabled: true
           - protocol: http
             database: pgsql
-            app_port: 44443
-            grpc_port: 55553
             test_path: ./tests/load/http/v1/auth_test.js
             env_name: ci-load-tests-http
             server_address_env: HTTP_SERVER_ADDRESS
@@ -73,24 +67,18 @@ jobs:
           # GRPC configurations
           - protocol: grpc
             database: sqlite
-            app_port: 44444
-            grpc_port: 55554
             test_path: ./tests/load/grpc/v1/auth_test.js
             env_name: ci-load-tests
             server_address_env: GRPC_SERVER_ADDRESS
             grpc_auth_enabled: true
           - protocol: grpc
             database: mysql
-            app_port: 44445
-            grpc_port: 55555
             test_path: ./tests/load/grpc/v1/auth_test.js
             env_name: ci-load-tests
             server_address_env: GRPC_SERVER_ADDRESS
             grpc_auth_enabled: true
           - protocol: grpc
             database: pgsql
-            app_port: 44446
-            grpc_port: 55556
             test_path: ./tests/load/grpc/v1/auth_test.js
             env_name: ci-load-tests
             server_address_env: GRPC_SERVER_ADDRESS
@@ -126,8 +114,9 @@ jobs:
       app:
         image: ${{ inputs.image_reference }}
         ports:
-          - ${{ matrix.app_port }}:8080 # unique ports to avoid conflicts on self-hosted runners
-          - ${{ matrix.grpc_port }}:50051 # unique ports to avoid conflicts on self-hosted runners
+          # Let Docker select free host ports; fixed ports can collide with outgoing connections.
+          - 8080/tcp
+          - 50051/tcp
         env:
           LOG_LEVEL: warn
           ENVIRONMENT: ${{ matrix.env_name }}
@@ -160,8 +149,8 @@ jobs:
         env:
           K6_TEST_PATH: ${{ matrix.test_path }}
           K6_SUMMARY_PATH: k6-summary-${{ matrix.protocol }}-${{ matrix.database }}-v1.json
-          ${{ matrix.server_address_env }}: ${{ matrix.protocol == 'http' && format('http://localhost:{0}', matrix.app_port)
-            || format('localhost:{0}', matrix.grpc_port) }}
+          ${{ matrix.server_address_env }}: ${{ matrix.protocol == 'http' && format('http://localhost:{0}', job.services.app.ports['8080'])
+            || format('localhost:{0}', job.services.app.ports['50051']) }}
           GRPC_API_KEY: api_kXqdf2uQ7hmOARp-pZrhA6_IsZSeKCmSEM4YFKBGIzA
       - name: 'Upload K6 test results'
         if: always()
