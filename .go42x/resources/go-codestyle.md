@@ -152,6 +152,19 @@ collection: resources
   }
   ```
 
+- Put embedded fields before named fields in a struct, without a blank line between
+  them. Embedding promotes the embedded type's fields and methods, so listing it first
+  shows what the struct exposes before its own fields.
+
+  Example:
+
+  ```go
+  type countingWriter struct {
+      io.Writer
+      written int64
+  }
+  ```
+
 - Initialize struct values in named variables before calling their methods. Keep
   construction and the related call together. Avoid calling methods directly on struct
   literals or pointers to them.
@@ -263,14 +276,10 @@ collection: resources
   cache.LookupCacheEntry
   ```
 
-- Use named structs and interfaces. Anonymous structs and interfaces, including type
-  assertions to anonymous interfaces, are allowed only in tests.
+- Always use named structs and interfaces. Anonymous structs and interfaces are to be avoided.
 
 - Define types and constants at package scope. Function-local type and constant
   declarations are allowed only in tests.
-
-  The table-driven example under [Testing](#testing) demonstrates a function-local
-  constant and an anonymous struct, both permitted in tests.
 
 - Name intentionally unused parameters `_` in function and method implementations,
   including parameters retained for a common constructor signature. Keep descriptive
@@ -689,6 +698,41 @@ collection: resources
               if err == nil || service != nil {
                   t.Fatalf("NewService = (%v, %v), want nil service and an error", service, err)
               }
+          })
+      }
+  }
+  ```
+
+- Run independent tests in parallel. Call `t.Parallel()` at the start of a test, and of
+  each subtest, whose result depends only on its own inputs. This surfaces hidden coupling
+  and shortens wall-clock time. Keep a test serial when it shares process-wide state —
+  environment variables, the working directory, a global registry, or a fixture mutated in
+  place — unless each test first takes its own copy.
+
+  Example: A table-driven test marks the parent and every subtest parallel and builds
+  independent state inside each subtest. Since Go 1.22 each loop iteration has its own
+  variables, so no per-iteration copy is needed.
+
+  ```go
+  func TestClassifyRune(t *testing.T) {
+      t.Parallel()
+
+      type runeCase struct {
+          name string
+          in   rune
+          want Class
+      }
+      cases := []runeCase{
+          {name: "digit", in: '7', want: ClassDigit},
+          {name: "letter", in: 'k', want: ClassLetter},
+          {name: "space", in: ' ', want: ClassSpace},
+      }
+
+      for _, c := range cases {
+          t.Run(c.name, func(t *testing.T) {
+              t.Parallel()
+
+              assert.Equal(t, c.want, ClassifyRune(c.in))
           })
       }
   }

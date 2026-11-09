@@ -244,8 +244,7 @@ func (w *Mysql) IsNotFoundError(err error) bool {
 }
 
 func (w *Mysql) IsDuplicateKeyError(err error) bool {
-	var mysqlErr *libMysql.MySQLError
-	if errors.As(err, &mysqlErr) {
+	if mysqlErr, ok := errors.AsType[*libMysql.MySQLError](err); ok {
 		// MySQL error codes for duplicate key violations
 		return mysqlErr.Number == 1062 || mysqlErr.Number == 1586
 	}

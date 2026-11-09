@@ -523,17 +523,16 @@ func TestService_LogoutRevokesSessionBeforeRecordingEvent(t *testing.T) {
 
 func logoutTestClaims() domain.JWTClaims {
 	return domain.JWTClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			ID:       "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-			Subject:  "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-			Issuer:   testJWTIssuer,
-			Audience: testJWTAudience,
-			IssuedAt: jwt.NewNumericDate(
-				time.Now().Add(-time.Minute),
-			),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-		},
-		KID: sha256Hex(testJWTSecret), TokenUse: domain.JWTTokenPurposeRefresh,
+		ID:       "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+		Subject:  "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+		Issuer:   testJWTIssuer,
+		Audience: testJWTAudience,
+		IssuedAt: jwt.NewNumericDate(
+			time.Now().Add(-time.Minute),
+		),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		KID:       sha256Hex(testJWTSecret),
+		TokenUse:  domain.JWTTokenPurposeRefresh,
 		SessionID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
 	}
 }
@@ -850,7 +849,8 @@ func TestService_UpdateSelfRequiresCurrentCredentials(t *testing.T) {
 			email := "new@example.com"
 
 			err := h.service.UpdateSelf(t.Context(), user.UUID.String(), &domain.UpdateSelfData{
-				UpdateUserData: domain.UpdateUserData{Email: &email}, CurrentPassword: test.password,
+				Email:           &email,
+				CurrentPassword: test.password,
 			})
 
 			require.ErrorIs(t, err, domain.ErrInvalidCredentials)
@@ -885,7 +885,8 @@ func TestService_UpdateSelfStopsOnRateLimitFailure(t *testing.T) {
 			email := "new@example.com"
 
 			err := h.service.UpdateSelf(t.Context(), user.UUID.String(), &domain.UpdateSelfData{
-				UpdateUserData: domain.UpdateUserData{Email: &email}, CurrentPassword: testPassword,
+				Email:           &email,
+				CurrentPassword: testPassword,
 			})
 
 			require.ErrorIs(t, err, test.wantErr)
@@ -987,7 +988,8 @@ func TestService_UpdateSelfPreservesStorageFailures(t *testing.T) {
 			email := "new@example.com"
 
 			err := h.service.UpdateSelf(t.Context(), user.UUID.String(), &domain.UpdateSelfData{
-				UpdateUserData: domain.UpdateUserData{Email: &email}, CurrentPassword: testPassword,
+				Email:           &email,
+				CurrentPassword: testPassword,
 			})
 
 			require.ErrorIs(t, err, cause)

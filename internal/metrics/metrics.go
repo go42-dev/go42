@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"sync"
@@ -29,9 +30,7 @@ func RegisterGlobalLabels(labels map[string]any) {
 	}
 	mutex.Lock()
 	defer mutex.Unlock()
-	for k, v := range labels {
-		globalLabels[k] = v
-	}
+	maps.Copy(globalLabels, labels)
 }
 
 func Counter(name string, labels map[string]any) *vmetrics.Counter {

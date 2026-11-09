@@ -6,6 +6,7 @@
 .go42x/kwb/**
 .go42x/backups/**
 .vendor.lock.yaml
+.go42x/.bundle.lock.yaml
 
 # Generated agent instructions and provider configuration.
 AGENTS.md

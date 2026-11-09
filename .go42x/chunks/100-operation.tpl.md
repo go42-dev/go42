@@ -16,100 +16,6 @@
 - Progress: During long-running operations, give updates on findings,
   blockers, and next steps.
 
-- Results: State what was completed, what was checked, and any unresolved issues
-  or uncertainty.
-
-  Example: "Updated the configuration. Local validation passed. Deployment is
-  pending."
-
-- Review: When presenting completed work, help a human understand and review
-  the change. Explain what changed and why, how the affected parts connect,
-  and where to start reviewing. Link to relevant files or symbols in a suggested
-  reading order, explaining each one's role. Include a concrete example when
-  useful. In the review report, list the linters that passed, formatters
-  applied, and tests executed, including their commands and results. State
-  when a category does not apply. Report warnings, failed or skipped checks,
-  and any remaining limitations or required next steps.
-
-  Use a terminal-readable text diagram when it helps explain execution or data
-  flow. Use nested boxes to show component boundaries and arrows to show flow.
-  Adapt the layout to the change, and identify its components in the linked
-  review path.
-
-  Use the following template. Keep the detail proportional to the change;
-  combine or omit sections that do not apply.
-
-  ````markdown
-  Implemented <change> so that <result or benefit>.
-
-  How it works:
-
-  <Brief explanation of the flow and key design decisions.>
-
-  ```text
-                   ┌───────────────────────────┐
-                   │       <Entry point>       │
-                   │       <file:symbol>       │
-                   └─────────────┬─────────────┘
-                                 │
-                                 ▼
-        ┌─────────────────────────────────────────────────┐
-        │ <Main component>                                │
-        │                                                 │
-        │  ┌─────────────────┐       ┌─────────────────┐  │
-        │  │ <Step 1>        │ ────► │ <Step 2>        │  │
-        │  │ <purpose>       │       │ <purpose>       │  │
-        │  └─────────────────┘       └─────────────────┘  │
-        │                                                 │
-        └────────────────────────┬────────────────────────┘
-                                 │
-                    ┌────────────┴─────────────┐
-                    │                          │
-                    ▼                          ▼
-        ┌───────────────────────┐  ┌───────────────────────┐
-        │ <Output / consumer A> │  │ <Output / consumer B> │
-        │ <file:symbol>         │  │ <file:symbol>         │
-        └───────────────────────┘  └───────────────────────┘
-  ```
-
-  Review in this order:
-
-  1. [<entry point>](<path:line>) — where the behavior starts.
-  2. [<main implementation>](<path:line>) — how it processes the input.
-  3. [<consumer or output>](<path:line>) — how the result is used.
-  4. [<tests>](<path:line>) — which behaviors and failure paths are covered.
-
-  Example:
-
-  - Input or action: <concrete example>.
-  - Expected result: <observable behavior>.
-
-  Verification:
-
-  - Linters passed: <commands and results>.
-  - Formatters applied: <commands and affected files>.
-  - Tests executed: <commands or suites and results>.
-  - <Failed or skipped checks, their reasons, and remaining verification gaps>.
-
-  Remaining:
-
-  <Known limitations, unresolved issues, or required next steps. Omit if none.>
-  ````
-
-- Publication: Report whether changes are prepared or published. Link to
-  published results only after confirming they exist.
-
-- Links: Include direct links to deliverables and relevant source locations when
-  reporting results.
-
-  Examples (replace sample paths and line numbers with actual locations):
-
-  ```markdown
-  - Deliverable: [Review report](/path/to/project/.build/review/report.md).
-  - Source: [LoadConfig](/path/to/project/internal/config/config.go:42).
-  - Tests: [TestLoadConfig](/path/to/project/internal/config/config_test.go:80).
-  ```
-
 ### Intermediate storage
 
 - Use the `{{ .context.TempDir }}` directory at the project root for intermediate
@@ -161,11 +67,11 @@
   only for an explanation, review, opinion, or advice. Treat requests to
   implement or fix something as action requests, even when phrased as questions.
 
-  Examples requiring no changes: "Why is this failing?", "Review this code",
-  or "What do you think of this design?"
+  Examples requiring no changes: `Why is this failing?`, `Review this code`,
+  or `What do you think of this design?`
 
-  Examples requesting changes: "Can you fix this?", "Update these instructions",
-  or "Review this code and fix the bugs you find."
+  Examples requesting changes: `Can you fix this?`, `Update these instructions`,
+  or `Review this code and fix the bugs you find.`
 
 ### Task validation
 

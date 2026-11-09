@@ -76,8 +76,8 @@ tasks:
     desc: "Update go42x and merge bundled assets with project customizations (writes)"
     summary: |-
       Usage: task x:update [VERSION=<version>]
-      Defaults to the latest available release. Exports the old bundle, updates mise, merges assets, generates agent
-      files, compiles and lints workflows, and refreshes the knowledge base.
+      Defaults to the latest available release. Updates mise, merges released assets, generates agent files,
+      compiles and lints workflows, and refreshes the knowledge base.
     preconditions:
       - sh: 'test -z {{.CLI_ARGS | shellQuote}}'
         msg: "Pass VERSION=... without arguments after --."
@@ -104,12 +104,11 @@ tasks:
           printf 'Restored the previous mise pin and lockfile.\n' >&2
         }
 
-        task x -- agentenv export --output "$workspace/base"
         if ! task bump TOOL=go42x "VERSION=$version"; then
           restore_pins
           exit 1
         fi
-        if ! task --silent x -- agentenv update --base "$workspace/base" --json > "$workspace/update.json"; then
+        if ! task --silent x -- agentenv update --json > "$workspace/update.json"; then
           cat "$workspace/update.json"
           # Restore only when the command reports that no replacements were applied.
           if grep -Eq '"result":null|"applied":0[,}]' "$workspace/update.json"; then

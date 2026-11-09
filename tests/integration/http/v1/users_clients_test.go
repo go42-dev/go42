@@ -219,8 +219,7 @@ func (c ogenUsers) delete(ctx context.Context, id uuid.UUID) usersResult {
 
 func decodeOgen(response any, err error, successStatus int) usersResult {
 	GinkgoHelper()
-	var unexpected *ogen.UnexpectedResponseStatusCode
-	if errors.As(err, &unexpected) {
+	if unexpected, ok := errors.AsType[*ogen.UnexpectedResponseStatusCode](err); ok {
 		Expect(unexpected.Response.Status).To(Equal(int32(unexpected.StatusCode)))
 		return usersResult{status: unexpected.StatusCode}
 	}

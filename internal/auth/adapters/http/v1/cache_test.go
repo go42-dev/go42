@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 	"go.uber.org/mock/gomock"
@@ -92,7 +91,7 @@ func activeUserWithReadSelfPermission(id int, userUUID uuid.UUID, email string) 
 
 func claimsFor(user *models.User) *domain.JWTClaims {
 	return &domain.JWTClaims{
-		RegisteredClaims: jwt.RegisteredClaims{Subject: user.UUID.String()},
+		Subject: user.UUID.String(),
 	}
 }
 

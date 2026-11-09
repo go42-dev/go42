@@ -21,7 +21,7 @@ func TestRateLimiter_AllowsWithinLimit(t *testing.T) {
 	rl := newRateLimiter(t, 2, 2, time.Minute, 100) // 2 req/sec, burst 2
 	key := "user1"
 	allowed := 0
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		if allow(t, rl, key) {
 			allowed++
 		}
@@ -75,12 +75,12 @@ func TestRateLimiter_ConcurrentDistinctKeys(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(workers)
 
-	for worker := 0; worker < workers; worker++ {
+	for worker := range workers {
 		go func() {
 			defer wg.Done()
 			<-start
 
-			for call := 0; call < callsPerWorker; call++ {
+			for call := range callsPerWorker {
 				key := fmt.Sprintf("worker-%d-call-%d", worker, call)
 				allowed, err := rl.Limit(context.Background(), key)
 				if err != nil {

@@ -891,7 +891,7 @@ func TestSwaggerRendersAvailableSpecsAndTheme(t *testing.T) {
 			require.Equal(t, nethttp.StatusOK, response.Code)
 			body := response.Body.String()
 			var specURLs []string
-			for _, line := range strings.Split(body, "\n") {
+			for line := range strings.SplitSeq(body, "\n") {
 				if value, ok := strings.CutPrefix(strings.TrimSpace(line), "url: "); ok {
 					var specURL string
 					require.NoError(t, json.Unmarshal([]byte(strings.TrimSuffix(value, ",")), &specURL))

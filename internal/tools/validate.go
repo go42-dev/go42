@@ -45,8 +45,7 @@ func ValidateStruct(s any) []ValidationError {
 	if err == nil {
 		return nil
 	}
-	var validationErrors validator.ValidationErrors
-	if errors.As(err, &validationErrors) {
+	if validationErrors, ok := errors.AsType[validator.ValidationErrors](err); ok {
 		vErrs := make([]ValidationError, 0, len(validationErrors))
 		for _, vErr := range validationErrors {
 			vErrs = append(vErrs, ValidationError{original: vErr})
