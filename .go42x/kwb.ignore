@@ -5,6 +5,7 @@
 .go42x/go42x.local.yaml
 .go42x/kwb/**
 .go42x/backups/**
+.go42x/journal/**
 .vendor.lock.yaml
 .go42x/.bundle.lock.yaml
 

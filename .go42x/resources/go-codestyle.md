@@ -90,48 +90,27 @@ collection: resources
 
 ## Readability
 
-- Use blank lines to separate distinct logical steps, such as loading, validation, and
-  execution. Keep related statements together, including each call and its error check.
-  Choose grouping by purpose; a short block can still contain distinct steps.
+- Use blank lines only between steps of a longer function that each span several lines,
+  such as loading, validation, and execution, or a test's setup, execution, and
+  assertions. Write a function or block of about ten lines or fewer as one piece. Keep
+  each call with its error check, and never add a blank line only because a `return`
+  follows.
 
-  Example: Separate distinct logical steps, keeping each call with its error check.
+  Example: A short block reads as one piece, with each call beside its error check.
 
   ```go
   settings, err := loadSettings(path)
   if err != nil {
       return err
   }
-
   if err := settings.Validate(); err != nil {
       return err
   }
-
   return run(ctx, settings)
   ```
 
-  Example: Keep a lookup with its failure check, then separate the successful result.
-
-  ```go
-  value, exists := os.LookupEnv(name)
-  if !exists || len(value) == 0 {
-      expansionErr = fmt.Errorf("environment variable %q is unset or empty", name)
-      return ""
-  }
-
-  return value
-  ```
-
-  Example: Keep one logical step together.
-
-  ```go
-  func writeMessage(w io.Writer, message string) error {
-      if len(message) == 0 {
-          return nil
-      }
-      _, err := io.WriteString(w, message)
-      return err
-  }
-  ```
+  The [functional-options example](#functional-options) shows a longer function whose
+  steps are separated by blank lines.
 
 - Group struct fields by responsibility, such as dependencies, configuration, and
   runtime state. Keep related fields adjacent without blank lines between groups. Keep
@@ -211,44 +190,44 @@ collection: resources
   }
   ```
 
-- Keep resource acquisition and cleanup registration together.
+- Release a resource on every path out of the function that owns it. Register its
+  cleanup with `defer` as soon as the resource exists, before any other call that can
+  fail: right after a constructor that cannot fail, or right after the error check of
+  one that can. This includes cleanup that is safe on an unused resource, such as closing
+  a lock that was never taken.
+
+  The rule has two exceptions. A function that returns the resource to its caller
+  releases it only on its failure paths, as the connection example in
+  [Resource ownership](#resource-ownership) shows. When the cleanup error belongs in the
+  reported result, call the cleanup right after the last use, with no return in between,
+  and join its error.
 
   Example:
 
   ```go
   ctx, cancel := context.WithTimeout(ctx, timeout)
   defer cancel()
-
   return client.Fetch(ctx)
   ```
 
-- Within loops, separate filtering from processing.
-
-  Example:
+  Example: Closing a lock that was never taken does nothing, so register it before the
+  attempt to lock.
 
   ```go
-  for _, entry := range entries {
-      if entry.IsDir() {
-          continue
-      }
-
-      names = append(names, entry.Name())
-  }
+  lock := flock.New(path)
+  defer func() {
+      _ = lock.Close()
+  }()
+  locked, err := lock.TryLockContext(ctx, retryDelay)
   ```
 
-- In tests, separate setup, execution, and assertions.
-
-  Example:
+  Example: The result reports a failure to close the service, so the close follows the
+  last use instead of a deferred call.
 
   ```go
-  input := []int{3, 1, 2}
-  want := []int{1, 2, 3}
-
-  slices.Sort(input)
-
-  if !slices.Equal(input, want) {
-      t.Fatalf("got %v, want %v", input, want)
-  }
+  result, err := service.BuildIndex(ctx, root)
+  err = errors.Join(err, service.Close())
+  return result, err
   ```
 
 ## Naming and declarations
@@ -258,6 +237,11 @@ collection: resources
 - Name `context.Context` variables `ctx`.
 
 - Prefer `len(s) == 0` over `s == ""` for empty strings.
+
+- Declare a slice that only `append` fills with `var`, such as `var missing []string`.
+  `append` allocates on first use, and a nil slice ranges, sorts, and reports its length
+  like an empty one. Use `[]T{}` only where nil and empty differ, such as a value that
+  JSON must encode as `[]` rather than `null`.
 
 - Prefer `.yaml` over `.yml`.
 
@@ -314,7 +298,6 @@ collection: resources
       if !ok {
           return errors.New("value does not support cache invalidation")
       }
-
       return cache.Invalidate(ctx, key)
   }
   ```
@@ -395,11 +378,9 @@ collection: resources
 
   func WriteJSON(w http.ResponseWriter, value any) error {
       w.Header().Set(headerContentType, contentTypeJSON)
-
       if err := json.NewEncoder(w).Encode(value); err != nil {
           return fmt.Errorf("encode response: %w", err)
       }
-
       return nil
   }
   ```
@@ -457,12 +438,10 @@ collection: resources
   if errors.Is(err, fs.ErrNotExist) {
       return fmt.Errorf("configuration is missing: %w", err)
   }
-
   var pathErr *fs.PathError
   if errors.As(err, &pathErr) {
       return fmt.Errorf("load configuration %q: %w", pathErr.Path, err)
   }
-
   return err
   ```
 
@@ -527,18 +506,15 @@ collection: resources
           cancel: cancel,
           done:   make(chan Signal),
       }
-
       go func() {
           defer close(w.done)
           run(ctx)
       }()
-
       return w
   }
 
   func (w *Worker) Shutdown(ctx context.Context) error {
       w.cancel()
-
       select {
       case <-w.done:
           return nil
@@ -565,17 +541,14 @@ collection: resources
       }
 
       result := make(chan error, 1)
-
       go func() {
           defer func() {
               <-slots
           }()
-
           if err := ctx.Err(); err != nil {
               result <- err
               return
           }
-
           result <- run(ctx)
       }()
 
@@ -608,10 +581,8 @@ collection: resources
               slog.Any("error", closeErr),
           )
       }
-
       return nil, fmt.Errorf("initialize connection: %w", err)
   }
-
   return conn, nil
   ```
 
@@ -626,12 +597,10 @@ collection: resources
   // Start runs work and closes the channel after sending its result.
   func Start(ctx context.Context, run func(context.Context) error) <-chan error {
       result := make(chan error, 1)
-
       go func() {
           defer close(result)
           result <- run(ctx)
       }()
-
       return result
   }
   ```
@@ -676,7 +645,6 @@ collection: resources
   ```go
   func TestNewServiceRejectsInvalidTimeout(t *testing.T) {
       const negativeTimeout = -time.Second
-
       repo := newTestRepository()
       tests := []struct {
           name    string
@@ -705,9 +673,9 @@ collection: resources
 
 - Run independent tests in parallel. Call `t.Parallel()` at the start of a test, and of
   each subtest, whose result depends only on its own inputs. This surfaces hidden coupling
-  and shortens wall-clock time. Keep a test serial when it shares process-wide state —
-  environment variables, the working directory, a global registry, or a fixture mutated in
-  place — unless each test first takes its own copy.
+  and shortens wall-clock time. Keep a test serial when it shares process-wide state, such
+  as environment variables, the working directory, a global registry, or a fixture mutated
+  in place, unless each test first takes its own copy.
 
   Example: A table-driven test marks the parent and every subtest parallel and builds
   independent state inside each subtest. Since Go 1.22 each loop iteration has its own
@@ -716,7 +684,6 @@ collection: resources
   ```go
   func TestClassifyRune(t *testing.T) {
       t.Parallel()
-
       type runeCase struct {
           name string
           in   rune
@@ -731,7 +698,6 @@ collection: resources
       for _, c := range cases {
           t.Run(c.name, func(t *testing.T) {
               t.Parallel()
-
               assert.Equal(t, c.want, ClassifyRune(c.in))
           })
       }
@@ -765,7 +731,6 @@ collection: resources
           go func() {
               ctx, cancel := context.WithTimeout(t.Context(), time.Second)
               defer cancel()
-
               result <- worker.Shutdown(ctx)
           }()
 
@@ -847,7 +812,6 @@ collection: resources
           s.logger = slog.New(slog.DiscardHandler)
       }
       s.logger = s.logger.With(slog.String("component", "service"))
-
       return s, nil
   }
   ```

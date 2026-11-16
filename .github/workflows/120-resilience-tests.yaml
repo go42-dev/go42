@@ -121,7 +121,7 @@ jobs:
         with:
           name: resilience-coverage
           path: |-
-            .build/coverage-resilience.out
-            .build/coverage-resilience.html
+            ${{ env.BUILD_REPORTS_DIR }}/coverage-resilience.out
+            ${{ env.BUILD_REPORTS_DIR }}/coverage-resilience.html
           include-hidden-files: true
           if-no-files-found: error

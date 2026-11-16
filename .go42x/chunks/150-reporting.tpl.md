@@ -16,7 +16,7 @@ the task; use the parts that help explain the result.
 #### Interactive and CI
 
 - **Interactive:** Give brief progress updates and use clickable absolute local
-  file links with line numbers. Detailed reports under `{{ .context.TempDir }}`
+  file links with line numbers. Detailed reports in the task's journal entry
   are optional.
 - **CI:** Keep progress in logs and publish a self-contained result with accessible
   code, PR, check, or artifact links. Follow the workflow's output and publication

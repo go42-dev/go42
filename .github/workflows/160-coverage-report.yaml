@@ -40,27 +40,32 @@ jobs:
         with:
           # Reporting reads coverage files without compiling project packages.
           cache: false
+      - name: 'Install Task for the build directory variables'
+        uses: ./.github/actions/setup-tools
+        with:
+          cache: 'false'
       - name: 'Download coverage reports'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: '*-coverage*'
-          path: .build
+          path: ${{ env.BUILD_REPORTS_DIR }}
       - name: 'Merge unit, integration, and resilience coverage'
         shell: bash
         run: |-
           awk 'FNR == 1 { next } { hits[$1 " " $2] += $3 }
             END { print "mode: atomic"; for (block in hits) printf "%s %.0f\n", block, hits[block] }' \
-            .build/code-coverage/coverage.out \
-            .build/integration-coverage-*/coverage-integration.out \
-            .build/resilience-coverage/coverage-resilience.out > .build/coverage-total.out
-          go tool cover -html=.build/coverage-total.out -o=.build/coverage-total.html
+            "$BUILD_REPORTS_DIR/code-coverage/coverage.out" \
+            "$BUILD_REPORTS_DIR"/integration-coverage-*/coverage-integration.out \
+            "$BUILD_REPORTS_DIR/resilience-coverage/coverage-resilience.out" > "$BUILD_REPORTS_DIR/coverage-total.out"
+          go tool cover -html="$BUILD_REPORTS_DIR/coverage-total.out" -o="$BUILD_REPORTS_DIR/coverage-total.html"
       - name: 'Publish coverage summary and annotation'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |-
             const fs = require('fs');
             const path = require('path');
-            const lines = fs.readFileSync('.build/coverage-total.out', 'utf8').trim().split(/\r?\n/);
+            const reports = process.env.BUILD_REPORTS_DIR;
+            const lines = fs.readFileSync(path.join(reports, 'coverage-total.out'), 'utf8').trim().split(/\r?\n/);
             const packages = new Map();
             const total = { covered: 0, statements: 0 };
             const modulePrefix = 'github.com/go42-dev/go42/';
@@ -105,7 +110,7 @@ jobs:
               summary += `| \`${label}\` | ${bar(coverage)} ${percent(coverage)} | `;
               summary += `${coverage.covered} / ${coverage.statements} |\n`;
             }
-            fs.writeFileSync('.build/coverage-summary.md', summary);
+            fs.writeFileSync(path.join(reports, 'coverage-summary.md'), summary);
             await core.summary.addRaw(summary).write();
             core.notice(
               `Total coverage: ${percent(total)} (${total.covered}/${total.statements} statements, ${packages.size} packages). ` +
@@ -118,9 +123,9 @@ jobs:
         with:
           name: combined-coverage
           path: |-
-            .build/coverage-total.out
-            .build/coverage-total.html
-            .build/coverage-summary.md
+            ${{ env.BUILD_REPORTS_DIR }}/coverage-total.out
+            ${{ env.BUILD_REPORTS_DIR }}/coverage-total.html
+            ${{ env.BUILD_REPORTS_DIR }}/coverage-summary.md
           include-hidden-files: true
           if-no-files-found: error
       - name: 'Link full coverage report in job summary'

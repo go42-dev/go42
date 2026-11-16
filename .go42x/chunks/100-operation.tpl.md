@@ -16,19 +16,6 @@
 - Progress: During long-running operations, give updates on findings,
   blockers, and next steps.
 
-### Intermediate storage
-
-- Use the `{{ .context.TempDir }}` directory at the project root for intermediate
-  files, artifacts, and reports.
-
-- Keep scratch files for each task in a separate, clearly named subdirectory.
-
-- Before finishing a task, review this directory and remove files and directories
-  that are unlikely to be needed again, such as temporary scripts, scratch files,
-  duplicate outputs, and obsolete artifacts from earlier tasks. Keep requested
-  deliverables, reports needed for review, and files used by ongoing work.
-  Leave files whose purpose is unclear untouched.
-
 ### Side effect protection in interactive sessions
 
 - Never modify root README.md without explicit instructions.

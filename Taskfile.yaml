@@ -31,6 +31,15 @@ set:
   - errexit
   - pipefail
 
+vars:
+  # Relative to the repository root: tasks and CI join it to $PWD or $GITHUB_WORKSPACE.
+  BUILD_DIR: .build
+  BUILD_BIN_DIR: '{{.BUILD_DIR}}/bin'
+  BUILD_DIST_DIR: '{{.BUILD_DIR}}/dist'
+  BUILD_REPORTS_DIR: '{{.BUILD_DIR}}/reports'
+  BUILD_CACHE_DIR: '{{.BUILD_DIR}}/cache'
+  BUILD_TMP_DIR: '{{.BUILD_DIR}}/tmp'
+
 env:
   GOTOOLCHAIN: local
   MISE_DEFAULT_CONFIG_FILENAME: etc/mise.toml
@@ -38,6 +47,12 @@ env:
   MISE_CACHE_DIR: '{{.ROOT_DIR}}/.tools/cache'
   MISE_STATE_DIR: '{{.ROOT_DIR}}/.tools/state'
   TASK_TEMP_DIR: '{{.ROOT_DIR}}/.tools/task'
+  BUILD_DIR: '{{.BUILD_DIR}}'
+  BUILD_BIN_DIR: '{{.BUILD_BIN_DIR}}'
+  BUILD_DIST_DIR: '{{.BUILD_DIST_DIR}}'
+  BUILD_REPORTS_DIR: '{{.BUILD_REPORTS_DIR}}'
+  BUILD_CACHE_DIR: '{{.BUILD_CACHE_DIR}}'
+  BUILD_TMP_DIR: '{{.BUILD_TMP_DIR}}'
 
 tasks:
 
@@ -52,7 +67,7 @@ tasks:
     desc: "Print the project tooling environment as KEY=value lines"
     summary: |-
       Usage: task env:export
-      Prints only the project tooling variables for CI setup and editor configuration.
+      Prints project variables for CI setup and editor configuration.
     silent: true
     cmds:
       - |
@@ -62,7 +77,13 @@ tasks:
           "MISE_DATA_DIR=$MISE_DATA_DIR" \
           "MISE_CACHE_DIR=$MISE_CACHE_DIR" \
           "MISE_STATE_DIR=$MISE_STATE_DIR" \
-          "TASK_TEMP_DIR=$TASK_TEMP_DIR"
+          "TASK_TEMP_DIR=$TASK_TEMP_DIR" \
+          "BUILD_DIR=$BUILD_DIR" \
+          "BUILD_BIN_DIR=$BUILD_BIN_DIR" \
+          "BUILD_DIST_DIR=$BUILD_DIST_DIR" \
+          "BUILD_REPORTS_DIR=$BUILD_REPORTS_DIR" \
+          "BUILD_CACHE_DIR=$BUILD_CACHE_DIR" \
+          "BUILD_TMP_DIR=$BUILD_TMP_DIR"
 
   x:
     desc: "Run go42x from the mise-pinned release"
@@ -93,8 +114,8 @@ tasks:
           exit 1
         fi
 
-        mkdir -p .build
-        workspace=$(mktemp -d "$PWD/.build/go42x-update.XXXXXX")
+        mkdir -p "$BUILD_TMP_DIR"
+        workspace=$(mktemp -d "$PWD/$BUILD_TMP_DIR/go42x-update.XXXXXX")
         printf 'Updating go42x to %s; workspace: %s\n' "$version" "$workspace"
         cp -p etc/mise.toml "$workspace/mise.toml"
         cp -p etc/mise.lock "$workspace/mise.lock"
@@ -225,7 +246,7 @@ tasks:
           exec go test -count=1 -race -skip '^Fuzz' "$@"
         fi
 
-        mkdir -p .build
+        mkdir -p "$BUILD_REPORTS_DIR"
 
         unit_packages=$(go list ./...)
         unit_exclude_pattern=$(printf '%s\n' api/gen mocks tests | paste -sd '|' -)
@@ -235,11 +256,11 @@ tasks:
         # shellcheck disable=SC2086
         go test -count=1 -v -race -skip '^Fuzz' -covermode=atomic \
           -coverpkg="$(printf '%s\n' "$unit_packages" | paste -sd, -)" \
-          -coverprofile=.build/coverage.out $unit_packages \
+          -coverprofile="$BUILD_REPORTS_DIR/coverage.out" $unit_packages \
           | sed -E 's/(coverage: [0-9.]+% of statements) in .*/\1/'
 
-        go tool cover -html=.build/coverage.out -o=.build/coverage.html
-        go tool cover -func=.build/coverage.out | grep '^total:'
+        go tool cover -html="$BUILD_REPORTS_DIR/coverage.out" -o="$BUILD_REPORTS_DIR/coverage.html"
+        go tool cover -func="$BUILD_REPORTS_DIR/coverage.out" | grep '^total:'
 
   test:fuzz:
     desc: "Run all fuzz targets"
@@ -258,11 +279,11 @@ tasks:
     summary: |-
       Usage: task test:integration
       Requires a dedicated running application and configured backing services. Loads .env when present and writes
-      coverage reports under .build/.
+      coverage reports to BUILD_REPORTS_DIR.
     cmds:
       - |
         set -eo pipefail
-        mkdir -p .build
+        mkdir -p "$BUILD_REPORTS_DIR"
 
         # The optional runtime configuration is supplied by the contributor.
         # shellcheck disable=SC1091
@@ -273,11 +294,11 @@ tasks:
         coverage_packages=$(printf '%s\n' "$coverage_packages" | grep -vE "/($coverage_exclude_pattern)(/|$)" | paste -sd, -)
 
         go test -count=1 -v -race -covermode=atomic -coverpkg="$coverage_packages" \
-          -coverprofile=.build/coverage-integration.out ./tests/integration/... \
+          -coverprofile="$BUILD_REPORTS_DIR/coverage-integration.out" ./tests/integration/... \
           | sed -E 's/(coverage: [0-9.]+% of statements) in .*/\1/'
 
-        go tool cover -html=.build/coverage-integration.out -o=.build/coverage-integration.html
-        go tool cover -func=.build/coverage-integration.out | grep '^total:'
+        go tool cover -html="$BUILD_REPORTS_DIR/coverage-integration.out" -o="$BUILD_REPORTS_DIR/coverage-integration.html"
+        go tool cover -func="$BUILD_REPORTS_DIR/coverage-integration.out" | grep '^total:'
 
   # Resilience tests are build-tagged and excluded from all other test targets.
   # @note Requires `toxiproxy pgsql mysql redis memcached nats kafka rabbitmq`
@@ -286,12 +307,12 @@ tasks:
     summary: |-
       Usage: task test:resilience
       Requires Toxiproxy, PostgreSQL, MySQL, Redis, Memcached, NATS, Kafka, and RabbitMQ.
-      Builds its own instrumented application and writes combined coverage under .build/.
+      Builds its own instrumented application in BUILD_BIN_DIR and writes combined coverage to BUILD_REPORTS_DIR.
     cmds:
       - |
         set -eo pipefail
-        rm -rf .build/coverage-resilience{.out,.out.tmp,.html,-tests,-app}
-        mkdir -p .build/coverage-resilience-{tests,app}
+        rm -rf "$BUILD_REPORTS_DIR"/coverage-resilience{.out,.out.tmp,.html,-tests,-app}
+        mkdir -p "$BUILD_REPORTS_DIR"/coverage-resilience-{tests,app} "$BUILD_BIN_DIR"
 
         coverage_exclude_pattern=$(printf '%s\n' api/gen mocks tests | paste -sd '|' -)
         app_packages=$(go list -deps -f '{{`{{if .Module}}{{if .Module.Main}}{{.ImportPath}}{{end}}{{end}}`}}' ./cmd/app)
@@ -299,22 +320,22 @@ tasks:
         resilience_packages=$(go list -deps -test -tags=resilience -f '{{`{{if .Module}}{{if .Module.Main}}{{.ImportPath}}{{end}}{{end}}`}}' ./tests/resilience/...)
         resilience_packages=$(printf '%s\n' "$resilience_packages" | grep -vE "/($coverage_exclude_pattern)(/|$)" | paste -sd, -)
 
-        go build -race -cover -covermode=atomic -coverpkg="$app_packages" -o .build/resilience-app ./cmd/app
-        export RESILIENCE_APP_BINARY="${PWD}/.build/resilience-app"
-        export RESILIENCE_APP_COVERDIR="${PWD}/.build/coverage-resilience-app"
+        go build -race -cover -covermode=atomic -coverpkg="$app_packages" -o "$BUILD_BIN_DIR/resilience-app" ./cmd/app
+        export RESILIENCE_APP_BINARY="${PWD}/$BUILD_BIN_DIR/resilience-app"
+        export RESILIENCE_APP_COVERDIR="${PWD}/$BUILD_REPORTS_DIR/coverage-resilience-app"
         go test -count=1 -v -tags=resilience -cover -covermode=atomic \
           -coverpkg="$resilience_packages" ./tests/resilience/... \
-          -args -test.gocoverdir="${PWD}/.build/coverage-resilience-tests" \
+          -args -test.gocoverdir="${PWD}/$BUILD_REPORTS_DIR/coverage-resilience-tests" \
           | sed -E 's/(coverage: [0-9.]+% of statements) in .*/\1/'
 
-        ls .build/coverage-resilience-{tests,app}/cov{meta,counters}.* > /dev/null
+        ls "$BUILD_REPORTS_DIR"/coverage-resilience-{tests,app}/cov{meta,counters}.* > /dev/null
         go tool covdata textfmt \
-          -i=.build/coverage-resilience-tests,.build/coverage-resilience-app \
-          -o=.build/coverage-resilience.out.tmp
-        mv .build/coverage-resilience.out.tmp .build/coverage-resilience.out
+          -i="$BUILD_REPORTS_DIR/coverage-resilience-tests,$BUILD_REPORTS_DIR/coverage-resilience-app" \
+          -o="$BUILD_REPORTS_DIR/coverage-resilience.out.tmp"
+        mv "$BUILD_REPORTS_DIR/coverage-resilience.out.tmp" "$BUILD_REPORTS_DIR/coverage-resilience.out"
 
-        go tool cover -html=.build/coverage-resilience.out -o=.build/coverage-resilience.html
-        go tool cover -func=.build/coverage-resilience.out | grep '^total:'
+        go tool cover -html="$BUILD_REPORTS_DIR/coverage-resilience.out" -o="$BUILD_REPORTS_DIR/coverage-resilience.html"
+        go tool cover -func="$BUILD_REPORTS_DIR/coverage-resilience.out" | grep '^total:'
 
   test:load:
     desc: "Run HTTP and gRPC load tests, or one selected suite"
@@ -347,14 +368,14 @@ tasks:
           exec mise exec -- k6 run --summary-export="$load_summary_path" "$load_test_path"
         fi
 
-        rm -f .build/k6-summary-{http,grpc}-v1.json
-        mkdir -p .build
+        rm -f "$BUILD_REPORTS_DIR"/k6-summary-{http,grpc}-v1.json
+        mkdir -p "$BUILD_REPORTS_DIR"
 
         mise exec -- k6 version
 
         load_status=0
         for protocol in http grpc; do
-          mise exec -- k6 run --summary-export=.build/k6-summary-$protocol-v1.json \
+          mise exec -- k6 run --summary-export="$BUILD_REPORTS_DIR/k6-summary-$protocol-v1.json" \
             tests/load/$protocol/v1/auth_test.js || load_status=$?
         done
 
@@ -425,6 +446,7 @@ tasks:
     interactive: true
     cmds:
       - task: "check:env"
+      - 'mkdir -p "$BUILD_BIN_DIR"'
       - |
         # Load KEY=value settings for the debugger.
         # shellcheck disable=SC2046
@@ -433,20 +455,22 @@ tasks:
         export DATABASE_MIGRATE_PATH="$PWD/migrate" && \
         export SERVER_HTTP_STATIC_ROOT="$PWD/static" && \
         export SERVER_HTTP_SWAGGER_ROOT="$PWD/api/openapi" && \
-        mise exec -- dlv debug ./cmd/app --headless --listen=:2345 --accept-multiclient --api-version=2 -- {{.CLI_ARGS}}
+        mise exec -- dlv debug ./cmd/app --headless --listen=:2345 --accept-multiclient --api-version=2 \
+          --output="$BUILD_BIN_DIR/app-debug" -- {{.CLI_ARGS}}
 
   build:
-    desc: "Build a development binary in .build"
+    desc: "Build a development binary in BUILD_BIN_DIR"
     summary: |-
       Usage: task build [-- BUILD_FLAGS...]
       Builds with race detection and compiler optimizations disabled.
     cmds:
-      - "mkdir -p .build"
+      - 'mkdir -p "$BUILD_BIN_DIR"'
       - >-
         go build -gcflags="all=-N -l" -race -v
-        {{.CLI_ARGS}} -o .build/app ./cmd/app
+        {{.CLI_ARGS}} -o "$BUILD_BIN_DIR/app" ./cmd/app
       - >-
-        file -h .build/app && du -h .build/app && sha256sum .build/app && go tool buildid .build/app
+        file -h "$BUILD_BIN_DIR/app" && du -h "$BUILD_BIN_DIR/app" && sha256sum "$BUILD_BIN_DIR/app" &&
+        go tool buildid "$BUILD_BIN_DIR/app"
 
   # @see https://reproducible-builds.org/docs/source-date-epoch/
   image:

@@ -113,8 +113,6 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
-    env:
-      GOLANGCI_LINT_CACHE: ${{ github.workspace }}/.build/golangci-lint-cache
     # ----
     steps:
       - name: 'Checkout repository'
@@ -130,6 +128,9 @@ jobs:
         uses: ./.github/actions/setup-tools
         with:
           install-args: --locked golangci-lint
+      - name: 'Locate golangci-lint results in the build cache'
+        shell: bash
+        run: echo "GOLANGCI_LINT_CACHE=$GITHUB_WORKSPACE/$BUILD_CACHE_DIR/golangci-lint" >> "$GITHUB_ENV"
       - name: 'Get lint cache metadata'
         id: lint-cache
         shell: bash

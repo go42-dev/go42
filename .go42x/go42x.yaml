@@ -1,11 +1,11 @@
 ---
 
-# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/dc62879ccea396b319830767b53aa858b57c9b02/assets/schemas/go42x.schema.yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/6ea63f026f32e103f0135f9a7e4d13f0e36963d2/assets/agentenv/schemas/go42x.schema.yaml
 
 version: "1.0"
 
 # Variable substitution is supported in configuration string values.
-# Example: temp-dir: '${GO42X_PROJECT_ROOT}/.build'
+# Example: build-dir: '${GO42X_PROJECT_ROOT}/.build'
 #
 # Supported substitutions:
 # - ${GO42X_PROJECT_ROOT}: absolute path to the project directory.
@@ -27,6 +27,7 @@ env: []
 
 # Shared instructions for every enabled provider, rendered once to AGENTS.md.
 # The chunk directory is relative to .go42x; immediate *.tpl.md files load in filename order.
+# Name project chunks 999-<name>.tpl.md: they load after the bundled chunks, which never use 999.
 context:
   template: agents.tpl.md
   chunks-dir: 'chunks/'
@@ -36,9 +37,9 @@ context:
   # for Claude, .agents/skills for Codex, Antigravity, and Copilot, and both for gh-aw,
   # whose workflows may run any engine. Omit to install no skills.
   skills-dir: 'skills/'
-  # Directory for intermediate agent outputs; relative paths use the project root.
-  # Omitted or empty defaults to .build. Templates use .context.TempDir.
-  temp-dir: '.build'
+  # Build directory for task and tool outputs; relative paths use the project root.
+  # Omitted or empty defaults to .build. Templates use .context.BuildDir.
+  build-dir: '.build'
   # Extra go env variables, e.g. [GOFLAGS, GOPRIVATE]. Values appear in shared context.
   # Defaults: GOVERSION, GOTOOLCHAIN, GOROOT, GOPATH, GOBIN, GOCACHE, GOMODCACHE,
   # GOMOD, GOWORK, GOOS, GOARCH, CGO_ENABLED. Empty values are omitted.
@@ -198,6 +199,12 @@ mcp:
       - kwb_list_files
       - kwb_search
       - kwb_stats
+      - journal_list
+      - journal_show
+      - journal_new
+      - journal_note
+      - journal_done
+      - journal_search
 
   mise:
     enabled: true

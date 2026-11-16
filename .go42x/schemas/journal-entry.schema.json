@@ -1,0 +1,116 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/go42-dev/go42x/agentenv/schema/journal-entry/v1",
+  "title": "go42x journal entry",
+  "description": "Record of one task in .go42x/journal/<id>/entry.json, written by go42x agentenv journal.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "id",
+    "title",
+    "status",
+    "tags",
+    "created_at",
+    "updated_at",
+    "expires_at",
+    "runtime",
+    "refs"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Link to this schema at the go42x revision that last wrote the entry"
+    },
+    "version": {
+      "const": 1,
+      "description": "Entry format version"
+    },
+    "id": {
+      "type": "string",
+      "description": "Creation date, title slug, and random suffix; equals the entry directory name",
+      "pattern": "^[0-9]{8}-[a-z0-9]+(-[a-z0-9]+)*-[0-9a-f]{4}$",
+      "maxLength": 64
+    },
+    "title": {
+      "type": "string",
+      "description": "What the task is about",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "status": {
+      "enum": [
+        "open",
+        "done",
+        "abandoned"
+      ],
+      "description": "open until the task is finished or dropped"
+    },
+    "tags": {
+      "type": "array",
+      "description": "One type of work and the affected areas",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "When journal gc may delete a finished entry; null keeps it"
+    },
+    "runtime": {
+      "enum": [
+        "claude",
+        "codex",
+        "antigravity",
+        "crush",
+        "copilot",
+        "gh-aw",
+        "human",
+        "unknown"
+      ],
+      "description": "Runtime that last wrote the entry; log.jsonl keeps every writer"
+    },
+    "session": {
+      "type": "string",
+      "description": "Session identifier reported by the runtime that last wrote the entry",
+      "maxLength": 200
+    },
+    "refs": {
+      "type": "object",
+      "description": "Work the entry belongs to, recorded at the last write",
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,64}$"
+        },
+        "pr": {
+          "type": "string",
+          "description": "Pull request number or URL"
+        },
+        "issue": {
+          "type": "string",
+          "description": "Issue number or URL"
+        }
+      }
+    }
+  }
+}
