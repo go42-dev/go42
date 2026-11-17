@@ -680,12 +680,13 @@ tasks:
       - task: "docs:check"
       - task: "lint:agentic"
 
+  # commitlint resolves the preset's ESM-only parser from the preset's real path.
   lint:commits:
     desc: "Check commit messages against origin/master"
     cmds:
       - |
         mise exec -- commitlint --config etc/commitlint.yaml \
-          --extends "$(mise where commitlint-config-conventional)/node_modules/@commitlint/config-conventional/lib/index.js" \
+          --extends "$(realpath "$(mise where commitlint-config-conventional)/node_modules/@commitlint/config-conventional/lib/index.js")" \
           --from origin/master --to HEAD --verbose
 
   lint:go:
@@ -912,7 +913,7 @@ tasks:
     cmds:
       - |
         set -- {{.CLI_ARGS}}
-        mise exec -- ec -config etc/editorconfig.json "$@"
+        mise exec -- editorconfig-checker -config etc/editorconfig.json "$@"
 
   lint:yaml:
     desc: "Check plain YAML source formatting, or explicit files (read only)"

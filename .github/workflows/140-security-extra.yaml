@@ -64,6 +64,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       # Keep every severity and unfixed finding visible in the advisory report.
+      # Trivy uses the action's default release, so Dependabot updates both together.
       - name: 'Report all image vulnerabilities'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -71,7 +72,6 @@ jobs:
           scanners: vuln
           timeout: 10m
           format: 'table'
-          version: v0.70.0
           exit-code: '0'
           ignore-unfixed: false
           vuln-type: 'os,library'

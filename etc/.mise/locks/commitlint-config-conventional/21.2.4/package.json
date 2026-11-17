@@ -2,6 +2,6 @@
   "name": "mise-npm-install",
   "private": true,
   "dependencies": {
-    "markdownlint-cli2": "0.23.2"
+    "@commitlint/config-conventional": "21.2.4"
   }
 }

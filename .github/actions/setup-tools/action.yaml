@@ -34,15 +34,6 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: 'Install Task'
-      uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
-      with:
-        version: '3.53.1'
-    # -----
-    - name: 'Configure project tooling'
-      shell: bash
-      run: task env:export >> "$GITHUB_ENV"
-    # -----
     - name: 'Read mise configuration and cache identity'
       id: mise-config
       shell: bash
@@ -68,6 +59,14 @@ runs:
         fi
         echo "version=$mise_version" >> "$GITHUB_OUTPUT"
 
+        # Task configures mise, so install it before mise from the version pinned there.
+        task_version=$(sed -n 's/^task = "\([^"]*\)"$/\1/p' etc/mise.toml)
+        if [[ ! "$task_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo '::error::etc/mise.toml must pin task to an exact release.'
+          exit 1
+        fi
+        echo "task-version=$task_version" >> "$GITHUB_OUTPUT"
+
         # Every tool selection restores the same complete project tools archive.
         go_version=$(awk '/^go / {version=$2} /^toolchain go/ {toolchain=substr($2, 3)} END {print toolchain ? toolchain : version}' go.mod)
         if [[ ! "$go_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -82,6 +81,15 @@ runs:
           echo "$cache_base-"
           echo 'TOOLS_CACHE_KEYS'
         } >> "$GITHUB_OUTPUT"
+    # -----
+    - name: 'Install Task'
+      uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+      with:
+        version: ${{ steps.mise-config.outputs.task-version }}
+    # -----
+    - name: 'Configure project tooling'
+      shell: bash
+      run: task env:export >> "$GITHUB_ENV"
     # -----
     - name: 'Restore project tools'
       id: tools-cache
