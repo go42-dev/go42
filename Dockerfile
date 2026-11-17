@@ -68,7 +68,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build,id=gobuildcache \
 # This reduces resulting image size and potential security risks.
 # @warn dependabot will update image version automatically, but it will not update package versions.
 # @note Always pin the sha256 digest for the Alpine image to avoid accidental updates and potential security risks.
-FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+FROM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 
 # Install dependencies.
 #   * ca-certificates - required for https requests
