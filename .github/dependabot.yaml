@@ -25,6 +25,13 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
+    # gh-aw compiles the workflow locks, including their action pins, with the
+    # gh-aw version in etc/mise.toml. Bump gh-aw and run `task generate:agentic`
+    # instead; direct updates fail agentic-lint, as in PR #441.
+    exclude-paths:
+      - ".github/workflows/*.lock.yml"
+    ignore:
+      - dependency-name: "github/gh-aw-actions/*"
 
   - package-ecosystem: "docker"
     directory: "/"

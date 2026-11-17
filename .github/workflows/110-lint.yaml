@@ -76,10 +76,11 @@ jobs:
           COMMITLINT_FROM: ${{ github.event.pull_request.base.sha || github.event.before }}
           COMMITLINT_TO: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |-
-          # Mise installs the preset separately from the CLI; use its resolved path.
+          # Mise installs the preset separately from the CLI. Use its real path so
+          # commitlint can resolve the preset's ESM-only parser next to it.
           preset_dir="$(mise where commitlint-config-conventional)"
           args=(--config etc/commitlint.yaml
-            --extends "$preset_dir/node_modules/@commitlint/config-conventional/lib/index.js"
+            --extends "$(realpath "$preset_dir/node_modules/@commitlint/config-conventional/lib/index.js")"
             --verbose)
           lint_status=0
 
