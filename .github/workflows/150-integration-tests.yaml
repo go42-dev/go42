@@ -151,7 +151,7 @@ jobs:
         with:
           name: integration-coverage-${{ matrix.database }}
           path: |-
-            .build/coverage-integration.out
-            .build/coverage-integration.html
+            ${{ env.BUILD_REPORTS_DIR }}/coverage-integration.out
+            ${{ env.BUILD_REPORTS_DIR }}/coverage-integration.html
           include-hidden-files: true
           if-no-files-found: error

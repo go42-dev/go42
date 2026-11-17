@@ -384,8 +384,7 @@ func TestShutdownForcesGRPCServerAfterDeadline(t *testing.T) {
 	require.NoError(t, err)
 	clientConn, serveResult := startTestServer(t, server)
 
-	watchCtx, cancelWatch := context.WithCancel(context.Background())
-	defer cancelWatch()
+	watchCtx := t.Context()
 	stream, err := healthpb.NewHealthClient(clientConn).Watch(
 		watchCtx,
 		&healthpb.HealthCheckRequest{},

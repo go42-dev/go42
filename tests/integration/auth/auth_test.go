@@ -1989,7 +1989,8 @@ func TestAuthRateLimits_ReauthenticationSharesAccountBudget(t *testing.T) {
 	tokens := h.login(t)
 	newEmail := "updated-" + h.user.Email
 	data := &domain.UpdateSelfData{
-		UpdateUserData: domain.UpdateUserData{Email: &newEmail}, CurrentPassword: "wrong password",
+		Email:           &newEmail,
+		CurrentPassword: "wrong password",
 	}
 	err := h.service.UpdateSelf(t.Context(), h.user.UUID.String(), data)
 	assertErrorIs(t, err, domain.ErrInvalidCredentials)

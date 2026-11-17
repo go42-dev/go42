@@ -120,16 +120,17 @@ summary output. These values can be Task variables or environment variables:
 ```sh
 task test:fuzz FUZZ_TIME=5m
 task test:load K6_TEST_PATH=tests/load/http/v1/auth_test.js \
-  K6_SUMMARY_PATH=.build/k6-summary-http-v1.json
+  K6_SUMMARY_PATH=.build/reports/k6-summary-http-v1.json
 ```
 
 Without load-test selectors, both protocols run, even if the first fails, and
-write `.build/k6-summary-{http,grpc}-v1.json`. Each invocation removes previous
+write `k6-summary-{http,grpc}-v1.json` to the directory that `BUILD_REPORTS_DIR`
+in `Taskfile.yaml` names. Each invocation removes previous
 summaries for its selected scope before running k6 and reports failures through
 its exit status.
 
-Coverage reports are written under `.build/`. Explicit unit packages skip
-coverage reports. Resilience tests are build-tagged and excluded from the other
+Coverage reports are written to the directory that `BUILD_REPORTS_DIR` names.
+Explicit unit packages skip coverage reports. Resilience tests are build-tagged and excluded from the other
 test tasks. The [integration CI workflow](../../.github/workflows/150-integration-tests.yaml) shows test application
 and backend configuration.
 

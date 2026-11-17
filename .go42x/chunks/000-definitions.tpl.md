@@ -32,8 +32,8 @@ regardless of capitalization or Markdown formatting.
 - Can: Describes an ability or possibility. Permission comes from the applicable
   instructions and the user's request.
 
-Direct instructions such as "Use", "Run", and "Keep" express requirements unless
-qualified by wording such as "should", "may", or "prefer".
+Direct instructions such as *Use*, *Run*, and *Keep* express requirements unless
+qualified by wording such as *should*, *may*, or *prefer*.
 
 Example: "Never commit changes unless explicitly instructed" prohibits commits
 until the user explicitly requests one. The condition is part of the rule.
@@ -63,9 +63,12 @@ until the user explicitly requests one. The condition is part of the rule.
   process.
 
 - Intermediate file: Working material used to complete a task, such as a scratch
-  script, diagnostic log, or draft output. Its continued usefulness determines
-  whether it can be cleaned up under the intermediate storage rules.
+  script, diagnostic log, or draft output. It belongs in the task's journal entry.
 
 - Deliverable: An output requested by the user or needed to review the completed
   work, such as a final report, patch, or generated document. A file remains a
-  deliverable even when stored in the intermediate directory.
+  deliverable even when stored in a journal entry.
+
+- Journal entry: A directory under `{{ .context.JournalDir }}` that holds one task's
+  record, handoff notes, and working files, so that any session can continue the
+  task. Its status and expiry decide when it can be cleaned up.

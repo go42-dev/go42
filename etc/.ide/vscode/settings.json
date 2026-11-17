@@ -12,7 +12,7 @@
     },
     {
       "match": "\\.ya?ml$",
-      "notMatch": "(^|[\\\\/])(\\.git|\\.idea|\\.vscode|\\.tools|\\.build|node_modules)([\\\\/]|$)|(^|[\\\\/])infra[\\\\/]helm[\\\\/].*[\\\\/]templates[\\\\/]|(^|[\\\\/])\\.github[\\\\/]workflows[\\\\/][^\\\\/]*\\.lock\\.yml$",
+      "notMatch": "(^|[\\\\/])(\\.git|\\.idea|\\.vscode|\\.tools|\\.build|node_modules)([\\\\/]|$)|(^|[\\\\/])infra[\\\\/]helm[\\\\/].*[\\\\/]templates[\\\\/]|(^|[\\\\/])\\.github[\\\\/]workflows[\\\\/][^\\\\/]*\\.lock\\.yml$|(^|[\\\\/])api[\\\\/]openapi[\\\\/](.*[\\\\/])?\\.combined\\.yaml$|(^|[\\\\/])etc[\\\\/]\\.mise[\\\\/]locks[\\\\/]",
       "command": "task --silent --exit-code --dir \"${workspaceFolder}\" fmt:yaml -- \"${file}\"",
       "async": false
     },
@@ -20,7 +20,7 @@
       "match": "\\.json$",
       "command": "task --silent --exit-code --dir \"${workspaceFolder}\" fmt:json -- \"${file}\"",
       "async": false,
-      "notMatch": "(^|[\\\\/])(\\.git|\\.idea|\\.vscode|\\.tools|\\.build|node_modules)([\\\\/]|$)"
+      "notMatch": "(^|[\\\\/])(\\.git|\\.idea|\\.vscode|\\.tools|\\.build|node_modules)([\\\\/]|$)|(^|[\\\\/])package-lock\\.json$"
     },
     {
       "match": "\\.go$",

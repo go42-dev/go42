@@ -83,51 +83,26 @@
     </envs>
   </TaskOptions>
   <TaskOptions>
-    <option name="arguments" value="write --skip-vendor --skip-generated --custom-order -s standard -s default -s localmodule -s blank -s dot &quot;$FilePath$&quot;" />
+    <option name="arguments" value="fmt --config &quot;$ProjectFileDir$/etc/golangci.yaml&quot; &quot;$FilePath$&quot;" />
     <option name="checkSyntaxErrors" value="true" />
     <option name="description" />
     <option name="exitCodeBehavior" value="ERROR" />
     <option name="fileExtension" value="go" />
     <option name="immediateSync" value="false" />
-    <option name="name" value="gci write" />
-    <option name="output" value="" />
+    <option name="name" value="golangci-lint fmt" />
+    <option name="output" value="$FilePath$" />
     <option name="outputFilters">
       <array />
     </option>
     <option name="outputFromStdout" value="false" />
-    <option name="program" value="$ProjectFileDir$/.tools/shims/gci" />
+    <option name="program" value="$ProjectFileDir$/.tools/shims/golangci-lint" />
     <option name="runOnExternalChanges" value="false" />
     <option name="scopeName" value="Project Files" />
     <option name="trackOnlyRoot" value="false" />
     <option name="workingDir" value="$ProjectFileDir$" />
     <envs>
-      <env name="PATH" value="$ProjectFileDir$/.tools/shims:$GoBinDirs$:$PATH$" />
-      <env name="MISE_DEFAULT_CONFIG_FILENAME" value="etc/mise.toml" />
-      <env name="MISE_DATA_DIR" value="$ProjectFileDir$/.tools" />
-      <env name="MISE_CACHE_DIR" value="$ProjectFileDir$/.tools/cache" />
-      <env name="MISE_STATE_DIR" value="$ProjectFileDir$/.tools/state" />
-      <env name="GOTOOLCHAIN" value="local" />
-    </envs>
-  </TaskOptions>
-  <TaskOptions>
-    <option name="arguments" value="-w &quot;$FilePath$&quot; -m 120" />
-    <option name="checkSyntaxErrors" value="true" />
-    <option name="description" />
-    <option name="exitCodeBehavior" value="ERROR" />
-    <option name="fileExtension" value="go" />
-    <option name="immediateSync" value="false" />
-    <option name="name" value="golines" />
-    <option name="output" value="" />
-    <option name="outputFilters">
-      <array />
-    </option>
-    <option name="outputFromStdout" value="false" />
-    <option name="program" value="$ProjectFileDir$/.tools/shims/golines" />
-    <option name="runOnExternalChanges" value="false" />
-    <option name="scopeName" value="Project Files" />
-    <option name="trackOnlyRoot" value="false" />
-    <option name="workingDir" value="$ProjectFileDir$" />
-    <envs>
+      <env name="GOPATH" value="$GOPATH$" />
+      <env name="GOROOT" value="$GOROOT$" />
       <env name="PATH" value="$ProjectFileDir$/.tools/shims:$GoBinDirs$:$PATH$" />
       <env name="MISE_DEFAULT_CONFIG_FILENAME" value="etc/mise.toml" />
       <env name="MISE_DATA_DIR" value="$ProjectFileDir$/.tools" />
@@ -157,35 +132,6 @@
     <envs>
       <env name="GOPATH" value="$GOPATH$" />
       <env name="GOROOT" value="$GOROOT$" />
-      <env name="PATH" value="$ProjectFileDir$/.tools/shims:$GoBinDirs$:$PATH$" />
-      <env name="MISE_DEFAULT_CONFIG_FILENAME" value="etc/mise.toml" />
-      <env name="MISE_DATA_DIR" value="$ProjectFileDir$/.tools" />
-      <env name="MISE_CACHE_DIR" value="$ProjectFileDir$/.tools/cache" />
-      <env name="MISE_STATE_DIR" value="$ProjectFileDir$/.tools/state" />
-      <env name="GOTOOLCHAIN" value="local" />
-    </envs>
-  </TaskOptions>
-  <TaskOptions>
-    <option name="arguments" value="fmt &quot;$FilePath$&quot;" />
-    <option name="checkSyntaxErrors" value="true" />
-    <option name="description" />
-    <option name="exitCodeBehavior" value="ERROR" />
-    <option name="fileExtension" value="go" />
-    <option name="immediateSync" value="false" />
-    <option name="name" value="go fmt" />
-    <option name="output" value="$FilePath$" />
-    <option name="outputFilters">
-      <array />
-    </option>
-    <option name="outputFromStdout" value="false" />
-    <option name="program" value="$GoExecPath$" />
-    <option name="runOnExternalChanges" value="false" />
-    <option name="scopeName" value="Project Files" />
-    <option name="trackOnlyRoot" value="true" />
-    <option name="workingDir" value="$ProjectFileDir$" />
-    <envs>
-      <env name="GOROOT" value="$GOROOT$" />
-      <env name="GOPATH" value="$GOPATH$" />
       <env name="PATH" value="$ProjectFileDir$/.tools/shims:$GoBinDirs$:$PATH$" />
       <env name="MISE_DEFAULT_CONFIG_FILENAME" value="etc/mise.toml" />
       <env name="MISE_DATA_DIR" value="$ProjectFileDir$/.tools" />
@@ -309,7 +255,7 @@
     <option name="exitCodeBehavior" value="ERROR" />
     <option name="fileExtension" value="toml" />
     <option name="immediateSync" value="false" />
-    <option name="name" value="tombi format" />
+    <option name="name" value="tomlfmt" />
     <option name="output" value="" />
     <option name="outputFilters">
       <array />

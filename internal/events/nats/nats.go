@@ -231,7 +231,7 @@ func (n *NATS) Shutdown(ctx context.Context) error {
 }
 
 func validateConfig(engine *NATS, publisher *wnats.PublisherConfig, subscriber *wnats.SubscriberConfig) error {
-	for _, address := range strings.Split(publisher.URL, ",") {
+	for address := range strings.SplitSeq(publisher.URL, ",") {
 		parsed, err := url.Parse(strings.TrimSpace(address))
 		if err != nil || parsed.Hostname() == "" ||
 			(parsed.Scheme != "nats" && parsed.Scheme != "tls" && parsed.Scheme != "ws" && parsed.Scheme != "wss") {

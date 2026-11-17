@@ -22,9 +22,11 @@ local file search and source inspection.
 | Inspect index availability and scope           | `kwb_stats`       |
 
 Start with `project_context` for affected project-relative paths. It reads supplied
-files directly; directory paths select documentation impact. `project_context`,
-`docs_get`, and `docs_impact` work without a search index. Use search and
-language-server tools to discover declarations beyond supplied files.
+files directly; directory paths select documentation impact. Its `paths` field
+reports what happened to each supplied path: request omitted files separately and
+continue partial ones from `next_start_line`. `project_context`, `docs_get`, and
+`docs_impact` work without a search index. Use search and language-server tools to
+discover declarations beyond supplied files.
 
 Respect document status and replacement chains. Draft and proposed records
 require agreement before implementation. Review documentation affected by a
@@ -32,18 +34,23 @@ change; missing impact links do not prove that no documentation needs updating.
 
 Use focused plain-text queries and narrow by kind, language, or project-relative
 path when useful. Search results reflect the last index build; file reads reflect
-current source. Read matching source before following definitions or references.
+current source. Results marked `stale` come from files changed since indexing; read
+their current lines. A `relaxed` response matched only some query words; treat its
+results as leads. Read matching source before following definitions or references.
 
 Follow continuation pointers and inspect coverage diagnostics. Narrow truncated
 searches; if the index generation changes during pagination, restart the search.
 
 #### Index maintenance
 
-Run `task x -- kwb build` from the project root after changing indexed files or
-exclusions, or when the index is missing or stale. After changing agent
-configuration or templates, run `task x -- agentenv generate` before building the
-index. Builds update changed files and remove deleted or newly excluded files.
-A running MCP server picks up the updated index on its next request. Use
+The go42x MCP server refreshes an existing index when it starts and after searches
+return stale results. A refresh keeps the source selection of the last build and
+never rewrites exclusions. Run `task x -- kwb build` from the project root to create
+the index, after changing exclusions or the build directory, or when the index is
+stale and no MCP server is running. After changing agent configuration or
+templates, run `task x -- agentenv generate` before building the index. Builds
+update changed files and remove deleted or newly excluded files. A running MCP
+server picks up the updated index on its next request. Use
 `task x -- kwb build --rebuild` when a full rebuild is needed.
 
 Use `task x -- kwb check --json` to check freshness without updating the index.
@@ -70,8 +77,9 @@ in `.go42x/go42x.yaml` to change it. Document IDs and status come from YAML fron
 matter. Markdown references outside that directory remain searchable.
 
 The MCP server's `--context-doc` argument selects authored document IDs to include
-as project guidance; `--search-timeout` controls read deadlines. Set these
-arguments in the project's MCP definition. Regenerate agent configuration and
+as project guidance; `--search-timeout` controls read deadlines;
+`--index-refresh=false` turns off automatic index refresh. Set these arguments in
+the project's MCP definition. Regenerate agent configuration and
 restart the client after changing them. Use `task x` for both generation and the
 local MCP server.
 

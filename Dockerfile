@@ -89,8 +89,8 @@ RUN apk add --no-cache \
     musl=1.2.6-r3 \
     musl-utils=1.2.6-r3 \
     tini=0.19.0-r3 \
-    tzdata=2026e-r0 \
-    zlib=1.3.2-r1
+    tzdata=2026f-r0 \
+    zlib=1.4-r0
 
 # We are running service as non-root user.
 RUN addgroup -g 1000 appuser && \

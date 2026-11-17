@@ -54,6 +54,7 @@ linters:
     - staticcheck
     - unused
     - sloglint
+    - modernize
 
   # https://golangci-lint.run/usage/linters/#disabled-by-default
   disable:

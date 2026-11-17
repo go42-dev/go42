@@ -51,7 +51,7 @@ jobs:
         with:
           name: code-coverage
           path: |-
-            .build/coverage.out
-            .build/coverage.html
+            ${{ env.BUILD_REPORTS_DIR }}/coverage.out
+            ${{ env.BUILD_REPORTS_DIR }}/coverage.html
           include-hidden-files: true
           if-no-files-found: error
