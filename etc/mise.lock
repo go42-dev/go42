@@ -132,32 +132,32 @@ url = "https://github.com/editorconfig-checker/editorconfig-checker/releases/dow
 url_api = "https://api.github.com/repos/editorconfig-checker/editorconfig-checker/releases/assets/543324099"
 
 [[tools.gh-aw]]
-version = "0.93.5"
+version = "1.2.2"
 backend = "github:github/gh-aw"
-specifiers = ["0.93.5"]
+specifiers = ["1.2.2"]
 
 [tools.gh-aw."platforms.linux-arm64"]
-checksum = "sha256:7a3c5bbedd4870829dbd49712ade5f7a02ed6bce14b764155ba8963992cbe733"
-url = "https://github.com/github/gh-aw/releases/download/v0.93.5/linux-arm64"
-url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/675641619"
+checksum = "sha256:a1dd217c4b42ca9cb1af53f9a48f36e581d76b0d31ee671f2062241ba0d11fe3"
+url = "https://github.com/github/gh-aw/releases/download/v1.2.2/linux-arm64"
+url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/730089779"
 provenance = "github-attestations"
 
 [tools.gh-aw."platforms.linux-x64"]
-checksum = "sha256:a7b06bffaf7c24f713d10ec0a865514b764e62af639b13df953a480d74e8a8de"
-url = "https://github.com/github/gh-aw/releases/download/v0.93.5/linux-amd64"
-url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/675641610"
+checksum = "sha256:c2378d85466d29cdbdfebd0e513557b5cbec18d34f44e7cc00c2fa323687a153"
+url = "https://github.com/github/gh-aw/releases/download/v1.2.2/linux-amd64"
+url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/730089702"
 provenance = "github-attestations"
 
 [tools.gh-aw."platforms.macos-arm64"]
-checksum = "sha256:f070bf322c6da990acafd830093d6e7b336a5fe6690c195500555499633fa3e7"
-url = "https://github.com/github/gh-aw/releases/download/v0.93.5/darwin-arm64"
-url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/675641464"
+checksum = "sha256:aac1836c65bc8e2e6866ba4c9513e97b89b146c12e7238e1579996aecf40f610"
+url = "https://github.com/github/gh-aw/releases/download/v1.2.2/darwin-arm64"
+url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/730089149"
 provenance = "github-attestations"
 
 [tools.gh-aw."platforms.macos-x64"]
-checksum = "sha256:a83177db48bb23bdc28b291f9dea2a25b31f50c3a7a8937c221f92427b84fed3"
-url = "https://github.com/github/gh-aw/releases/download/v0.93.5/darwin-amd64"
-url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/675641457"
+checksum = "sha256:dbf065b63ae9e6a8d2c608caa7e44a1ca342070321c114e3ce95e5b337f39953"
+url = "https://github.com/github/gh-aw/releases/download/v1.2.2/darwin-amd64"
+url_api = "https://api.github.com/repos/github/gh-aw/releases/assets/730089141"
 provenance = "github-attestations"
 
 [[tools.gitleaks]]

@@ -64,5 +64,5 @@ protoc-gen-go-grpc = "1.6.2"
 dlv = "1.27.2"
 gopls = "0.24.0"
 jsonfmt = "0.5.2"
-gh-aw = { version = "0.93.5", bin = "gh-aw" }
+gh-aw = { version = "1.2.2", bin = "gh-aw" }
 go42x = "0.58.0"
