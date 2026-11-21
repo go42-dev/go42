@@ -258,8 +258,6 @@ mcp:
       - add_comment_to_pending_review
       - add_issue_comment
       - add_reply_to_pull_request_comment
-      - assign_copilot_to_issue
-      - assign_copilot_to_issue_with_intent
       - create_branch
       - create_gist
       - create_or_update_file
