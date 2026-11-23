@@ -1,18 +1,14 @@
 .DS_Store
-.idea/
-.vscode/
-.tools/
-.task/
+/.idea/
+/.vscode/
+/.tools/
+/.task/
+/.build/
 .env
 __debug*
 dep-graph.svg
 
 # go42x -- START
-.go42x/go42x.local.yaml
-.go42x/kwb/
-.go42x/backups/
-.go42x/journal/
-.build/
 .mcp.json
 .claude/
 .codex/

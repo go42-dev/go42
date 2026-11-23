@@ -1,11 +1,11 @@
 ---
 
-# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/6ea63f026f32e103f0135f9a7e4d13f0e36963d2/assets/agentenv/schemas/go42x.schema.yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/go42-dev/go42x/0c8673d6f9ee2b7f41cf5857c58a2490005bd93a/assets/agentenv/schemas/go42x.schema.yaml
 
 version: "1.0"
 
 # Variable substitution is supported in configuration string values.
-# Example: build-dir: '${GO42X_PROJECT_ROOT}/.build'
+# Example: IJ_MCP_SERVER_PROJECT_PATH: '${GO42X_PROJECT_ROOT}' in mcp.jetbrains.headers.
 #
 # Supported substitutions:
 # - ${GO42X_PROJECT_ROOT}: absolute path to the project directory.
@@ -26,24 +26,32 @@ project:
 env: []
 
 # Shared instructions for every enabled provider, rendered once to AGENTS.md.
-# The chunk directory is relative to .go42x; immediate *.tpl.md files load in filename order.
-# Name project chunks 999-<name>.tpl.md: they load after the bundled chunks, which never use 999.
 context:
   template: agents.tpl.md
+  # Instruction chunks, relative to .go42x: immediate *.tpl.md files load in filename order.
+  # Name project chunks 999-<name>.tpl.md: they load after the bundled chunks, which never
+  # use 999. Omit to include no chunks.
   chunks-dir: 'chunks/'
   # Agent skills, relative to .go42x: one subdirectory per skill with a SKILL.md, or with
   # a SKILL.tpl.md to render the skill's *.tpl.md files as templates with chunk data.
   # Generation installs them in the skill directories of enabled providers: .claude/skills
-  # for Claude, .agents/skills for Codex, Antigravity, and Copilot, and both for gh-aw,
+  # for Claude, .agents/skills for Codex and Antigravity, and both for gh-aw,
   # whose workflows may run any engine. Omit to install no skills.
   skills-dir: 'skills/'
-  # Build directory for task and tool outputs; relative paths use the project root.
-  # Omitted or empty defaults to .build. Templates use .context.BuildDir.
-  build-dir: '.build'
+  # Temporary files of go42x and agents, relative to .go42x. Omitted or empty defaults to
+  # tmp. Templates use .context.TmpPath.
+  tmp-dir: 'tmp/'
   # Extra go env variables, e.g. [GOFLAGS, GOPRIVATE]. Values appear in shared context.
   # Defaults: GOVERSION, GOTOOLCHAIN, GOROOT, GOPATH, GOBIN, GOCACHE, GOMODCACHE,
   # GOMOD, GOWORK, GOOS, GOARCH, CGO_ENABLED. Empty values are omitted.
   go-env: []
+
+# Agent task journal. Templates use .journal.Dir for the journal directory.
+journal:
+  # Journal directory, relative to .go42x.
+  path: 'journal/'
+  # Days an entry may go without an update before journal gc removes it, unless kept.
+  retention-days: 30
 
 # Generation makes all tools from enabled MCP servers available and updates tool approvals.
 # auto-approve-tools configures native tool approvals for Claude and Crush.
@@ -95,7 +103,8 @@ providers:
   #        Antigravity
   # -------------------------
   # Project MCP tools are packaged in .agents/plugins/project-tools/.
-  # Tool approvals are managed in Antigravity user settings.
+  # Antigravity asks before running an MCP tool unless its permission rules, such as mcp(server/tool),
+  # allow it: Settings > General > Global Permissions, or per project under Settings > Projects.
   antigravity:
     enabled: false
 
@@ -115,64 +124,39 @@ providers:
       - bash
 
   # -------------------------
-  #      Github Copilot
-  # -------------------------
-  # All MCP tools are available. Tool approvals are managed in Copilot's user settings.
-  copilot:
-    enabled: false
-
-  # -------------------------
   # GitHub Agentic Workflows
   # -------------------------
   # Generates .github/workflows/900-aw-mcp.md for import before gh-aw compilation.
   gh-aw:
     enabled: false
+    # MCP servers that agentic workflows get, whether or not they are enabled below for local
+    # agents. Instructions generated for gh-aw describe them too.
+    mcp-servers:
+      - go42x
+      - gopls
+      - mise
+      - context7
+      - github
     # Map ${NAME} references to explicit workflow values; missing bindings fail generation.
     # Keep GitHub ${{ ... }} expressions here. Bindings never read the local environment.
     bindings:
       CONTEXT7_API_KEY: '${{ secrets.CONTEXT7_API_KEY }}'
       GITHUB_TOKEN: '${{ github.token }}'
-      GITLAB_PERSONAL_ACCESS_TOKEN: '${{ secrets.GITLAB_PERSONAL_ACCESS_TOKEN }}'
+      GITLAB_TOKEN: '${{ secrets.GITLAB_TOKEN }}'
       MCP_IMAGE_VERSION: '${{ env.GO42X_MCP_IMAGE_VERSION }}'
       PROJECT_DIR: '${{ github.workspace }}'
+      SLACK_USER_TOKEN: '${{ secrets.SLACK_USER_TOKEN }}'
 
 mcp:
   # All tools from enabled servers are available, including tools omitted from these lists.
   # Lists use raw tool names for context descriptions and client approval settings.
-  # Set enabled: false to disable a server.
+  # Set enabled: false to disable a server for local agents; gh-aw uses its own mcp-servers list.
+  # Antigravity resolves $NAME and ${NAME} in remote headers during generation.
+  # Export these variables before generating; resolved headers stay in ignored plugin output.
   # Optional cwd is a literal path for stdio servers; relative paths use the project directory.
-  # Codex, Antigravity, and Copilot support cwd. Enabled Claude, Crush, or gh-aw providers reject it.
+  # Codex and Antigravity support cwd. Enabled Claude, Crush, or gh-aw providers reject it.
   # Omit cwd to use the client's default working directory.
   # Optional container settings are used by gh-aw; other providers use command and args.
-  gopls:
-    enabled: true
-    type: stdio
-    name: gopls
-    command: task
-    args:
-      - tool
-      - --
-      - gopls
-      - mcp
-    container:
-      image: ghcr.io/go42-dev/go42x
-      version: '${MCP_IMAGE_VERSION}'
-      command: gopls
-      args:
-        - mcp
-      workdir: '${PROJECT_DIR}'
-      mounts:
-        - '${PROJECT_DIR}:${PROJECT_DIR}:rw'
-    tools:
-      - go_diagnostics
-      - go_file_context
-      - go_package_api
-      - go_rename_symbol
-      - go_search
-      - go_symbol_references
-      - go_vulncheck
-      - go_workspace
-
   go42x:
     enabled: true
     type: stdio
@@ -203,11 +187,40 @@ mcp:
       - journal_show
       - journal_new
       - journal_note
-      - journal_done
+      - journal_attach
       - journal_search
 
+  gopls:
+    enabled: false
+    type: stdio
+    name: gopls
+    command: task
+    args:
+      - tool
+      - --
+      - gopls
+      - mcp
+    container:
+      image: ghcr.io/go42-dev/go42x
+      version: '${MCP_IMAGE_VERSION}'
+      command: gopls
+      args:
+        - mcp
+      workdir: '${PROJECT_DIR}'
+      mounts:
+        - '${PROJECT_DIR}:${PROJECT_DIR}:rw'
+    tools:
+      - go_diagnostics
+      - go_file_context
+      - go_package_api
+      - go_rename_symbol
+      - go_search
+      - go_symbol_references
+      - go_vulncheck
+      - go_workspace
+
   mise:
-    enabled: true
+    enabled: false
     type: stdio
     name: mise
     command: task
@@ -233,7 +246,7 @@ mcp:
       - run_task
 
   context7:
-    enabled: true
+    enabled: false
     type: http
     name: context7
     url: https://mcp.context7.com/mcp
@@ -243,8 +256,23 @@ mcp:
       - resolve-library-id
       - query-docs
 
+  # Requires a running JetBrains IDE with this project open.
+  # Set the URL from Settings > Tools > MCP Server; the project path resolves automatically.
+  # Override the URL in ignored go42x.local.yaml before enabling locally.
+  # Keep disabled for CI; see https://www.jetbrains.com/help/go/mcp-server.html.
+  jetbrains:
+    enabled: false
+    type: http
+    name: jetbrains
+    url: http://127.0.0.1:64422/stream
+    headers:
+      IJ_MCP_SERVER_PROJECT_PATH: '${GO42X_PROJECT_ROOT}'
+    tools:
+      - get_file_problems
+      - lint_files
+
   github:
-    enabled: true
+    enabled: false
     type: http
     name: github
     url: https://api.githubcopilot.com/mcp/
@@ -340,127 +368,66 @@ mcp:
       - update_pull_request
       - update_pull_request_branch
 
+  # Official GitLab MCP server, GitLab 19.5 or later. The token must be a fine-grained personal
+  # access token with the MCP tool resource and the Execute permission; legacy personal, project,
+  # and group access tokens are rejected. An administrator allows MCP access for the top-level
+  # group on GitLab.com, or for the instance. Set the URL to your instance for self-managed GitLab.
+  # The list covers the default toolsets: core, merge_requests, work_items, repository, and ci.
   gitlab:
     enabled: false
-    type: stdio
+    type: http
     name: gitlab
-    command: docker
-    args:
-      - run
-      - -i
-      - --rm
-      - -e
-      - GITLAB_PERSONAL_ACCESS_TOKEN
-      - -e
-      - GITLAB_API_URL
-      - -e
-      - GITLAB_READ_ONLY_MODE
-      - -e
-      - USE_GITLAB_WIKI
-      - -e
-      - USE_MILESTONE
-      - -e
-      - USE_PIPELINE
-      - iwakitakuma/gitlab-mcp
-    env:
-      GITLAB_PERSONAL_ACCESS_TOKEN: "${GITLAB_PERSONAL_ACCESS_TOKEN}"
-      GITLAB_API_URL: https://gitlab.com/api/v4
-      GITLAB_READ_ONLY_MODE: "false"
-      USE_GITLAB_WIKI: "false"
-      USE_MILESTONE: "false"
-      USE_PIPELINE: "true"
+    url: https://gitlab.com/api/v4/mcp
+    headers:
+      Authorization: "Bearer ${GITLAB_TOKEN}"
     tools:
-      - bulk_publish_draft_notes
-      - cancel_pipeline
-      - cancel_pipeline_job
-      - create_branch
-      - create_draft_note
-      - create_issue
-      - create_issue_link
-      - create_issue_note
-      - create_label
-      - create_merge_request
-      - create_merge_request_discussion_note
-      - create_merge_request_note
-      - create_merge_request_thread
-      - create_note
-      - create_or_update_file
-      - create_pipeline
-      - create_release
-      - create_release_evidence
-      - create_repository
-      - delete_draft_note
-      - delete_issue
-      - delete_issue_link
-      - delete_label
-      - delete_merge_request_discussion_note
-      - delete_merge_request_note
-      - delete_release
-      - download_attachment
-      - download_release_asset
-      - execute_graphql
-      - fork_repository
-      - get_branch_diffs
-      - get_commit
-      - get_commit_diff
-      - get_draft_note
-      - get_file_contents
-      - get_issue
-      - get_issue_link
-      - get_label
-      - get_merge_request
-      - get_merge_request_diffs
-      - get_merge_request_note
-      - get_merge_request_notes
-      - get_namespace
-      - get_pipeline
-      - get_pipeline_job
-      - get_pipeline_job_output
       - get_project
-      - get_project_events
-      - get_release
-      - get_repository_tree
-      - get_users
-      - list_commits
-      - list_draft_notes
-      - list_events
-      - list_group_iterations
-      - list_group_projects
-      - list_issue_discussions
-      - list_issue_links
-      - list_issues
-      - list_labels
-      - list_merge_request_diffs
-      - list_merge_requests
-      - list_namespaces
-      - list_pipeline_jobs
-      - list_pipeline_trigger_jobs
-      - list_pipelines
-      - list_project_members
+      - save_project
+      - get_user
+      - get_group
+      - list_groups
       - list_projects
+      - list_project_members
+      - list_todos
+      - list_user_events
+      - list_milestones
+      - save_note
+      - search
+      - search_labels
+      - semantic_search
+      - get_pages_content
+      - save_merge_request
+      - get_merge_request
+      - list_merge_requests
+      - save_merge_request_review
+      - accept_merge_request
+      - apply_suggestion
+      - get_work_item
+      - get_work_item_types
+      - link_work_items
+      - get_saved_view_work_items
+      - list_work_item_saved_views
+      - save_work_item
+      - list_work_items
+      - add_branch
+      - fork_repository
+      - list_branches
+      - get_repository_file
+      - list_repository_tree
+      - get_commit
+      - list_commits
       - list_releases
-      - merge_merge_request
-      - mr_discussions
-      - my_issues
-      - play_pipeline_job
-      - publish_draft_note
-      - push_files
-      - resolve_merge_request_thread
-      - retry_pipeline
-      - retry_pipeline_job
-      - search_repositories
-      - update_draft_note
-      - update_issue
-      - update_issue_note
-      - update_label
-      - update_merge_request
-      - update_merge_request_discussion_note
-      - update_merge_request_note
-      - update_release
-      - upload_markdown
-      - verify_namespace
+      - list_tags
+      - add_commit
+      - get_pipeline
+      - get_job
+      - get_artifact_file
+      - list_pipelines
+      - list_pipeline_schedules
+      - save_pipeline
+      - save_pipeline_job
 
-  # Primary Jira tools plus discovery/execution for the deferred catalog.
+  # Primary Jira and Confluence tools plus discovery/execution for the deferred catalog.
   # Available tools depend on the authenticated Atlassian account and scopes.
   jira:
     enabled: false
@@ -480,18 +447,48 @@ mcp:
       - transitionJiraIssue
       - addOrEditJiraIssueComment
       - searchJiraIssuesUsingJql
+      - getConfluenceContent
+      - searchConfluence
+      - createConfluenceContent
+      - updateConfluenceContent
 
-  # Requires a running JetBrains IDE with this project open.
-  # Set the URL from Settings > Tools > MCP Server; the project path resolves automatically.
-  # Override the URL in ignored go42x.local.yaml before enabling locally.
-  # Keep disabled for CI; see https://www.jetbrains.com/help/go/mcp-server.html.
-  jetbrains:
+  # Official Slack MCP server. Slack documents OAuth through a registered Slack app, internal or
+  # published in the Slack Marketplace, that a workspace admin approves; it supports no dynamic
+  # client registration. Set SLACK_USER_TOKEN to a user token (xoxp-) of that app with the scopes
+  # of the tools you use, such as search:read.public and chat:write. Slack does not document
+  # sending the token directly, so check the connection before relying on it.
+  slack:
     enabled: false
     type: http
-    name: jetbrains
-    url: http://127.0.0.1:64422/stream
+    name: slack
+    url: https://mcp.slack.com/mcp
     headers:
-      IJ_MCP_SERVER_PROJECT_PATH: '${GO42X_PROJECT_ROOT}'
+      Authorization: "Bearer ${SLACK_USER_TOKEN}"
     tools:
-      - get_file_problems
-      - lint_files
+      - slack_search_public
+      - slack_search_public_and_private
+      - slack_search_channels
+      - slack_search_users
+      - slack_search_emojis
+      - slack_read_channel
+      - slack_read_thread
+      - slack_read_user_profile
+      - slack_list_user_channels
+      - slack_list_channel_members
+      - slack_read_file
+      - slack_send_message
+      - slack_send_message_draft
+      - slack_schedule_message
+      - slack_create_conversation
+      - slack_add_reaction
+      - slack_get_reactions
+      - slack_get_file_upload_url
+      - slack_complete_file_upload
+      - slack_create_canvas
+      - slack_read_canvas
+      - slack_update_canvas
+      - slack_create_list
+      - slack_read_list
+      - slack_update_list
+      - slack_add_list_record
+      - slack_update_list_record

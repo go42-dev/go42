@@ -5,7 +5,6 @@
 .go42x/go42x.local.yaml
 .go42x/kwb/**
 .go42x/backups/**
-.go42x/journal/**
 .vendor.lock.yaml
 .go42x/.bundle.lock.yaml
 
@@ -20,6 +19,7 @@ AGENTS.md
 
 # Generated agentic workflow configuration and compiled workflows.
 .github/workflows/900-aw-mcp.md
+.github/workflows/901-aw-journal.md
 .github/workflows/*.lock.yml
 # go42x -- END
 

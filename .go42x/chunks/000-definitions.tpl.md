@@ -62,13 +62,19 @@ until the user explicitly requests one. The condition is part of the rule.
   separate test pod, an isolated test container, or a temporary port-forwarding
   process.
 
-- Intermediate file: Working material used to complete a task, such as a scratch
-  script, diagnostic log, or draft output. It belongs in the task's journal entry.
+- Intermediate file: Working material that a later session or a reviewer may need,
+  such as a scratch script, diagnostic log, or draft output. It belongs in the
+  task's journal entry.
+
+- Temporary file: Working material that no later session needs, such as a
+  download, a cloned repository, or bulk command output. It belongs in
+  `{{ .context.TmpPath }}`.
 
 - Deliverable: An output requested by the user or needed to review the completed
   work, such as a final report, patch, or generated document. A file remains a
   deliverable even when stored in a journal entry.
 
-- Journal entry: A directory under `{{ .context.JournalDir }}` that holds one task's
-  record, handoff notes, and working files, so that any session can continue the
-  task. Its status and expiry decide when it can be cleaned up.
+- Journal entry: A directory under `{{ .journal.Dir }}` that holds one task's
+  record, handoff notes, and intermediate files, so that any session can continue
+  the task. It can be cleaned up once it goes without an update for the retention
+  period, unless it is kept.

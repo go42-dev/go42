@@ -31,7 +31,9 @@ environment:
   working_dir: {{ yamlValue .environment.working_dir }}
   variables: {{ yamlValue .environment.variables }}
 golang:
-  go_version: {{ yamlValue .golang.go_version }}
+  go_mod:
+    go_version: {{ yamlValue .golang.go_mod.go_version }}
+    toolchain: {{ yamlValue .golang.go_mod.toolchain }}
   env: {{ yamlValue .golang.env }}
 github_actions:
   repository:

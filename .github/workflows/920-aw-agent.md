@@ -36,6 +36,7 @@ engine:
 timeout-minutes: 45
 imports:
   - 900-aw-mcp.md
+  - 901-aw-journal.md
 pre-agent-steps:
   - name: Prepare agent environment
     uses: ./.github/actions/ai-prepare-env
