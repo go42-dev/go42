@@ -26,6 +26,8 @@ engine:
   env:
     CI: "true"
     GOTOOLCHAIN: ${{ env.GOTOOLCHAIN }}
+    GOCACHE: ${{ env.PROJECT_GO_BUILD_CACHE_PATH }}
+    GOMODCACHE: ${{ env.PROJECT_GO_MODULE_CACHE_PATH }}
     MISE_DEFAULT_CONFIG_FILENAME: ${{ env.MISE_DEFAULT_CONFIG_FILENAME }}
     MISE_DATA_DIR: ${{ env.MISE_DATA_DIR }}
     MISE_CACHE_DIR: ${{ env.MISE_CACHE_DIR }}
@@ -73,6 +75,10 @@ The authorized request is the text following `/agent` in this triggering comment
 ${{ steps.sanitized.outputs.text }}
 
 Read the issue or pull request and relevant discussion with GitHub tools.
+
+The engine environment sets `GOCACHE` and `GOMODCACHE` to Go build and module
+caches provisioned for this run only; they are not saved afterwards. Use them for
+setup, generation, builds, and tests.
 
 For an implementation request on an issue, propose the change through one draft
 pull request. For a request on a same-repository pull request, use GitHub tools
