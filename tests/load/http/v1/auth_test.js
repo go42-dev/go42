@@ -42,7 +42,8 @@ export const options = {
             rate: 2,
             timeUnit: '1s',
             duration: '40s',
-            preAllocatedVUs: 2,
+            // Allocate every VU up front: k6 drops an arrival while it starts a missing VU.
+            preAllocatedVUs: 5,
             maxVUs: 5,
         },
     },
