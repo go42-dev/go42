@@ -16,6 +16,10 @@ inputs:
     description: 'Go compilation workload override; defaults to the caller job ID'
     required: false
     default: ''
+  go-cache-save:
+    description: 'Save Go caches after the job; false restores them for this run only'
+    required: false
+    default: 'true'
 
 runs:
   using: composite
@@ -25,6 +29,7 @@ runs:
       with:
         cache: ${{ inputs.go-cache }}
         cache-scope: ${{ inputs.go-cache-scope }}
+        cache-save: ${{ inputs.go-cache-save }}
     # -----
     - name: 'Install mise and Task'
       uses: ./.github/actions/setup-tools

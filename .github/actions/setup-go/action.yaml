@@ -12,6 +12,10 @@ inputs:
     description: 'Compilation workload override; defaults to the caller job ID; module caches remain shared'
     required: false
     default: ''
+  cache-save:
+    description: 'Save Go caches after the job; false restores them for this run only'
+    required: false
+    default: 'true'
 
 outputs:
   go-version:
@@ -86,7 +90,7 @@ runs:
     # -----
     - name: 'Restore and save Go modules'
       id: modules-cache
-      if: inputs.cache == 'true'
+      if: inputs.cache == 'true' && inputs.cache-save == 'true'
       continue-on-error: true
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
@@ -94,15 +98,36 @@ runs:
         key: ${{ steps.metadata.outputs.modules-key }}
         restore-keys: ${{ steps.metadata.outputs.modules-restore }}
     # -----
+    - name: 'Restore Go modules'
+      id: modules-restore
+      if: inputs.cache == 'true' && inputs.cache-save != 'true'
+      continue-on-error: true
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ env.PROJECT_GO_MODULE_CACHE_PATH }}
+        key: ${{ steps.metadata.outputs.modules-key }}
+        restore-keys: ${{ steps.metadata.outputs.modules-restore }}
+    # -----
     - name: 'Download project Go modules'
-      if: inputs.cache == 'true' && steps.modules-cache.outputs.cache-hit != 'true'
+      if: >-
+        inputs.cache == 'true' && steps.modules-cache.outputs.cache-hit != 'true' &&
+        steps.modules-restore.outputs.cache-hit != 'true'
       shell: bash
       run: go mod download
     # -----
     - name: 'Restore and save Go compilation and analysis results'
-      if: inputs.cache == 'true'
+      if: inputs.cache == 'true' && inputs.cache-save == 'true'
       continue-on-error: true
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ env.PROJECT_GO_BUILD_CACHE_PATH }}
+        key: ${{ steps.metadata.outputs.build-key }}
+        restore-keys: ${{ steps.metadata.outputs.build-restore }}
+    # -----
+    - name: 'Restore Go compilation and analysis results'
+      if: inputs.cache == 'true' && inputs.cache-save != 'true'
+      continue-on-error: true
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ env.PROJECT_GO_BUILD_CACHE_PATH }}
         key: ${{ steps.metadata.outputs.build-key }}

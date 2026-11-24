@@ -33,6 +33,7 @@ runs:
       with:
         setup-task: ${{ inputs.setup-task }}
         go-cache: ${{ inputs.go-cache }}
+        go-cache-save: 'false'
     # -----
     - name: 'Generate ai agent environment'
       env:

@@ -46,8 +46,8 @@ searches; if the index generation changes during pagination, restart the search.
 The go42x MCP server refreshes an existing index when it starts and after searches
 return stale results. A refresh keeps the source selection of the last build and
 never rewrites exclusions. Run `task x -- kwb build` from the project root to create
-the index, after changing exclusions or the build directory, or when the index is
-stale and no MCP server is running. After changing agent configuration or
+the index, after changing exclusions, or when the index is stale and no MCP server
+is running. After changing agent configuration or
 templates, run `task x -- agentenv generate` before building the index. Builds
 update changed files and remove deleted or newly excluded files. A running MCP
 server picks up the updated index on its next request. Use

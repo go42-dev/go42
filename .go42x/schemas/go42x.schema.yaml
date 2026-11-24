@@ -146,14 +146,15 @@ properties:
         description: Agent skill directory relative to .go42x; each immediate subdirectory with a SKILL.md, or with a SKILL.tpl.md
           whose *.tpl.md files render as templates, is installed in the skill directories of enabled providers. Omit to install
           no skills.
-      build-dir:
+      tmp-dir:
         type: string
-        description: Build directory for task and tool outputs, available as .context.BuildDir. Relative paths use the project
-          root. Omit or leave empty to use .build.
-        default: .build
+        description: Directory for temporary files of go42x and agents, relative to .go42x, available as .context.TmpPath
+          from the project root. Omit or leave empty to use tmp. It must not start with a dot, use a directory or file that
+          go42x keeps in .go42x, or overlap the journal.
+        default: tmp
         pattern: ^$|\S
         not:
-          pattern: "\0"
+          pattern: "^[/.]|\\\\|\0|:|(^|/)\\.\\.(/|$)"
       go-env:
         type: array
         description: Additional go env variables published under golang.env, beyond GOVERSION, GOTOOLCHAIN, GOROOT, GOPATH,
@@ -161,6 +162,25 @@ properties:
         items:
           type: string
           pattern: ^[A-Z][A-Z0-9_]*$
+  journal:
+    type: object
+    description: Agent task journal. Local commands read and write it; in CI, the generated 901-aw-journal.md workflow import
+      restores and saves it when the JOURNAL_REPOSITORY variable names a journal repository.
+    additionalProperties: false
+    properties:
+      path:
+        type: string
+        description: Journal directory relative to .go42x, available as .journal.Dir. Omit to use journal. It must not start
+          with a dot or use a directory or file that go42x keeps in .go42x.
+        default: journal
+        minLength: 1
+        not:
+          pattern: "^[/.]|\\\\|\0|:|(^|/)\\.\\.(/|$)"
+      retention-days:
+        type: integer
+        description: Days an entry may go without an update before journal gc removes it, unless the entry is kept.
+        default: 30
+        minimum: 1
   providers:
     type: object
     description: AI provider configurations
@@ -207,27 +227,28 @@ properties:
         additionalProperties: false
       antigravity:
         type: object
-        description: Workspace project-tools plugin with all enabled MCP servers. Tool approvals are managed in Antigravity
-          user settings.
+        description: Workspace project-tools plugin with all enabled MCP servers. Antigravity asks before running an MCP tool
+          unless its permission rules, such as mcp(server/tool), allow it.
         properties:
           enabled:
             $ref: '#/definitions/providerEnabled'
         additionalProperties: false
       crush:
         $ref: '#/definitions/toolApprovalProvider'
-      copilot:
-        type: object
-        description: All MCP tools are available. Tool approvals are managed in Copilot's user settings.
-        properties:
-          enabled:
-            $ref: '#/definitions/providerEnabled'
-        additionalProperties: false
       gh-aw:
         type: object
         description: Importable MCP Markdown fragment for GitHub Agentic Workflows. Workflow configuration remains repository-owned.
         properties:
           enabled:
             $ref: '#/definitions/providerEnabled'
+          mcp-servers:
+            type: array
+            description: MCP servers that agentic workflows get, whether or not they are enabled for local agents. Instructions
+              generated for gh-aw describe them too.
+            uniqueItems: true
+            items:
+              type: string
+              minLength: 1
           bindings:
             type: object
             description: Explicit replacements for $NAME and ${NAME} in MCP values. Native GitHub expressions are preserved;
@@ -333,8 +354,8 @@ properties:
         cwd:
           type: string
           description: Working directory for stdio servers after built-in substitution. Relative paths resolve from the project
-            directory; omit or leave empty for the client's default. Supported by Codex, Antigravity, and Copilot; rejected
-            on enabled servers when Claude or Crush is enabled. Environment variables and home expansion are not supported.
+            directory; omit or leave empty for the client's default. Supported by Codex and Antigravity; rejected on enabled
+            servers when Claude or Crush is enabled. Environment variables and home expansion are not supported.
           pattern: ^$|\S
           not:
             pattern: "\0"

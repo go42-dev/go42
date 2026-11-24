@@ -16,6 +16,19 @@
 - Progress: During long-running operations, give updates on findings,
   blockers, and next steps.
 
+### Temporary storage
+
+- Write temporary files to the `{{ .context.TmpPath }}` directory by default.
+  Keep intermediate files, which a later session or a reviewer needs, in the
+  task's journal entry.
+
+- Keep temporary files for each task in a separate, clearly named subdirectory.
+
+- Before finishing a task, review that subdirectory and remove files and
+  directories that are unlikely to be needed again, such as downloads, cloned
+  repositories, and scratch output. Keep files used by ongoing work. Leave files
+  whose purpose is unclear, and files you did not create, untouched.
+
 ### Side effect protection in interactive sessions
 
 - Never modify root README.md without explicit instructions.

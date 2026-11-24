@@ -393,7 +393,6 @@ jobs:
       - name: 'Setup Go'
         uses: ./.github/actions/setup-go
         with:
-          # The pinned go42x CLI reads Go metadata without compiling source.
           cache: false
       - name: 'Install pinned agentic workflow tools'
         uses: ./.github/actions/setup-tools

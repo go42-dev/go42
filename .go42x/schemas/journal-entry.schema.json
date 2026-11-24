@@ -1,19 +1,18 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/go42-dev/go42x/agentenv/schema/journal-entry/v1",
+  "$id": "https://github.com/go42-dev/go42x/agentenv/schema/journal-entry/v2",
   "title": "go42x journal entry",
-  "description": "Record of one task in .go42x/journal/<id>/entry.json, written by go42x agentenv journal.",
+  "description": "Record of one task in <journal directory>/<id>/entry.json, written by go42x agentenv journal.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "version",
     "id",
     "title",
-    "status",
     "tags",
+    "keep",
     "created_at",
     "updated_at",
-    "expires_at",
     "runtime",
     "refs"
   ],
@@ -23,7 +22,7 @@
       "description": "Link to this schema at the go42x revision that last wrote the entry"
     },
     "version": {
-      "const": 1,
+      "const": 2,
       "description": "Entry format version"
     },
     "id": {
@@ -38,14 +37,6 @@
       "minLength": 1,
       "maxLength": 200
     },
-    "status": {
-      "enum": [
-        "open",
-        "done",
-        "abandoned"
-      ],
-      "description": "open until the task is finished or dropped"
-    },
     "tags": {
       "type": "array",
       "description": "One type of work and the affected areas",
@@ -56,6 +47,10 @@
         "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
       }
     },
+    "keep": {
+      "type": "boolean",
+      "description": "true keeps the entry; otherwise journal gc deletes it once it goes without an update for the configured retention"
+    },
     "created_at": {
       "type": "string",
       "format": "date-time"
@@ -64,26 +59,10 @@
       "type": "string",
       "format": "date-time"
     },
-    "expires_at": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "format": "date-time",
-      "description": "When journal gc may delete a finished entry; null keeps it"
-    },
     "runtime": {
-      "enum": [
-        "claude",
-        "codex",
-        "antigravity",
-        "crush",
-        "copilot",
-        "gh-aw",
-        "human",
-        "unknown"
-      ],
-      "description": "Runtime that last wrote the entry; log.jsonl keeps every writer"
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,31}$",
+      "description": "Runtime that last wrote the entry, such as claude, codex, or human; log.jsonl keeps every writer"
     },
     "session": {
       "type": "string",

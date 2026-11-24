@@ -37,3 +37,28 @@ jobs:
         with:
           install-args: --locked
           cache-save: 'true'
+
+  # Agent runs restore these caches without saving them.
+  agent:
+    name: agent
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: 'Checkout trusted master'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 'Setup Go'
+        uses: ./.github/actions/setup-go
+        with:
+          cache: true
+          cache-scope: agent
+      - name: 'Compile packages and race-enabled tests without running them'
+        env:
+          CGO_ENABLED: 1 # needed for -race
+        run: |-
+          go build ./...
+          go test -race -run '^$' -exec true ./...

@@ -15,9 +15,8 @@ In this project, skill sources live in `.go42x/{{ .skills.dir }}/`, set by `cont
 | --------- | --------- |{{ range .skills.targets }}
 | `{{ .dir }}/` | {{ join .providers ", " }} |{{ end }}
 
-Claude Code reads `.claude/skills/`; Codex, Antigravity, and Copilot read `.agents/skills/`; gh-aw workflows get
-both, for whichever engine a run uses. Copilot also reads `.claude/skills/`, so with Claude and Copilot both enabled
-it sees each skill twice.
+Claude Code reads `.claude/skills/`; Codex and Antigravity read `.agents/skills/`; gh-aw workflows get both, for
+whichever engine a run uses.
 
 Edit the sources, not the copies. Generation replaces the copies it wrote, removes copies whose source is gone,
 and never touches skills added to those directories by hand. Each directory keeps a `.go42x-skills.json` list of
@@ -59,7 +58,7 @@ example:
 
 ```markdown
 {{ `Run the checks for {{ .project.name }} from {{ .git.root }}.
-Keep task notes in {{ .context.JournalDir }}.
+Keep task notes in {{ .journal.Dir }}.
 {{ if .mcp.gopls }}Use the gopls MCP tools to navigate Go code.{{ end }}
 {{ range .skills.targets }}{{ .dir }} is read by {{ join .providers ", " }}.{{ end }}` }}
 ```
