@@ -41,6 +41,7 @@ pre-agent-steps:
     with:
       setup-task: setup:gh-aw-description
       go-cache: false
+      providers: gh-aw
       pull-mcp-image: true
 network:
   allowed: [defaults, github, mcp.context7.com]

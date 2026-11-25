@@ -43,6 +43,7 @@ pre-agent-steps:
   - name: Prepare agent environment
     uses: ./.github/actions/ai-prepare-env
     with:
+      providers: gh-aw
       pull-mcp-image: true
 network:
   allowed: [defaults, github, go, node, mcp.context7.com]
