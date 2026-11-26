@@ -914,7 +914,6 @@ func compareDummyPassword(password string) {
 }
 
 func strToSHA256(token string) string {
-	// codeql[go/weak-sensitive-data-hashing] Hashes random API tokens and JWT secrets, not user passwords.
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
 }

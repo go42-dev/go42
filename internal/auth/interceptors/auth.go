@@ -106,9 +106,9 @@ func extractFromGRPCMetadata(ctx context.Context, key string) (string, error) {
 	if !ok {
 		return "", status.Error(codes.Unauthenticated, "missing metadata")
 	}
-	apiKey := md.Get(key)
-	if len(apiKey) > 0 {
-		return apiKey[0], nil
+	values := md.Get(key)
+	if len(values) > 0 {
+		return values[0], nil
 	}
 	return "", status.Error(codes.Unauthenticated, "missing metadata key: "+key)
 }
