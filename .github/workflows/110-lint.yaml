@@ -329,8 +329,9 @@ jobs:
           OPENAPI_DIFF_FORMAT: githubactions
         run: task lint:openapi-breaking
 
-  # Linter for github actions.
+  # GitHub Actions syntax and security, through the same task as local runs.
   # @see https://github.com/rhysd/actionlint
+  # @see https://github.com/zizmor-labs/zizmor
   action-lint:
     name: action-lint
     runs-on: ${{ inputs.runs_on }}
@@ -338,43 +339,17 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read
-    # ----
     steps:
       - name: 'Checkout repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: 'Install pinned Actionlint and helpers'
+      - name: 'Install pinned workflow linters'
         uses: ./.github/actions/setup-tools
         with:
-          install-args: --locked python uv actionlint shellcheck pyflakes
-      - name: 'Run actionlint'
-        shell: bash
-        run: actionlint -oneline --config-file etc/actionlint.yaml
-
-  # Action security audit.
-  # @see https://github.com/zizmor-labs/zizmor
-  zizmor-lint:
-    name: zizmor-lint
-    runs-on: ${{ inputs.runs_on }}
-    continue-on-error: ${{ inputs.continue_on_error }}
-    timeout-minutes: ${{ inputs.timeout_minutes }}
-    permissions:
-      contents: read
-    # ----
-    steps:
-      - name: 'Checkout repository'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: 'Install pinned Zizmor'
-        uses: ./.github/actions/setup-tools
-        with:
-          install-args: --locked zizmor
-      - name: 'Run zizmor security audit'
-        shell: bash
-        run: zizmor -q --persona regular --min-severity high --min-confidence high --offline --format plain --color never
-          --no-progress .
+          install-args: --locked python uv actionlint shellcheck pyflakes zizmor
+      - name: 'Check GitHub Actions with actionlint and zizmor'
+        run: task --exit-code lint:actions
 
   # Agentic workflow sources and compiler-owned lock files.
   # @see https://github.github.com/gh-aw/

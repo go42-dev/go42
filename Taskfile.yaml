@@ -85,6 +85,10 @@ tasks:
           "BUILD_CACHE_DIR=$BUILD_CACHE_DIR" \
           "BUILD_TMP_DIR=$BUILD_TMP_DIR"
 
+  # ╭────────────────────----------------──────────╮
+  # │                   Tooling                    │
+  # ╰─────────────────────----------------─────────╯
+
   x:
     desc: "Run go42x from the mise-pinned release"
     summary: |-
@@ -122,10 +126,12 @@ tasks:
         restore_pins() {
           cp -p "$workspace/mise.toml" etc/mise.toml
           cp -p "$workspace/mise.lock" etc/mise.lock
+          # tool:update removes the replaced version; reinstall it for the restored pin.
+          mise install --locked go42x || printf 'Run task setup to reinstall the restored go42x.\n' >&2
           printf 'Restored the previous mise pin and lockfile.\n' >&2
         }
 
-        if ! task bump TOOL=go42x "VERSION=$version"; then
+        if ! task tool:update TOOL=go42x "VERSION=$version"; then
           restore_pins
           exit 1
         fi
@@ -160,19 +166,36 @@ tasks:
     cmds:
       - 'mise exec -- {{.CLI_ARGS}}'
 
-  # ╭────────────────────----------------──────────╮
-  # │                    Setup                     │
-  # ╰─────────────────────----------------─────────╯
+  tool:update:
+    desc: "Set a mise tool dependency to a version (writes)"
+    summary: |-
+      Usage: task tool:update TOOL=<tool> VERSION=<version>
+      Installs the selected tool version, updates etc/mise.toml and etc/mise.lock, and removes its unused versions.
+    requires:
+      vars:
+        - TOOL
+        - VERSION
+    preconditions:
+      - sh: 'test -n {{.TOOL | shellQuote}} && test -n {{.VERSION | shellQuote}}'
+        msg: "TOOL and VERSION must not be empty."
+      - sh: 'test -z {{.CLI_ARGS | shellQuote}}'
+        msg: "Pass TOOL=... VERSION=... without arguments after --."
+    cmds:
+      - 'mise use --pin -- {{printf "%s@%s" .TOOL .VERSION | shellQuote}}'
+      - 'mise lock -- {{.TOOL | shellQuote}}'
+      - 'mise prune --tools --yes -- {{.TOOL | shellQuote}}'
 
   setup:
     desc: "Install pinned project tools and Go modules"
     summary: |-
       Usage: task setup
       Also syncs the pinned Vale styles. Go, mise, and Task must already be installed.
+      Then runs setup:tidy, so versions replaced by new pins do not accumulate.
     cmds:
       - "mise install --locked"
       - 'mise exec -- vale --config etc/vale.ini sync'
       - "go mod download"
+      - task: setup:tidy
 
   setup:gh-aw-description:
     desc: "Install tools for description workflow preparation"
@@ -197,23 +220,15 @@ tasks:
       - "mise install --locked node markdownlint-cli2 vale"
       - 'mise exec -- vale --config etc/vale.ini sync'
 
-  bump:
-    desc: "Set a mise tool dependency to a version (writes)"
+  setup:tidy:
+    desc: "Remove unused tool versions and stale cache files from .tools/ (writes)"
     summary: |-
-      Usage: task bump TOOL=<tool> VERSION=<version>
-      Installs the selected tool version and updates etc/mise.toml and etc/mise.lock.
-    requires:
-      vars:
-        - TOOL
-        - VERSION
-    preconditions:
-      - sh: 'test -n {{.TOOL | shellQuote}} && test -n {{.VERSION | shellQuote}}'
-        msg: "TOOL and VERSION must not be empty."
-      - sh: 'test -z {{.CLI_ARGS | shellQuote}}'
-        msg: "Pass TOOL=... VERSION=... without arguments after --."
+      Usage: task setup:tidy [DRY_RUN=1]
+      Deletes installed versions that no tracked mise configuration selects, then cache files not read within
+      cache_prune_age. Versions used by running processes are kept. DRY_RUN=1 lists what would be removed.
     cmds:
-      - 'mise use --pin -- {{printf "%s@%s" .TOOL .VERSION | shellQuote}}'
-      - 'mise lock -- {{.TOOL | shellQuote}}'
+      - 'mise prune --tools --yes{{if .DRY_RUN}} --dry-run{{end}}'
+      - 'mise cache prune{{if .DRY_RUN}} --dry-run{{end}}'
 
   # ╭────────────────────----------------──────────╮
   # │                   Testing                    │
@@ -659,7 +674,6 @@ tasks:
     cmds:
       - task: "lint:commits"
       - task: "lint:go"
-      - task: "lint:nilaway"
       - task: "lint:gosec"
       - task: "lint:vulnerabilities"
       - task: "lint:licenses"
@@ -702,7 +716,7 @@ tasks:
         mise exec -- golangci-lint run --config etc/golangci.yaml "$@"
 
   lint:nilaway:
-    desc: "Check all Go packages for potential nil panics with NilAway"
+    desc: "Check all Go packages for potential nil panics with NilAway (advisory; not part of lint)"
     cmds:
       - |
         go vet -vettool="$(mise which nilaway)" \

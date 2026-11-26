@@ -4,6 +4,8 @@ min_version = "2026.10.21"
 lockfile = true
 exec_auto_install = false
 disable_update_warning = true
+# Downloads are cached per project under .tools/cache; keep enough for reinstalls, not the 2GiB default.
+download_cache_max_size = "512MiB"
 
 [env]
 REDOCLY_SUPPRESS_UPDATE_NOTICE = "true"

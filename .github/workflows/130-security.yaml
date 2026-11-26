@@ -139,6 +139,28 @@ jobs:
           category: '.github/workflows/100-unified-workflow.yaml:codeql'
           upload: never
           upload-database: false
+          output: ${{ runner.temp }}/codeql-results
+      # Analysis stays read-only; fail on findings so pull requests are gated without upload access.
+      - name: 'Fail on CodeQL findings'
+        shell: bash
+        env:
+          SARIF_DIR: ${{ runner.temp }}/codeql-results
+        run: |-
+          set -euo pipefail
+          shopt -s nullglob
+          files=("$SARIF_DIR"/*.sarif)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo '::error::CodeQL produced no SARIF results to check.'
+            exit 1
+          fi
+          filter='.runs[].results[]? | select((.suppressions // []) | length == 0)'
+          jq -r "$filter"' | "::error file=\(.locations[0].physicalLocation.artifactLocation.uri),line=\(.locations[0].physicalLocation.region.startLine)::\(.ruleId): \(.message.text)"' "${files[@]}"
+          count=$(jq -s "[.[] | $filter] | length" "${files[@]}")
+          if [ "$count" -gt 0 ]; then
+            echo "::error::CodeQL reported $count finding(s); fix them before merging."
+            exit 1
+          fi
+          echo 'CodeQL reported no findings.'
 
   licenses:
     name: licenses

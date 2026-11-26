@@ -11,7 +11,10 @@ related:
 
 Follow the formatting, linting, and testing rules in this guide.
 [Taskfile.yaml](../../Taskfile.yaml) defines the commands, arguments, defaults,
-and outputs; follow its declarations when running checks.
+and outputs; follow its declarations when running checks. Run `task setup` to
+install the pinned tools and Go modules, and again after the pins change. It
+finishes with `task setup:tidy`, which removes tool versions and cache files
+that the pins no longer use.
 
 ## Formatting
 
@@ -49,7 +52,8 @@ Use `task generate` when both generation tasks below apply.
 ## Linting
 
 Use focused checks while editing. Before handing back repository changes, run
-`task lint`, which includes all configured linters and `task docs:check`.
+`task lint`, which includes all configured linters except the advisory NilAway
+check, and `task docs:check`.
 The individual tasks below provide focused feedback; their selection does not
 replace the full lint run before review.
 
@@ -57,7 +61,7 @@ replace the full lint run before review.
 | ------------------------------------ | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | `task lint`                          | Before handing back any repository changes                                                | Run the complete project lint and documentation checks          |
 | `task lint:go`                       | While editing Go source                                                                   | Run configured Go static analysis                               |
-| `task lint:nilaway`                  | While editing Go source                                                                   | Check for potential nil panics                                  |
+| `task lint:nilaway`                  | Optional while editing Go source; not part of `task lint`                                 | Check for potential nil panics (advisory)                       |
 | `task lint:gosec`                    | While editing Go source                                                                   | Check Go security patterns                                      |
 | `task lint:vulnerabilities`          | While changing Go dependencies or release targets                                         | Check reachable vulnerabilities on configured release platforms |
 | `task lint:secrets`                  | While changing committed configuration or credential handling                             | Scan Git history for exposed secrets                            |
